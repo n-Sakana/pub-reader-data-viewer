@@ -1,0 +1,23 @@
+# 生成物
+*.xlsm
+*.xlsx
+*.exe
+*.dll
+*.xll
+*.pdb
+*.log
+*.pid
+prebuilt/
+engine/
+
+# ビルド時に生成される (build\gen_emitter.ps1)
+vba/modZipEmit.bas
+
+# Excel-DNA を nuget から取ったもの (xll\build_xll.ps1 が展開する)
+xll/nuget/
+
+# 日本郵便から取得するデータ
+data/
+
+# 実行時の作業用ディレクトリ (BAT/PS1/TSV/ログ/PID)
+work/
