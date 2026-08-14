@@ -1,0 +1,955 @@
+Attribute VB_Name = "modRdv3App"
+'==============================================================================
+' modRdv3App -- the FE: a small UI book and nothing else. Modeled on a proven
+' Excel pump from an earlier project (the async skeleton only; none of its
+' cursor work).
+'
+' The FE owns NO ledger data. The 100k-row ledger lives in its own workbook
+' next to this one, owned entirely by the BE process; what reaches this book
+' is display-sized: a record, a candidate list, a status line. The FE never
+' materializes rows and never saves itself (there is nothing to save; close
+' marks the book clean). What runs here:
+'   - Workbook_Open boot (short: prepare session files, Shell the detached
+'     spawn script, arm the pump, return -- no synchronous CreateObject)
+'   - the OnTime pump: one short, bounded tick per second that reads the
+'     aggregate channel file once and does at most one small render, then
+'     returns. Between ticks the VBA stack is fully released. Excel natively
+'     defers OnTime during cell edits and modal dialogs, so the pump never
+'     collides with the user and simply catches up afterwards -- that is
+'     normal behavior, not an error.
+'   - click dispatch (Worksheet_FollowHyperlink): validates, writes a small
+'     request file for the BE, arms a few fast follow-up ticks, returns
+'
+' Everything heavy -- CSV read, merge, comparison, carry-over, ledger
+' write/save, "processed" persistence, search, the Notepad watch -- runs in
+' the BE process (modRdv3Be). The BE never calls into this process; results
+' arrive only through the file channel.
+'
+' The two figures the screen shows keep their boundaries:
+'   マージ時間  = the 8 merge stages, measured inside the BE's rebuild
+'                 (compose is logged separately and shown in the log total)
+'   検索時間    = search confirmed (click t0 / BE detect t0) -> the FE has
+'                 rendered the record or the candidate list. The cross-process
+'                 hop and the pump cadence are honestly inside this figure.
+'==============================================================================
+Option Explicit
+
+Private Const ST_BOOT As Long = 0
+Private Const ST_CHECKING As Long = 1          ' BE spawning/merging/comparing
+Private Const ST_APPLY_WAIT As Long = 2        ' approved; BE carries + writes + saves
+Private Const ST_READY As Long = 3
+Private Const ST_BLOCKED As Long = 4
+Private Const ST_DEAD As Long = 5
+
+Private Const PHASE_TIMEOUT_S As Double = 300#
+Private Const PUMP_GRACE_S As Long = 5
+
+Private m_started As Boolean
+Private m_state As Long
+Private m_sid As String
+Private m_dataDir As String
+Private m_ledgerPath As String
+Private m_logPath As String
+Private m_beLogPath As String
+Private m_readOnly As Boolean
+Private m_logBroken As Boolean
+Private m_spawnLogged As Boolean          ' be_pid flag consumed and logged
+
+' last consumed channel version per kind
+Private m_verCheck As Long
+Private m_verReady As Long
+Private m_verResult As Long
+Private m_verState As Long
+Private m_verApply As Long
+Private m_verErr As Long
+Private m_reqVer As Long
+
+' current display state
+Private m_shownRow As Long
+Private m_shownKey As String
+Private m_shownKey2 As String
+Private m_candRows(0 To 15) As Long
+Private m_candCount As Long
+Private m_candTotal As Long
+Private m_watchOn As Boolean
+Private m_lastMergeMs As Double
+
+' pump state
+Private m_pumpNext As Date
+Private m_pumpArmed As Boolean
+Private m_inTick As Boolean
+Private m_fastFollow As Long
+Private m_phaseStart As Double            ' Timer at phase entry, for timeouts
+Private m_animStep As Long
+Private m_tickCount As Long
+Private m_tickMaxMs As Double
+Private m_tickWorkCount As Long
+
+Private m_readyNote As String
+Private m_readyRows As Long
+
+Private m_searchSeq As Long
+Private m_procSeq As Long
+Private m_lastWatchSt As String
+Private m_closePrepared As Boolean
+Private m_closePending As Boolean
+Private m_bootT0 As Currency              ' boot instant (QPC), for startup_ms
+Private m_startupLogged As Boolean
+
+Private m_events As clsRdv3AppEvents
+
+'------------------------------------------------------------------------------
+' log
+'------------------------------------------------------------------------------
+Private Sub AppLog(ByVal runId As String, ByVal section As String, ByVal detail As String)
+    Dim f As Integer
+    On Error GoTo Fail
+    If Len(m_logPath) = 0 Then Exit Sub
+    f = FreeFile
+    Open m_logPath For Append As #f
+    Print #f, Format$(Now, "yyyy-mm-dd hh:nn:ss") & vbTab & runId & vbTab & section & vbTab & _
+        Replace(Replace(Replace(detail, vbTab, " "), vbCr, " "), vbLf, " ")
+    Close #f
+    Exit Sub
+Fail:
+    On Error Resume Next
+    Close #f
+    If Not m_logBroken Then
+        m_logBroken = True
+        Rdv3UiError "ログを書き込めません: " & m_logPath
+    End If
+End Sub
+
+Private Function FmtF(ByVal v As Double) As String
+    FmtF = Format$(v, "0.00")
+End Function
+
+' diagnostic entry for responsiveness tests; no side effects, no pump calls
+Public Function Rdv3Ping() As Double
+    Rdv3Ping = Timer
+End Function
+
+' build-time compile probe: touches every module (and the class) so a compile
+' error anywhere fails the BUILD, not the first user launch
+Public Function Rdv3BuildTouch() As String
+    Dim ev As clsRdv3AppEvents
+    Dim s As String
+    Set ev = New clsRdv3AppEvents
+    Set ev = Nothing
+    s = Rdv3ChRoot()
+    s = s & "|" & CStr(Rdv3HostBePid())
+    s = s & "|" & Rdv3UiInputKey()
+    s = s & "|" & CStr(Rdv3IsKey("00000000"))
+    s = s & "|" & Rdv3SidecarPath("x.xlsx")
+    Rdv3BuildTouch = s
+End Function
+
+'------------------------------------------------------------------------------
+' boot (Workbook_Open -> OnTime; short: spawn the BE and return)
+'------------------------------------------------------------------------------
+Public Sub Rdv3AppStart()
+    Dim errMsg As String
+    Dim n As Long
+
+    If m_started Then Exit Sub
+    m_started = True
+    m_state = ST_BOOT
+    m_shownRow = -1
+    m_lastMergeMs = -1
+    m_bootT0 = Rdv3Ticks()
+    m_startupLogged = False
+
+    m_sid = Format$(Now, "yyyymmddhhnnss") & Format$(CLng(Timer * 1000!) Mod 100000, "00000")
+    m_readOnly = ThisWorkbook.ReadOnly
+    ResolvePaths
+    AppLog "-", "boot", "pid=" & CStr(Rdv3GetCurrentProcessId()) & " method=vba-dict sid=" & m_sid & _
+        " book=" & ThisWorkbook.FullName & " data=" & m_dataDir & _
+        " ledger=" & m_ledgerPath & " readonly=" & CStr(m_readOnly)
+
+    n = Rdv3ChSweepStale()
+    If n > 0 Then AppLog "-", "worker", "stale_files_cleaned=" & n
+
+    Rdv3UiClearResult
+    Rdv3UiMergeMs -1
+    Rdv3UiSearchMs -1
+    Rdv3UiError ""
+    Rdv3UiNotepad "未接続 -- メモ帳を開くと自動で接続します"
+    Rdv3UiWatchButton True
+    m_watchOn = True
+    If m_readOnly Then
+        Rdv3UiError "読み取り専用で開かれています (既に開いていませんか)。更新の承認と処理済み登録はできません"
+    End If
+
+    If m_events Is Nothing Then
+        Set m_events = New clsRdv3AppEvents
+        Set m_events.App = Application
+    End If
+
+    m_state = ST_CHECKING
+    m_phaseStart = Timer
+    m_spawnLogged = False
+    Rdv3UiState "更新を確認中"
+    AppLog "R1", "decision", "check started"
+
+    If Dir$(m_dataDir & "\tableA.csv") = "" Then
+        AppLog "R1", "error", "stage=check msg=CSV not found in " & m_dataDir
+        EnterDead "CSV が見つかりません: " & m_dataDir
+        Exit Sub
+    End If
+
+    ' asynchronous: Shell a detached script and return. The pump learns the
+    ' BE's pid (or the spawn failure) from channel flags; nothing here blocks.
+    If Not Rdv3HostSpawnAsync(m_sid, m_dataDir, m_ledgerPath, m_beLogPath, errMsg) Then
+        AppLog "R1", "error", "stage=spawn msg=" & errMsg
+        EnterDead "更新確認を開始できませんでした: " & errMsg
+        Exit Sub
+    End If
+    AppLog "R1", "worker", "spawn dispatched (async) owner_pid=" & _
+        CStr(Rdv3GetCurrentProcessId()) & " sid=" & m_sid
+
+    PumpSchedule True
+End Sub
+
+Private Sub ResolvePaths()
+    Dim meta As Object
+    Dim v As String
+    Set meta = ThisWorkbook.Worksheets(RDV3_SHEET_META)
+    v = Trim$(CStr(meta.Range(RDV3_M_DATADIR).Value2))
+    If Len(v) > 0 And Dir$(v & "\tableA.csv") <> "" Then
+        m_dataDir = v
+    Else
+        m_dataDir = ThisWorkbook.Path & "\data"
+    End If
+    v = Trim$(CStr(meta.Range(RDV3_M_LOGPATH).Value2))
+    If Len(v) > 0 Then
+        m_logPath = v
+    Else
+        m_logPath = ThisWorkbook.Path & "\ReaderDataViewer.log"
+    End If
+    m_beLogPath = m_logPath & ".worker.log"
+    m_ledgerPath = ThisWorkbook.Path & "\ReaderDataViewer-Ledger.xlsx"
+End Sub
+
+'------------------------------------------------------------------------------
+' the pump (guard, one bounded body, reschedule, return)
+'------------------------------------------------------------------------------
+Private Sub PumpSchedule(ByVal firstTick As Boolean)
+    If m_state = ST_DEAD Or m_state = ST_BLOCKED Then Exit Sub
+    ' single-chain invariant: never schedule on top of a live schedule
+    If m_pumpArmed Then Exit Sub
+    If m_fastFollow > 0 And Not firstTick Then
+        m_fastFollow = m_fastFollow - 1
+        m_pumpNext = Now
+    Else
+        m_pumpNext = Now + TimeSerial(0, 0, 1)
+    End If
+    Application.OnTime m_pumpNext, PumpQualified()
+    m_pumpArmed = True
+End Sub
+
+Private Function PumpQualified() As String
+    PumpQualified = "'" & Replace(ThisWorkbook.Name, "'", "''") & "'!modRdv3App.Rdv3PumpTick"
+End Function
+
+' NOTE: there is deliberately NO OnTime cancellation anywhere in this module.
+' Near the due time a cancel can fail -- or report success while the tick
+' still fires -- and a tick that fires after the workbook closed makes Excel
+' REOPEN the book to run the macro, behind a macro security notice that pins
+' the process forever (measured). The chain is therefore only ever ended by
+' letting the armed tick fire into a state that refuses to reschedule, and a
+' close hands itself off to that tick (Rdv3AppPrepareClose / Rdv3FinishClose).
+
+' Watchdog (FE-local events only): if the chain ended without a schedule --
+' a tick error before its reschedule -- re-arm it. armed=True always means a
+' real schedule exists (ticks clear the flag on entry), so re-arming is only
+' ever done from the unarmed state; that keeps the chain strictly single.
+Public Sub Rdv3PumpEnsureArmed()
+    If m_inTick Then Exit Sub
+    If Not m_started Then Exit Sub
+    If m_state = ST_DEAD Or m_state = ST_BLOCKED Then Exit Sub
+    If m_pumpArmed Then Exit Sub
+    On Error Resume Next
+    PumpSchedule False
+    On Error GoTo 0
+End Sub
+
+Public Sub Rdv3PumpTick()
+    Dim t As Currency
+    Dim worked As Boolean
+    Dim ms As Double
+
+    If m_inTick Then Exit Sub
+    m_inTick = True
+    m_pumpArmed = False
+    ' a close was intercepted because this very tick could not be canceled:
+    ' now that it has fired the book can close for real, right after this call
+    If m_closePending Then
+        m_closePending = False
+        m_inTick = False
+        On Error Resume Next
+        Application.OnTime Now, "'" & Replace(ThisWorkbook.Name, "'", "''") & "'!modRdv3App.Rdv3FinishClose"
+        Exit Sub
+    End If
+    On Error GoTo Done
+
+    t = Rdv3Ticks()
+    worked = TickBody()
+    ms = Rdv3MsSince(t)
+    m_tickCount = m_tickCount + 1
+    If ms > m_tickMaxMs Then m_tickMaxMs = ms
+    If worked Then
+        m_tickWorkCount = m_tickWorkCount + 1
+        AppLog "-", "pump", "tick_ms=" & FmtF(ms) & " state=" & CStr(m_state)
+    ElseIf (m_tickCount Mod 60) = 0 Then
+        AppLog "-", "pump", "stats ticks=" & m_tickCount & " worked=" & m_tickWorkCount & _
+            " max_tick_ms=" & FmtF(m_tickMaxMs)
+    End If
+
+Done:
+    If Err.Number <> 0 Then
+        AppLog "-", "error", "stage=pump msg=" & Err.Number & " " & Err.Description
+    End If
+    On Error Resume Next
+    PumpSchedule False
+    m_inTick = False
+    On Error GoTo 0
+End Sub
+
+Private Function TickBody() As Boolean
+    Dim worked As Boolean
+    worked = False
+
+    ' the async spawn reports the BE pid through a flag; consume it whenever
+    ' it appears so stop/kill bookkeeping always knows our child
+    If Rdv3HostBePid() = 0 And m_state <> ST_DEAD Then TryConsumeBePid
+
+    Select Case m_state
+        Case ST_CHECKING, ST_APPLY_WAIT
+            AnimTick
+            If DispatchChannel() Then worked = True
+            If Not worked Then CheckBeHealth
+        Case ST_READY
+            If DispatchChannel() Then worked = True
+    End Select
+    TickBody = worked
+End Function
+
+Private Sub AnimTick()
+    m_animStep = (m_animStep + 1) Mod 4
+    Select Case m_state
+        Case ST_CHECKING
+            Rdv3UiState "更新を確認中" & String$(m_animStep, "・")
+        Case ST_APPLY_WAIT
+            Rdv3UiState "台帳を更新中" & String$(m_animStep, "・")
+    End Select
+End Sub
+
+' Spawn is asynchronous, so liveness has two phases. Before the be_pid flag
+' appears, watch for the script's error flag and a short spawn timeout; after
+' it, watch the process itself plus the long phase timeout.
+Private Sub CheckBeHealth()
+    Dim el As Double
+    Dim f As Integer
+    Dim ln As String
+
+    el = Timer - m_phaseStart
+    If el < 0 Then el = el + 86400
+
+    If Rdv3HostBePid() = 0 Then
+        If Rdv3ChFlagExists(Rdv3ChSpawnErrPath(m_sid)) Then
+            ln = ""
+            On Error Resume Next
+            f = FreeFile
+            Open Rdv3ChSpawnErrPath(m_sid) For Input Shared As #f
+            Line Input #f, ln
+            Close #f
+            On Error GoTo 0
+            AppLog "R1", "error", "stage=spawn msg=" & ln
+            EnterDead "worker を起動できませんでした: " & ln
+            Exit Sub
+        End If
+        If TryConsumeBePid() Then Exit Sub
+        If el > RDV3_SPAWN_TIMEOUT_S Then
+            AppLog "-", "timeout", "stage=spawn after_s=" & FmtF(el)
+            StopBeNow
+            EnterDead "worker の起動がタイムアウトしました。再起動してください"
+        End If
+        Exit Sub
+    End If
+
+    If Not Rdv3HostBeAlive() Then
+        AppLog "-", "error", "stage=worker msg=BE process died"
+        EnterDead "worker プロセスが終了しました。再起動してください"
+        Exit Sub
+    End If
+    If el > PHASE_TIMEOUT_S Then
+        AppLog "-", "timeout", "state=" & CStr(m_state) & " after_s=" & FmtF(el)
+        StopBeNow
+        EnterDead "更新確認がタイムアウトしました。再起動してください"
+    End If
+End Sub
+
+Private Function TryConsumeBePid() As Boolean
+    Dim f As Integer
+    Dim ln As String
+    Dim pid As Long
+    If Not Rdv3ChFlagExists(Rdv3ChBePidPath(m_sid)) Then Exit Function
+    On Error Resume Next
+    f = FreeFile
+    Open Rdv3ChBePidPath(m_sid) For Input Shared As #f
+    Line Input #f, ln
+    Close #f
+    On Error GoTo 0
+    If Left$(ln, 4) = "pid=" Then pid = CLng(Val(Mid$(ln, 5)))
+    If pid = 0 Then Exit Function
+    Rdv3HostNotePid pid
+    If Not m_spawnLogged Then
+        m_spawnLogged = True
+        AppLog "R1", "worker", "spawn pid=" & CStr(pid) & " owner_pid=" & _
+            CStr(Rdv3GetCurrentProcessId()) & " sid=" & m_sid
+    End If
+    TryConsumeBePid = True
+End Function
+
+'------------------------------------------------------------------------------
+' channel dispatch: one aggregate read, then per-kind version dedup
+'------------------------------------------------------------------------------
+Private Function DispatchChannel() As Boolean
+    Dim recs As Collection
+    Dim rec As Variant
+    Dim i As Long
+    Dim worked As Boolean
+
+    Set recs = Rdv3ChReadAgg(m_sid)
+    For i = 1 To recs.Count
+        rec = recs(i)
+        Select Case CStr(rec(0))
+            Case RDV3_K_CHECK
+                If CLng(rec(1)) > m_verCheck Then
+                    m_verCheck = CLng(rec(1))
+                    HandleCheck CStr(rec(2))
+                    worked = True
+                End If
+            Case RDV3_K_APPLY
+                If CLng(rec(1)) > m_verApply Then
+                    m_verApply = CLng(rec(1))
+                    HandleApply CStr(rec(2))
+                    worked = True
+                End If
+            Case RDV3_K_READY
+                If CLng(rec(1)) > m_verReady Then
+                    m_verReady = CLng(rec(1))
+                    HandleReady CStr(rec(2))
+                    worked = True
+                End If
+            Case RDV3_K_RESULT
+                If CLng(rec(1)) > m_verResult Then
+                    m_verResult = CLng(rec(1))
+                    HandleResult CStr(rec(2)), rec(3)
+                    worked = True
+                End If
+            Case RDV3_K_STATE
+                If CLng(rec(1)) > m_verState Then
+                    m_verState = CLng(rec(1))
+                    HandleState CStr(rec(2))
+                End If
+            Case RDV3_K_BEERR
+                If CLng(rec(1)) > m_verErr Then
+                    m_verErr = CLng(rec(1))
+                    HandleBeErr CStr(rec(2))
+                    worked = True
+                End If
+        End Select
+    Next i
+    DispatchChannel = worked
+End Function
+
+Private Sub HandleCheck(ByVal metaString As String)
+    Dim d As Object
+    Dim res As String
+    Dim i As Long
+    Dim ans As VbMsgBoxResult
+    Set d = Rdv3ChMeta(metaString)
+    res = CStr(d("res"))
+
+    For i = 0 To RDV3_STAGES - 1
+        Dim sec As String
+        If i < 3 Then
+            sec = "read"
+        ElseIf i < 6 Then
+            sec = "index"
+        Else
+            sec = "join"
+        End If
+        AppLog "R1", sec, Rdv3StageKey(i) & " ms=" & CStr(d(Rdv3StageKey(i)))
+    Next i
+    m_lastMergeMs = Val(CStr(d("merge")))
+    AppLog "R1", "merge", "rows=" & CStr(d("rows")) & " matchedAB=" & CStr(d("mab")) & _
+        " matchedBC=" & CStr(d("mbc")) & " checksum=" & CStr(d("chk")) & _
+        " ms=" & CStr(d("merge")) & " compose_ms=" & CStr(d("compose"))
+    AppLog "R1", "verify", "oracle=" & CStr(d("oracle"))
+    If CStr(d("oracle")) = "ng" Then Rdv3UiError "検算 NG: 統合結果が expected.txt と一致しません"
+    AppLog "R1", "load", "saved rows=" & CStr(d("srows")) & " ms=" & CStr(d("load")) & _
+        " src=" & CStr(d("lsrc"))
+    AppLog "R1", "compare", "result=" & res & IIf(d.Exists("fdiff"), " first_diff_row=" & CStr(d("fdiff")), "")
+    Rdv3UiMergeMs m_lastMergeMs
+
+    Select Case res
+        Case "same"
+            AppLog "R1", "decision", "no difference"
+            ' READY follows from the BE on its own
+        Case "diff"
+            If m_readOnly Then
+                MsgBox "CSV に変更がありますが、読み取り専用で開かれているため台帳を更新できません。" & vbCrLf & _
+                       "保存済みの台帳のまま起動します。", vbOKOnly + vbExclamation, "更新の確認"
+                AppLog "R1", "decision", "difference found; skipped (workbook is read-only)"
+                SendReq RDV3_RQ_DECISION, "adopt"
+            Else
+                ans = MsgBox("CSV に変更があります。統合台帳を更新しますか?" & vbCrLf & _
+                             "(処理済みは変更のないレコードへ引き継がれます)", _
+                             vbYesNo + vbQuestion, "更新の確認")
+                AppLog "R1", "decision", "difference found; update " & IIf(ans = vbYes, "approved", "rejected")
+                If ans = vbYes Then
+                    SendReq RDV3_RQ_DECISION, "apply"
+                    m_state = ST_APPLY_WAIT
+                    m_phaseStart = Timer
+                Else
+                    SendReq RDV3_RQ_DECISION, "adopt"
+                End If
+            End If
+        Case "ledgerbad"
+            Rdv3UiError "台帳を読み込めませんでした: " & CStr(d("lederr"))
+            If m_readOnly Then
+                MsgBox "保存済みの統合台帳が読めず、読み取り専用のため作り直せません。", vbOKOnly + vbExclamation, "更新の確認"
+                AppLog "R1", "decision", "ledger unreadable; blocked (read-only)"
+                SendReq RDV3_RQ_DECISION, "block"
+            Else
+                ans = MsgBox("保存済みの統合台帳が読めません:" & vbCrLf & CStr(d("lederr")) & vbCrLf & _
+                             "CSV から作り直しますか? (処理済み状態は失われます)", _
+                             vbYesNo + vbQuestion, "更新の確認")
+                AppLog "R1", "decision", "ledger unreadable; rebuild " & IIf(ans = vbYes, "approved", "declined")
+                If ans = vbYes Then
+                    SendReq RDV3_RQ_DECISION, "apply"
+                    m_state = ST_APPLY_WAIT
+                    m_phaseStart = Timer
+                Else
+                    SendReq RDV3_RQ_DECISION, "block"
+                End If
+            End If
+    End Select
+End Sub
+
+' the BE has carried, written and SAVED the ledger workbook itself; this is
+' purely a figures record for the FE log
+Private Sub HandleApply(ByVal metaString As String)
+    Dim d As Object
+    Set d = Rdv3ChMeta(metaString)
+    AppLog "R1", "carry", "carried=" & CStr(d("carried")) & " reset=" & CStr(d("reset")) & _
+        " new=" & CStr(d("new")) & " dropped=" & CStr(d("drop"))
+    AppLog "R1", "persist", "ledger written by BE rows=" & CStr(d("rows")) & _
+        " write_ms=" & CStr(d("write")) & " save_ms=" & CStr(d("save"))
+End Sub
+
+Private Sub HandleReady(ByVal metaString As String)
+    Dim d As Object
+    Set d = Rdv3ChMeta(metaString)
+    m_readyNote = CStr(d("note"))
+    m_readyRows = CLng(Val(CStr(d("rows"))))
+    AppLog "R1", "index", "table=LEDGER rows=" & CStr(d("rows")) & " ms=" & CStr(d("idx")) & " (BE)"
+
+    If m_readyNote = "blocked" Then
+        EnterBlocked
+        Exit Sub
+    End If
+    EnterReadyUi
+End Sub
+
+Private Function ReadyNoteText() As String
+    Select Case m_readyNote
+        Case "nodiff": ReadyNoteText = "更新はありません (台帳は最新です)"
+        Case "applied": ReadyNoteText = "台帳を更新しました"
+        Case "adopted": ReadyNoteText = "更新を見送りました (保存済み台帳のまま)"
+        Case "savedfail": ReadyNoteText = "保存済み台帳のまま (更新確認は失敗)"
+        Case Else: ReadyNoteText = m_readyNote
+    End Select
+End Function
+
+Private Sub EnterReadyUi()
+    m_state = ST_READY
+    Rdv3UiLedgerInfo Format$(m_readyRows, "#,##0") & " 件   " & ReadyNoteText()
+    Rdv3UiState IIf(m_watchOn, "監視中", "停止中 (監視再開で戻ります)")
+    AppLog "R1", "decision", "ready rows=" & m_readyRows & " note=" & m_readyNote
+    If Not m_startupLogged Then
+        ' boot (Rdv3AppStart) -> operable. The FE book open before it and the
+        ' Excel process start are outside; the bench measures those separately.
+        m_startupLogged = True
+        AppLog "R1", "startup", "boot_to_ready_ms=" & FmtF(Rdv3MsSince(m_bootT0))
+    End If
+End Sub
+
+' BLOCKED/DEAD do not cancel the armed tick (cancellation is unreliable near
+' the due time); the tick fires once more, does nothing, and the chain ends
+' because PumpSchedule refuses these states.
+Private Sub EnterBlocked()
+    m_state = ST_BLOCKED
+    Rdv3UiState "台帳がありません"
+    Rdv3UiLedgerInfo "なし -- 検索できません"
+    AppLog "R1", "decision", "blocked (no ledger)"
+End Sub
+
+Private Sub EnterDead(ByVal msg As String)
+    m_state = ST_DEAD
+    Rdv3UiError msg
+    Rdv3UiState "worker 停止"
+    AppLog "-", "decision", "dead: " & msg
+End Sub
+
+Private Sub HandleState(ByVal metaString As String)
+    Dim d As Object
+    Dim st As String
+    Set d = Rdv3ChMeta(metaString)
+    st = CStr(d("st"))
+    If Left$(st, 3) = "hb_" Then st = Mid$(st, 4)
+    Select Case st
+        Case "bound"
+            m_watchOn = True
+            Rdv3UiWatchButton True
+            Rdv3UiNotepad CStr(d("title")) & "  (hwnd " & CStr(d("hwnd")) & ")"
+            If m_state = ST_READY Then Rdv3UiState "監視中"
+            If m_lastWatchSt <> "bound" Then
+                AppLog "-", "watch", "bound hwnd=" & CStr(d("hwnd")) & " title=" & CStr(d("title"))
+            End If
+        Case "waiting"
+            m_watchOn = True
+            Rdv3UiWatchButton True
+            Rdv3UiNotepad "未接続 -- " & CStr(d("why"))
+            If m_state = ST_READY Then Rdv3UiState "メモ帳を待機中"
+            If m_lastWatchSt <> "waiting" Then
+                AppLog "-", "watch", "waiting why=" & CStr(d("why"))
+            End If
+        Case "watch_off"
+            m_watchOn = False
+            Rdv3UiWatchButton False
+            If m_state = ST_READY Then Rdv3UiState "停止中 (監視再開で戻ります)"
+            If m_lastWatchSt <> "watch_off" Then AppLog "-", "watch", "off"
+    End Select
+    If st = "bound" Or st = "waiting" Or st = "watch_off" Then m_lastWatchSt = st
+End Sub
+
+Private Sub HandleBeErr(ByVal metaString As String)
+    Dim d As Object
+    Set d = Rdv3ChMeta(metaString)
+    Rdv3UiError "worker エラー (" & CStr(d("stage")) & "): " & CStr(d("msg"))
+    AppLog "-", "error", "stage=be-" & CStr(d("stage")) & " msg=" & CStr(d("msg"))
+End Sub
+
+'------------------------------------------------------------------------------
+' RESULT rendering (the end of the search-time boundary)
+'------------------------------------------------------------------------------
+Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
+    Dim d As Object
+    Dim res As String
+    Dim sid As String
+    Dim elapsed As Double
+    Dim vA(0 To 9) As String, vB(0 To 9) As String, vC(0 To 9) As String
+    Dim i As Long, c As Long
+    Dim rows() As Variant
+    Dim n As Long, show As Long
+
+    Set d = Rdv3ChMeta(metaString)
+    res = CStr(d("res"))
+
+    If m_state <> ST_READY Then
+        AppLog "-", "search", "result skipped (state=" & CStr(m_state) & ") res=" & res
+        Exit Sub
+    End If
+
+    ' mark confirmations carry their own P-tag; everything else is a search
+    If res = "marked" Or res = "markerr" Then
+        HandleMarkResult res, d
+        Exit Sub
+    End If
+
+    m_searchSeq = m_searchSeq + 1
+    sid = "S" & CStr(m_searchSeq)
+
+    Select Case res
+        Case "single", "picked"
+            For i = 0 To 9
+                vA(i) = SafeCell(values, i + 1, 1)
+                vB(i) = SafeCell(values, i + 1, 2)
+                vC(i) = SafeCell(values, i + 1, 3)
+            Next i
+            m_shownRow = CLng(Val(CStr(d("row"))))
+            m_shownKey2 = CStr(d("k2"))
+            If res = "single" Then m_shownKey = CStr(d("key"))
+            m_candCount = 0
+            Dim verdict As String
+            If res = "picked" Then
+                verdict = "一致 1 件   番号2 = " & m_shownKey2 & "   (候補 " & CStr(d("total")) & _
+                          " 件中 " & CStr(d("slot")) & " 件目)"
+            Else
+                verdict = "一致 1 件   番号2 = " & m_shownKey2
+            End If
+            Rdv3UiShowRecord m_shownKey, verdict, vA, vB, vC, _
+                "処理済み: " & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE")
+            elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
+            If res = "picked" Then
+                AppLog sid, "display", "picked=" & CStr(d("slot")) & " key2=" & m_shownKey2 & _
+                    " proc=" & CStr(d("proc")) & " ms=" & FmtF(elapsed)
+            Else
+                Rdv3UiSearchMs elapsed
+                AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
+                    " hits=1 ms=" & FmtF(elapsed)
+            End If
+        Case "none"
+            m_shownRow = -1
+            m_shownKey = CStr(d("key"))
+            m_candCount = 0
+            Rdv3UiShowEmpty m_shownKey, "該当なし"
+            elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
+            Rdv3UiSearchMs elapsed
+            AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
+                " hits=0 ms=" & FmtF(elapsed)
+        Case "multi"
+            n = CLng(Val(CStr(d("hits"))))
+            show = CLng(Val(CStr(d("shown"))))
+            m_shownRow = -1
+            m_shownKey = CStr(d("key"))
+            m_candCount = show
+            m_candTotal = n
+            ReDim rows(1 To show, 1 To 8)
+            For i = 1 To show
+                For c = 1 To 8
+                    rows(i, c) = SafeCell(values, i, c)
+                Next c
+                m_candRows(i - 1) = CLng(Val(SafeCell(values, i, 9)))
+            Next i
+            Dim note As String
+            If show < n Then
+                note = "候補 " & n & " 件中 " & show & " 件を表示"
+            Else
+                note = ""
+            End If
+            Rdv3UiShowCandidates m_shownKey, "候補 " & n & " 件 -- 行頭の「選択」で表示", rows, show, note
+            elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
+            Rdv3UiSearchMs elapsed
+            AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
+                " hits=" & n & " ms=" & FmtF(elapsed)
+            AppLog sid, "candidate", "count=" & n & " shown=" & show
+    End Select
+End Sub
+
+Private Function SafeCell(ByVal values As Variant, ByVal r As Long, ByVal c As Long) As String
+    On Error GoTo Empty_
+    If Not IsArray(values) Then GoTo Empty_
+    If IsEmpty(values(r, c)) Then GoTo Empty_
+    SafeCell = CStr(values(r, c))
+    Exit Function
+Empty_:
+    SafeCell = ""
+End Function
+
+' the "processed" confirmation from the BE: it has updated the ledger
+' workbook, SAVED it and rewritten the sidecar -- or explicitly failed
+Private Sub HandleMarkResult(ByVal res As String, ByVal d As Object)
+    Dim tag As String
+    Dim e2e As Double
+    m_procSeq = m_procSeq + 1
+    tag = "P" & CStr(m_procSeq)
+    If res = "marked" Then
+        If CLng(Val(CStr(d("row")))) = m_shownRow Then
+            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = _
+                "処理済み: " & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE")
+        End If
+        e2e = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
+        AppLog tag, "processed", "key2=" & CStr(d("k2")) & " row=" & (CLng(Val(CStr(d("row")))) + 1) & _
+            " value=" & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE") & _
+            " save_ms=" & CStr(d("save_ms")) & " e2e_ms=" & FmtF(e2e)
+    Else
+        If CLng(Val(CStr(d("row")))) = m_shownRow Then
+            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: FALSE"
+        End If
+        Rdv3UiError "処理済みを保存できませんでした: " & CStr(d("msg"))
+        AppLog tag, "error", "stage=processed msg=" & CStr(d("msg"))
+    End If
+End Sub
+
+'------------------------------------------------------------------------------
+' click dispatch (short: validate, write a request file, arm fast ticks)
+'------------------------------------------------------------------------------
+Private Sub SendReq(ByVal kind As String, ByVal args As String)
+    m_reqVer = m_reqVer + 1
+    If Not Rdv3ChWriteReq(m_sid, kind, m_reqVer, args) Then
+        AppLog "-", "error", "stage=request msg=request write failed kind=" & kind
+        Rdv3UiError "要求を送れませんでした (" & kind & ")"
+    End If
+End Sub
+
+Public Sub Rdv3HandleClick(ByVal addr As String)
+    Dim row As Long
+    On Error GoTo Done
+    Select Case addr
+        Case RDV3_BTN_SEARCH
+            DoManualSearch
+        Case RDV3_BTN_CLEAR
+            DoClear
+        Case RDV3_BTN_PROCESSED
+            DoProcessed
+        Case RDV3_BTN_WATCH
+            DoWatchToggle
+        Case Else
+            If Left$(addr, 1) = "B" And IsNumeric(Mid$(addr, 2)) Then
+                row = CLng(Mid$(addr, 2))
+                If row >= RDV3_CAND_TOP And row < RDV3_CAND_TOP + RDV3_MAXSHOW Then
+                    DoPick row - RDV3_CAND_TOP
+                End If
+            End If
+    End Select
+Done:
+    Rdv3PumpEnsureArmed
+End Sub
+
+Private Sub DoManualSearch()
+    Dim key As String
+    Dim t0 As Currency
+    t0 = Rdv3Ticks()
+    If m_state <> ST_READY Then
+        Rdv3UiError "更新確認が終わるまで操作できません"
+        AppLog "-", "search", "ignored reason=not-ready source=manual"
+        Exit Sub
+    End If
+    key = Rdv3UiInputKey()
+    If Not Rdv3IsKey(key) Then
+        Rdv3UiError "番号1 は 8 桁の数字で入力してください"
+        AppLog "-", "search", "ignored key=" & key & " reason=bad-key source=manual"
+        Exit Sub
+    End If
+    Rdv3UiError ""
+    SendReq RDV3_RQ_SEARCH, key & "|" & Trim$(Str$(CDbl(t0))) & "|manual"
+    AppLog "-", "search", "dispatched key=" & key & " source=manual"
+    m_fastFollow = 6
+End Sub
+
+Private Sub DoClear()
+    If m_state <> ST_READY And m_state <> ST_BLOCKED Then Exit Sub
+    Rdv3UiClearResult
+    Rdv3UiError ""
+    m_shownRow = -1
+    m_shownKey = ""
+    m_shownKey2 = ""
+    m_candCount = 0
+    AppLog "-", "clear", "input and result cleared"
+End Sub
+
+' "processed": the FE only sends the request. The BE updates and saves the
+' ledger workbook and the sidecar, then confirms through RESULT (marked /
+' markerr); until then the screen honestly says the save is in flight.
+Private Sub DoProcessed()
+    Dim t0 As Currency
+    If m_state <> ST_READY Then
+        Rdv3UiError "更新確認が終わるまで操作できません"
+        Exit Sub
+    End If
+    If m_shownRow < 0 Then
+        Rdv3UiError "処理済みにする統合レコードが表示されていません"
+        Exit Sub
+    End If
+    If m_readOnly Then
+        Rdv3UiError "読み取り専用で開かれているため処理済みは登録できません"
+        AppLog "-", "processed", "refused (workbook is read-only)"
+        Exit Sub
+    End If
+    If MsgBox("表示中の統合レコード (番号2 = " & m_shownKey2 & ") を処理済みにします。よろしいですか?", _
+              vbYesNo + vbQuestion, "処理済みの確認") <> vbYes Then
+        AppLog "-", "processed", "declined key2=" & m_shownKey2
+        Exit Sub
+    End If
+    Rdv3UiError ""
+    t0 = Rdv3Ticks()
+    ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: TRUE (保存中...)"
+    SendReq RDV3_RQ_MARK, CStr(m_shownRow) & "|1|" & Trim$(Str$(CDbl(t0)))
+    m_fastFollow = 6
+    AppLog "-", "processed", "dispatched key2=" & m_shownKey2 & " row=" & CStr(m_shownRow + 1)
+End Sub
+
+Private Sub DoWatchToggle()
+    If m_state <> ST_READY Then
+        Rdv3UiError "更新確認が終わるまで操作できません"
+        Exit Sub
+    End If
+    If m_watchOn Then
+        SendReq RDV3_RQ_WATCH, "0"
+        AppLog "-", "watch", "stop requested"
+    Else
+        SendReq RDV3_RQ_WATCH, "1"
+        AppLog "-", "watch", "restart requested"
+    End If
+    m_fastFollow = 3
+End Sub
+
+Private Sub DoPick(ByVal slot As Long)
+    Dim t0 As Currency
+    If m_state <> ST_READY Then Exit Sub
+    If slot < 0 Or slot >= m_candCount Then Exit Sub
+    t0 = Rdv3Ticks()
+    SendReq RDV3_RQ_PICK, CStr(m_candRows(slot)) & "|" & CStr(slot + 1) & "|" & _
+        CStr(m_candTotal) & "|" & Trim$(Str$(CDbl(t0)))
+    AppLog "-", "display", "pick dispatched slot=" & CStr(slot + 1)
+    m_candCount = 0        ' the picked record replaces the list when it arrives
+    m_fastFollow = 6
+End Sub
+
+'------------------------------------------------------------------------------
+' shutdown
+'------------------------------------------------------------------------------
+Private Sub StopBeNow()
+    Dim forced As Boolean
+    Dim note As String
+    Rdv3HostStop m_sid, forced, note
+    AppLog "-", "worker", "exit " & note & " forced=" & CStr(forced)
+End Sub
+
+' Called from Workbook_BeforeClose. Returns True when the workbook may close
+' now; False when a due pump tick is still queued -- the caller must set
+' Cancel = True, the tick fires within about a second, and Rdv3FinishClose
+' closes the workbook for real. Everything else (BE stop, lease, session
+' files, log) is torn down on the FIRST call either way.
+Public Function Rdv3AppPrepareClose() As Boolean
+    On Error Resume Next
+    m_state = ST_DEAD          ' a tick that still fires does nothing and ends the chain
+    If Not m_closePrepared Then
+        m_closePrepared = True
+        If Not m_events Is Nothing Then
+            Set m_events.App = Nothing
+            Set m_events = Nothing
+        End If
+        If m_started Then StopBeNow
+        Rdv3ChReleaseLease
+        Rdv3ChDeleteSession m_sid
+        AppLog "-", "exit", "closing"
+    End If
+    ' the FE persists nothing: never let Excel raise a save prompt for the
+    ' UI cell writes
+    ThisWorkbook.Saved = True
+    ' Deterministic hand-off: OnTime cancellation is not trustworthy near the
+    ' due time (it can report success while the tick still fires - measured as
+    ' a reopen + security-notice zombie). So whenever a tick is armed the
+    ' close is deferred one cycle and the live tick itself finishes the close.
+    ' armed=False is reliable the other way: ticks clear it on entry, so a
+    ' crashed tick can never leave a phantom schedule behind.
+    If m_pumpArmed Then
+        m_closePending = True
+        AppLog "-", "exit", "close deferred until the armed pump tick fires"
+        Rdv3AppPrepareClose = False
+    Else
+        Rdv3AppPrepareClose = True
+    End If
+End Function
+
+Public Sub Rdv3FinishClose()
+    On Error Resume Next
+    AppLog "-", "exit", "deferred close"
+    ThisWorkbook.Saved = True
+    ThisWorkbook.Close False
+End Sub
