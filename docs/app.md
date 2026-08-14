@@ -23,7 +23,7 @@
 dist\app-vba\
   ReaderDataViewer.xlsm            小さな FE (UI シート + META シートのみ、~240 KB)
   ReaderDataViewer-Ledger.xlsx     統合台帳ブック (LEDGER + META シート。BE だけが読み書き)
-  ReaderDataViewer-Ledger.state    台帳の sidecar ミラー (保存のたびに原子的に併記)
+  ReaderDataViewer-Ledger.state    台帳の sidecar ミラー (UTF-16LE。保存のたびに原子的に併記)
   data\tableA.csv / tableB.csv / tableC.csv
 
 dist\app-csharp\
@@ -33,7 +33,9 @@ dist\app-csharp\
 ```
 
 - 実行時の追加要件なし: 別 exe・常設 script・XLL・COM 登録・管理者権限は使わない。
-  (VBA 版は起動の一瞬だけ `cscript.exe` (in-box) が worker Excel を立ち上げて退出する。)
+  **VBA 版の実行コードは Win32 API (`Declare`) も `Shell` も一切使わない** — VBA と COM だけ
+  で動く (根拠と実測は「Win32 / Shell を使わない実装」節)。子プロセスは自分で起動する
+  不可視 Excel (BE) 1 本だけで、それは COM の `CreateObject` で作る。
 - 実行ログ `ReaderDataViewer.log` (と VBA 版の `ReaderDataViewer.log.worker.log`) は
   各ルート直下に実行時生成される (配布部品ではない)。
 - CSV は既存の検証済み `data-100k` (10 万行 × 3 表、`gen_data2.ps1` 生成、`expected.txt` が oracle)。
@@ -80,7 +82,8 @@ carried / reset / new / dropped の件数をログに残す。検索しただけ
 
 VBA 版の台帳は親ブックから完全に分離した。**正本は台帳ブック** (`ReaderDataViewer-Ledger.xlsx`、
 人が開いて読める閲覧物) で、その**完全ミラーが sidecar** (`ReaderDataViewer-Ledger.state`、
-ヘッダ 1 行 + 「processed TAB 内容 28 列」× 全行の UTF-8 TSV)。BE は保存のたびに
+ヘッダ 1 行 + 「processed TAB 内容 28 列」× 全行の TSV。文字コードは **UTF-16LE**
+— VBA が変換なしで読み書きできる唯一の符号化で、理由は「Win32 / Shell を使わない実装」)。BE は保存のたびに
 「台帳ブック Save → sidecar を tmp→rename で原子的に書換」の順で両方を書く。
 
 起動時の更新判定は sidecar の高速路で行う:
@@ -107,7 +110,9 @@ crash 窓 (ブック保存後・sidecar 書換前に落ちた場合) は次回�
 
 ```
 起動 → 「更新を確認中」アニメーション (FE は即 idle へ、pump が更新)
-     → [FE] spawn script を Shell して即 return (同期 CreateObject はしない)
+     → [FE] 最初の pump tick で BE を起動: CreateObject("Excel.Application") →
+       worker book を開く → bootstrap を Run。bootstrap は OnTime を仕掛けて即 return し、
+       以後の作業は BE 自身のメッセージポンプで走る (FE 占有 = spawn_ms 約 1.0 秒のみ)
      → [BE] CSV3 本 → 読込 → 標準索引 → A-B/B-C 統合 → 29 列 compose = 新しい統合内容
      → [BE] 保存済み状態 (sidecar 高速路 / ブック低速路) と行単位で内容比較
        ※ CSV の時刻・サイズは見ない。内容の比較だけ (mtime は sidecar の自己検証のみ)。
@@ -161,19 +166,21 @@ v2 での変更はロジックなし・計測の明示のみ (`startup boot_to_r
    ├ CSV 読込・Scripting.Dictionary 索引         ├ tick 間は VBA スタック完全解放
    ├ A-B/B-C 統合・compose・内容比較・carry      ├ セル編集中は Excel が OnTime を保留 →
    ├ 台帳ブック + sidecar の読み書き・Save       │   編集終了後に追いつく (正常仕様)
-   ├ 「処理済み」の永続化 (セル+Save+sidecar)    ├ 起動 spawn は Shell(cscript) で非同期
-   ├ key1 検索・候補抽出                         │   (FE 同期の CreateObject 占有 ~2 秒を廃止)
-   └ 結果を atomic にファイルへ publish          └ FE ローカル SheetChange は
-       (tmp 書き → Kill → Name)                     pump 再アームの watchdog のみ
-  BE → FE の COM 呼出し: ゼロ / FE → BE の COM 参照: ゼロ (v2 で spawn からも消えた)
+   ├ 「処理済み」の永続化 (セル+Save+sidecar)    ├ 起動 spawn は最初の tick で同期実行
+   ├ key1 検索・候補抽出                         │   (bootstrap が OnTime を仕掛けて即 return
+   └ 結果を atomic にファイルへ publish          │    するので占有は spawn_ms だけ)
+       (tmp 書き → Kill → Name)                  └ FE ローカル SheetChange は
+                                                     pump 再アームの watchdog のみ
+  BE → FE の COM 呼出し: ゼロ / FE → BE の COM 参照: ゼロ (bootstrap 完了時に手放す)
   FE → BE: 種別ごとの小さい request ファイル (latest-wins, version 付き) + stop flag
+  死活: FE リース lock を BE が probe / BE リース lock を FE が probe (対称・PID 不使用)
 ```
 
 | モジュール | 役割 |
 |---|---|
-| `modRdv3Chan.bas` | ファイルチャネル: atomic publish、aggregate、request、FE リース、be_pid/spawn_err フラグ、session 掃除 |
+| `modRdv3Chan.bas` | ファイルチャネル: atomic publish、aggregate、request、FE/BE リース、be_done フラグ、session 掃除 |
 | `modRdv3Be.bas` | BE 本体: 常駐ループ (時間基準の cadence)、マージ、状態ロード (sidecar/ブック)、比較、carry、台帳ブック書換+Save、sidecar、mark 永続化、検索、監視、publish |
-| `modRdv3Host.bas` | FE 側の BE 所有: 埋込 worker book の展開、spawn script 生成 + Shell、stop (flag → self-Quit 確認 → 最後の手段の kill は自 PID のみ) |
+| `modRdv3Host.bas` | FE 側の BE 所有: 埋込 worker book の展開、`CreateObject` による BE 起動と bootstrap 呼出し、リース probe による死活、stop (flag → BE の self-Quit を待つ。kill 経路は無い) |
 | `modRdv3App.bas` | FE 本体: 短い boot、OnTime pump、dispatch、描画呼出し、ログ (台帳への書込・Save は存在しない) |
 | `modRdv3Ui.bas` / `modRdv3Uia.bas` / `modRdv3Engine.bas` / `modRdv3Spec.bas` | 描画 / UIA 検知 / マージエンジン / 定数 (v2 由来) |
 | `clsRdv3AppEvents.cls` | FE ローカルイベント → pump 再アーム watchdog (BE 通知には使わない) |
@@ -183,15 +190,20 @@ worker book (META に base64 埋込、実行時に `%TEMP%\rdv3\` へ session �
 
 要点:
 
-- **非同期 spawn**: FE は spawn script (`rdv3_<sid>_spawn.vbs`) を生成して `Shell` で
-  cscript に渡し、即 return する。script が不可視 Excel を作り worker book を開いて
-  bootstrap を Run し、BE ループが自分の PID を `be_pid` フラグへ書くまで参照を保持してから
-  退出する (参照ゼロの idle 非表示 Excel は自己終了するため。ループが走り出せばもう落ちない)。
-  失敗は `spawn_err` フラグで FE に届き、無ければ 30 秒でタイムアウト表示。FE は BE への
-  COM 参照を一切持たないので、BE の self-Quit を妨げる要因も消えた。
-- **FE 死活はリースファイル**: FE が開きっぱなし + deny-all lock で保持し、BE は lock 試行で
-  判定する。FE がクラッシュすると OS が即 lock を解放し、BE は自己終了する。tombstone
-  (`fe_gone`) と stop flag も併用。SessionId は timestamp 生成 (hWnd は不使用)。
+- **spawn は「短い同期呼び出し + BE 側 OnTime」**: FE の最初の pump tick が
+  `CreateObject("Excel.Application")` で自分専用の不可視 Excel を作り、worker book を
+  AutomationSecurity=low で開き、`Rdv3BeBootstrap` を Run する。bootstrap は
+  `Application.UserControl = True` を立て、BE リースを開き、`Application.OnTime` を
+  仕掛けて即 return する — 重い仕事は一つもしない。だから FE の占有は
+  「プロセス起動 + worker book を開く」の spawn_ms (実測 1,000〜1,109 ms、n=8) だけで、以後は
+  BE 自身のポンプで走る。実証済みの FE/BE プロジェクト (xltoolrack `JobHost.StartJob`) と
+  同じ形。**FE は返ってきた時点で COM 参照を手放す**: 忙しい BE への COM 呼出しは
+  Excel の「サーバービジー」で FE をブロックし得るため、参照は一切保持しない
+  (参照ゼロの不可視 Excel が自己終了しないのは UserControl=True のおかげ)。
+- **死活はリースファイル (両方向)**: FE が `fe_lease.lock` を deny-all で開いたまま保持し
+  BE が lock 試行で判定する / BE も `be_lease.lock` を同じように保持し FE が probe する。
+  どちらのプロセスが落ちても OS が即 lock を解放するので、PID も COM 呼出しも要らない。
+  tombstone (`fe_gone`) と stop flag も併用。SessionId は timestamp 生成 (hWnd は不使用)。
 - **承認後の台帳反映は BE が完結**: carry → 台帳ブックの全面書換 (16,384 行ブロックの
   Value2、テキスト書式で前ゼロ保持) → Save → sidecar。FE には統計値の APPLY 通知と READY
   だけが届く。v1 の part 転送 / FE materialize / FE Save は全廃した。
@@ -204,6 +216,44 @@ worker book (META に base64 埋込、実行時に `%TEMP%\rdv3\` へ session �
   `Saved = True` で無音 (UI セルの書込で保存プロンプトを出さない)。
 - **待機カーソル**: pump callback 実行中に一瞬 WAIT カーソルが出ることは許容する
   (カーソル抑止の作り込みは適用範囲外)。
+
+## Win32 / Shell を使わない実装 (VBA 版)
+
+実用 VBA 版の実行コードから `Declare` (Win32 API) と `Shell` を全廃した。**FE/BE 分離・
+非同期・Excel COM 利用の構成はそのまま**で、Win32 が担っていた機能を COM/VBA の手段に
+置き換えてある。凍結中の比較版 (`src\vba`, `src\v2\vba`) は対象外 (Declare のまま)。
+
+| 旧 (Win32 / Shell) | 新 (VBA + COM) | 実測 |
+|---|---|---|
+| `QueryPerformanceCounter` | VBA `Timer` (Double 差分・日跨ぎ補正) | 分解能 3.906 ms (= 1/256 秒) |
+| `Sleep` (40ms 等) | WMI イベントソースの `NextEvent(ms)` タイムアウト待ち | 40ms 要求で 45〜54ms・スピンなし |
+| `MultiByteToWideChar` / `WideCharToMultiByte` (sidecar UTF-8) | sidecar を **UTF-16LE** にして VBA の `Byte()`⇄`String` + `Get`/`Put` | 同一条件の読み比べで UTF-16 23.4ms 対 UTF-8 26.0ms (差なし)。代わりにファイルは 2 倍 |
+| `GetForegroundWindow` + `FindWindowEx` + `IsWindowVisible` (メモ帳探索) | UIA `GetFocusedElement` → `ControlViewWalker` で親を辿り ClassName=`Notepad` | 取得 11.7ms・以後の poll は 25 回で 0.0ms |
+| `GetWindowTextW` (タイトル) | UIA `IUIAutomationElement.CurrentName` | — |
+| `GetCurrentProcessId` (ログの同定) | `Application.hWnd` (`Rdv3SelfId`) | — |
+| `OpenProcess`+`GetExitCodeProcess` (BE 死活) | BE 側リースファイルの lock probe (FE リースの鏡像) | OS が即解放 |
+| `TerminateProcess` (最後の手段の kill) | **廃止**。stop flag → BE の self-Quit を待ち、駄目なら報告する | — |
+| `Shell("cscript ... spawn.vbs")` | FE 最初の tick で `CreateObject("Excel.Application")` → worker book → bootstrap Run | spawn_ms 1.00〜1.11 秒 (n=8) |
+
+判断の根拠 (すべてこの機で実測):
+
+- **`Application.Wait` は 40ms 待機に使えない**。粒度は 1 秒で秒境界に丸まる (+40ms 目標は
+  即 return、+400ms 目標は 861ms 待った)。`Application.OnTime` はさらに悪く、1 秒未満の
+  目標は約 1ms で発火する = スピンになる。WMI の `NextEvent(ms)` はタイムアウトまで
+  スレッドを寝かせる本物の待機なので、これだけが要件を満たした。**待機が効かなくなったら
+  空回りに落ちず、明示エラーで停止する** (BE ループ開始時に自己テストし、以後は毎回の待機で検出)。
+- **sidecar を UTF-8 のままにする道は無かった**。`ADODB.Stream.ReadText` は 22MB を
+  一括読みしても **22.2 秒**、mscorlib の `System.Text.UTF8Encoding` は VBA の
+  `CreateObject` で作れない (0x80131500)。UTF-16LE にすると変換そのものが消える —
+  同じ本文を同じプロセスで読み比べると **UTF-16 23.4ms 対 UTF-8 (Get+MB2WC) 26.0ms** で
+  速度は互角、つまり Win32 を落としても変換コストは増えない。代わりにファイルが 2 倍
+  (22.3MB → 44.6MB) になり、その分だけアプリ内のロード段が重くなる (後述の +203 ms)。
+- **UIA だけでメモ帳を探せる**。デスクトップを UIA で歩くと Excel 自身の provider で
+  デッドロックする (凍結版 modRdv2Uia の実測) ため、走査ではなく `GetFocusedElement` から
+  親を数段辿る形にした。デスクトップ列挙を一度もしないのでデッドロックの入口が無い。
+  操作者の選び方は従来どおり「そのウィンドウで作業している方が勝つ」。
+  **ただし一度もフォーカスを持っていないメモ帳は掴まない**のが唯一の挙動差で、
+  ステータス行に「未接続 -- メモ帳の入力欄をクリックすると接続します」と出す。
 
 ## UI (VBA 版はシート描画のみ)
 
@@ -266,11 +316,29 @@ processed E2E  = 確認クリック → 台帳保存完了 + 画面確定 (e2e_m
 
 ## ビルド
 
+```
+build.bat                                                           # dist\ 全部 (ダブルクリック可)
+```
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File build\build_app.ps1        # 両配布ルートを生成
+powershell -ExecutionPolicy Bypass -File build\build_dist.ps1       # build.bat の中身
+powershell -ExecutionPolicy Bypass -File build\build_app.ps1        # 実用版の両配布ルートだけ
 powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method vba    -Launches 7
 powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method csharp -Launches 7
 ```
+
+- `build.bat` は**管理者権限不要・レジストリ書込なし・実行ポリシー変更なし**で、比較 2 種
+  (8 ファイル) と実用版 2 ルートを既存の C# / VBA ソースから生成する。Excel と、ユーザー単位の
+  設定「VBA プロジェクト オブジェクト モデルへのアクセスを信頼する」(HKCU、管理者不要) が要る —
+  `.xlsm` に VBA を入れる唯一の経路が `VBProject.VBComponents.Import` だから。設定が無い場合は
+  **黙って減らさず**、有効化手順を出して停止する。
+- `data-100k\` は無いときだけ生成する。`data\` (100 万行 × 3 表、241MB) は**生成しない** —
+  そこから作る配布物は無く、1:1 比較版が実行時に読むデータなので、必要なときに
+  `build\gen_data.ps1` を明示的に走らせる (build.bat の最後にもそう出る)。
+- 連続ビルドで一度だけ、META へ base64 を書く行 (`Cells.Item(r,5).Value2 = ...`) が
+  Excel から「十分なメモリがありません」を返して失敗した (物理メモリは 6GB 空き、
+  他の Excel が 5 プロセス生きている状態)。**再実行で成功**する類の automation ゆらぎで、
+  失敗は行番号つきで出て exit 1 になる (黙って減った成果物は残らない)。
 
 - `pack_app.ps1` が `src\app\csharp` + `src\app\cmd` → `ReaderDataViewer.cmd` (既存 packer と
   同じ規則: using 統合、非 ASCII の \uXXXX 化、C# 5、verbatim 禁止)。既存 `pack_cmd.ps1` は
@@ -302,7 +370,11 @@ powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method csharp -Lau
    `Rdv3FinishClose` で閉じ直す決定論方式 (modRdv3App)。
 4. **`ADODB.Stream.ReadText` は大きいファイルで壊滅的に遅い。** 22 MB の sidecar 読取が
    **124.5 秒**かかった (BSTR の逐次伸長)。`MultiByteToWideChar` の一括変換に替えて
-   **402.7 ms** (309 倍)。大きな UTF-8 テキストを VBA で読むときは必ず Win32 変換にする。
+   **402.7 ms** (309 倍)。
+   (この 402.7 ms は v1 当時のアプリ内実測。今回 Win32 を外す際に空プロセスで測り直すと
+   同じ本文の読取は Get+MB2WC で 26.0 ms、UTF-16LE の Get+`Byte()`→`String` で 23.4 ms
+   だった — 差はヒープ状態で、順位は変わらない。ADODB が桁違いに遅いのは一括読みでも
+   同じで、今回も 22.2 秒だった。項目 17 も参照。)
 5. **BE 常駐ループの cadence は反復回数でなく時間で刻む。** 1 反復 = 40ms + UIA poll は
    負荷で 200ms 超に伸び、「25 反復 ≒ 1 秒」の想定が崩れて stop flag の検知が FE の
    kill 猶予より遅れた (forced=True を実測)。`Timer` 基準へ変更して根治。
@@ -340,6 +412,24 @@ powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method csharp -Lau
     嘘)。セルのスクリーン座標 = `P2SP(0)` の原点 + ポイント値 × (`GetDpiForWindow`/72)。
     さらに呼び出しプロセスが DPI-unaware だと SetCursorPos 側の座標系まで仮想化されて
     二重にずれる — 必ず `SetProcessDPIAware` してから計算する (125% 表示のこの機で実測)。
+14. **自動化 (不可視) Excel の VBA コンパイルエラーは「見えないモーダル」= 永久停止**。
+    `Application.Run` は返らず、標準出力にも何も出ない。ウィンドウを列挙して初めて
+    `#32770 "Microsoft Visual Basic for Applications"` が見つかる。ビルドの compile probe が
+    これを CI 的に潰しているのはこのため。
+15. **UIA の `IUIAutomationElement.CurrentNativeWindowHandle` は VBA でコンパイルできない**
+    (戻り値 `UIA_HWND` = `void*` → 「サポートされていないオートメーション タイプ」)。
+    14 と組み合わさると原因不明の永久停止になる。**`GetCurrentPropertyValue(30020)`**
+    (戻り値 VARIANT) を使えば同じ hwnd が取れる。`GetRootElement` / `CompareElements` /
+    `ControlViewWalker` / `CurrentClassName` / `CurrentName` は VBA でも問題ない。
+16. **1 秒未満を待つ VBA の手段は「見つからない」ではなく「実測で選ぶ」**。
+    `Application.Wait` は 1 秒粒度で秒境界に丸まり (+40ms 目標 = 即 return、+400ms 目標 =
+    861ms)、`Application.OnTime` の 1 秒未満目標は約 1ms で発火する (スピン)。WMI
+    イベントソースの `NextEvent(ms)` だけがタイムアウトまで本当に寝る (40ms 要求で 45〜54ms)。
+17. **`ADODB.Stream.ReadText` は一括読みでも遅い** — 22MB で **22.2 秒** (chunk 読みの
+    問題ではない)。また **mscorlib のクラスは VBA の `CreateObject` から作れない**
+    (`System.Text.UTF8Encoding` / `System.Collections.ArrayList` とも 0x80131500。
+    PowerShell では作れるので「動く」と誤認しやすい)。VBA で大きな UTF-8 を扱う手段は
+    Win32 変換か、**ファイル自体を UTF-16LE にして `Byte()`⇄`String` で運ぶ**かの二択。
 
 ## 実測 (v2)
 
@@ -395,6 +485,73 @@ cold (launch 1) 込み・失敗 run も TSV に FAIL 行で記録** (最終走�
   (suite V11a: BE マージ中の FE probe n=32 max 26.6 ms / p95 6.0 ms)。materialize /
   Save / 台帳シート書込は FE に存在しない。F2 実編集 20 秒中に BE が CHECK を公開し、
   FE の消費が編集終了直後の tick になることをタイムスタンプで再確認 (repro-v11c 5/5)。
+
+### Win32 / Shell 除去の前後 (VBA 版、同じ機・同じ日・同じ手順で連続測定)
+
+`build\bench_app.ps1 -Method vba -Launches 7` を除去前 → 除去後の順に走らせた実測。
+結合 checksum は全 run **46629685** で一致 (= 出力は同一)。除去後は 2 回測っている
+(中間ビルドと、`build.bat` が出した最終成果物) — この機の run 間ばらつきが起動系の
+差より大きいので両方載せる。生データ:
+除去前 `work\bench-app-vba-20260814-160934.tsv` / `work\baseline-before-vba.txt`、
+除去後 `work\bench-app-vba-20260814-163423.tsv` / `work\after-vba.txt`、
+最終 `work\bench-app-vba-20260814-164716.tsv` / `work\after-vba-final.txt`。
+
+| 指標 (中央値、n=7) | 除去前 | 除去後 (最終) | 除去後 (中間) |
+|---|---:|---:|---:|
+| **完全 E2E** (プロセス起動→操作可能) | 9,036.5 | 9,921.2 | 9,049.8 |
+| うち cold (launch 1、集計に含む) | 12,511.8 | 10,545.5 | 8,654.2 |
+| boot→ready | 8,160.6 | 9,054.7 | 8,085.9 |
+| **マージ (8 工程)** | 1,754.3 | **1,347.7** | **1,316.4** |
+| **compose (別掲)** | 2,316.9 | 2,242.2 | **1,765.6** |
+| **マージ+compose 総計** | 4,113.4 | **3,621.1** | **3,125.0** |
+| **保存状態ロード (sidecar)** | **386.3** | 589.8 | 589.8 |
+| 検索 全キー | 179.8 (n=28) | 156.3 (n=27) | 140.6 (n=28) |
+| 検知 latency | 150.1 (n=28) | 144.5 (n=27) | 140.6 (n=28) |
+| 処理済み永続化 | 8,995.2 | 9,070.3 | 9,121.1 |
+| 処理済み E2E | 21,166.6 | 21,183.6 | 20,703.1 |
+| 承認→操作可能 (n=1) | 39,676.5 | 41,886.3 | 38,750.4 |
+| 承認サイクル完全 E2E (n=1) | 47,188.8 | 50,386.6 | 46,514.4 |
+| FE 占有 spawn_ms | (Shell で非同期) | 945〜1,047 (n=8) | 1,000〜1,109 (n=8) |
+
+読み方:
+
+- **極端な低下は無い**。繰り返し出る差は 3 つだけで、うち 2 つは改善:
+  マージ -23%、マージ+compose -12〜-24%、そして**保存状態ロードが +203 ms** (唯一の悪化)。
+  起動系 (完全 E2E / boot→ready / 承認→操作可能) は除去後の 2 回が 9,050 と 9,921 ms で
+  割れており、**この機の run 間ばらつきのほうが変更の効果より大きい** — どちらとも言えない、
+  というのが正直な読み。
+- **ロードが遅くなった理由は符号化ではなく sidecar が 2 倍 (22.3MB → 44.6MB) になったこと**。
+  同一条件で読み比べると UTF-16 23.4ms 対 UTF-8 26.0ms で差は無い。効いているのは
+  マージ+compose でヒープが埋まった直後に 22MB 余分を first-touch する分で、単体計測
+  (空のプロセス) では読み+split+parse 合計 80 ms のところがアプリ内では約 590 ms になる。
+- **マージの改善は今回の変更の狙いではない**。エンジンのコードは 1 行も変えていない。
+  除去前は BE のマージ中に spawn 用 cscript が pid フラグを 200 ms ごとにポーリングしながら
+  生きていた (それが消えた) こと、および測定日の機械状態が効いていると見ている。除去前の
+  merge には 4,853.9 ms の外れ値が 1 件あり中央値を押し上げている (min 同士では
+  1,488.7 → 1,300.8 ms)。時計は QPC から Timer に変わったが、どちらも実時間で系統誤差は
+  無く、量子化は 3.906 ms なのでこの桁の差の説明にはならない。
+- **検知 latency は 140.6 / 144.5 ms に量子化されて見える**。Timer の刻みで値が丸まって
+  いるだけで、実測範囲は除去前 (132.2〜155.4 ms) と同じ帯にある。
+- FE 占有は spawn の同期化で増えた: 起動時に **spawn_ms 945〜1,109 ms** (実行ログの
+  `worker spawn ok ... spawn_ms=`) が最初の pump tick に乗る。ただし壁時計は上表のとおり
+  変わっていない — 除去前も同じ時間を cscript が使っていて、FE が待っていた。
+
+### 実行中に見つかった既存不具合: publish された RESULT がまれに描画されない
+
+3 回の 7 launch で BE が serve した検索は各 39 件。FE が描画したのは
+**除去前 37 / 除去後 (中間) 39 / 除去後 (最終) 37** で、**除去前から同じ率で 2 件落ちている**
+(今回の変更で入ったものではない)。最終 run ではその 1 件がベンチの検査対象キーに当たり、
+`search_00021001` が FAIL 1 件として TSV に記録された (ベンチは全 run 記録なので消えていない)。
+落ちた側の BE ログには `search ... serve_ms=` があり、FE ログには対応する `search` 行が無く、
+`publish skipped` も `result skipped` も出ていない。
+
+コードを読む限りの機序は `modRdv3Chan.AtomicReplace` にある: `Kill` が成功した直後に
+`Name` が失敗すると、**その時点で aggregate ファイルが消え、まだ FE が読んでいない他種別の
+レコードごと道連れになる** (関数は False を返し、呼び出し側は「今の 1 件」だけを書き直す)。
+`Kill` が失敗する側 (FE が読んでいる最中) は retry で救われるが、この順の失敗は救われない。
+直すなら「tmp → 別名へ Name → 旧をKill」ではなく、**失敗時に旧 aggregate を復元できる形**
+(`Name path As path & ".bak"` → `Name tmp As path` → 成功時に bak を Kill) にするのが素直。
+今回の作業範囲 (Win32/Shell 除去と build.bat) の外なので**直していない**。別件として残す。
 
 ### 実テストの通過状況 (v2、scratch コピー上、自起動プロセスのみ使用)
 

@@ -20,11 +20,11 @@ Attribute VB_Name = "modRdv3Chan"
 '   rdv3_<sid>_fe_lease.lock  held open (deny-all) by the FE for its lifetime;
 '                             the BE probes the lock: locked = FE alive (even
 '                             mid cell-edit), unlocked/missing = FE gone
-'   rdv3_<sid>_be_pid.flag    BE -> FE: the BE's own process id, written first
-'                             thing in bootstrap (the FE spawns the BE through
-'                             a detached cscript and never holds a COM ref)
-'   rdv3_<sid>_spawn_err.flag spawn script -> FE: the spawn failed, with why
-'   rdv3_<sid>_spawn.vbs      the spawn script the FE shells out to
+'   rdv3_<sid>_be_lease.lock  the same thing the other way round: held open by
+'                             the BE for its lifetime, probed by the FE. This
+'                             is how a BE that died without saying so is
+'                             noticed now that no process id is taken (the
+'                             OS drops the lock the instant the process ends)
 '   rdv3_<sid>_be_done.flag   BE exit note (diagnostic)
 '   rdv3_<sid>_worker.xlsm    the extracted worker book copy
 '
@@ -58,6 +58,10 @@ Public Const RDV3_RQ_WATCH As String = "watch"
 ' FE lease handle (held open for the whole session; see Rdv3ChEnsureLease)
 Private m_leaseNo As Integer
 Private m_leaseSid As String
+
+' BE lease handle (the mirror image, held by the BE process)
+Private m_beLeaseNo As Integer
+Private m_beLeaseSid As String
 
 '------------------------------------------------------------------------------
 ' paths
@@ -93,16 +97,8 @@ Public Function Rdv3ChLeasePath(ByVal sid As String) As String
     Rdv3ChLeasePath = Rdv3ChBase(sid) & "_fe_lease.lock"
 End Function
 
-Public Function Rdv3ChBePidPath(ByVal sid As String) As String
-    Rdv3ChBePidPath = Rdv3ChBase(sid) & "_be_pid.flag"
-End Function
-
-Public Function Rdv3ChSpawnErrPath(ByVal sid As String) As String
-    Rdv3ChSpawnErrPath = Rdv3ChBase(sid) & "_spawn_err.flag"
-End Function
-
-Public Function Rdv3ChSpawnVbsPath(ByVal sid As String) As String
-    Rdv3ChSpawnVbsPath = Rdv3ChBase(sid) & "_spawn.vbs"
+Public Function Rdv3ChBeLeasePath(ByVal sid As String) As String
+    Rdv3ChBeLeasePath = Rdv3ChBase(sid) & "_be_lease.lock"
 End Function
 
 Public Function Rdv3ChBeDonePath(ByVal sid As String) As String
@@ -414,7 +410,7 @@ Public Function Rdv3ChEnsureLease(ByVal sid As String) As Boolean
     f = FreeFile
     Open Rdv3ChLeasePath(sid) For Output Lock Read Write As #f
     If Err.Number = 0 Then
-        Print #f, "fe_pid=" & CStr(Rdv3GetCurrentProcessId())
+        Print #f, "fe=" & Rdv3SelfId()
         m_leaseNo = f
         m_leaseSid = sid
         Rdv3ChEnsureLease = True
@@ -422,6 +418,63 @@ Public Function Rdv3ChEnsureLease(ByVal sid As String) As Boolean
         Close #f
     End If
     On Error GoTo 0
+End Function
+
+'------------------------------------------------------------------------------
+' BE lease: the mirror of the FE lease. The BE holds it open for its whole life
+' and the FE probes it, so "the BE is gone" is answered by the OS releasing a
+' lock rather than by asking Win32 about a process id -- and a COM call into a
+' possibly busy BE (which would park the FE behind Excel's server-busy dialog)
+' is never needed for liveness.
+'------------------------------------------------------------------------------
+Public Function Rdv3ChBeLeaseOpen(ByVal sid As String) As Boolean
+    Dim f As Integer
+    If m_beLeaseNo <> 0 Then
+        Rdv3ChBeLeaseOpen = True
+        Exit Function
+    End If
+    On Error Resume Next
+    Rdv3ChDeleteQuiet Rdv3ChBeLeasePath(sid)
+    Err.Clear
+    f = FreeFile
+    Open Rdv3ChBeLeasePath(sid) For Output Lock Read Write As #f
+    If Err.Number = 0 Then
+        Print #f, "be=" & Rdv3SelfId()
+        m_beLeaseNo = f
+        m_beLeaseSid = sid
+        Rdv3ChBeLeaseOpen = True
+    Else
+        Close #f
+    End If
+    On Error GoTo 0
+End Function
+
+Public Sub Rdv3ChBeLeaseRelease()
+    If m_beLeaseNo = 0 Then Exit Sub
+    On Error Resume Next
+    Close #m_beLeaseNo
+    m_beLeaseNo = 0
+    If Len(m_beLeaseSid) > 0 Then Rdv3ChDeleteQuiet Rdv3ChBeLeasePath(m_beLeaseSid)
+    m_beLeaseSid = ""
+    On Error GoTo 0
+End Sub
+
+' FE side: True while the BE holds its lease lock
+Public Function Rdv3ChBeLeaseAlive(ByVal sid As String) As Boolean
+    Dim f As Integer
+    Dim errNo As Long
+    Dim path As String
+    path = Rdv3ChBeLeasePath(sid)
+    If Not Rdv3ChFlagExists(path) Then Exit Function
+    On Error Resume Next
+    Err.Clear
+    f = FreeFile
+    Open path For Binary Access Write Lock Read Write As #f
+    errNo = Err.Number
+    If errNo = 0 Then Close #f
+    Err.Clear
+    On Error GoTo 0
+    Rdv3ChBeLeaseAlive = (errNo <> 0)
 End Function
 
 Public Sub Rdv3ChReleaseLease()

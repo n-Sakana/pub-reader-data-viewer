@@ -10,8 +10,25 @@ Attribute VB_Name = "modRdv3Spec"
 ' One index method only: Scripting.Dictionary, late bound. There is no
 ' hand-built hash here and no fallback to one.
 '
-' The clock is QueryPerformanceCounter received into Currency, same as the
-' frozen builds: VBA's Timer is a Single and cannot time a 30 ms stage.
+' NO WIN32 AND NO SHELL ANYWHERE IN THIS BUILD. The practical VBA build runs on
+' VBA + COM only; the frozen comparison builds (src\vba, src\v2\vba) keep their
+' Declare blocks and are not touched. The two services Win32 used to provide
+' here are replaced in kind, both measured:
+'
+'   clock  QueryPerformanceCounter -> VBA Timer. Timer is a Single, so it
+'          advances in steps of 1/256 s (measured on this machine: 3.906 ms);
+'          differences are taken in Double and corrected for the midnight wrap.
+'          Every figure this app reports -- merge ~1.3 s, compose ~1.8 s, state
+'          load ~0.4 s, search 0.05-1 s, detect latency ~0.14 s -- is two to
+'          three orders above that step. Sub-4 ms figures in the BE log are
+'          therefore quantised, and that is the whole cost.
+'   sleep  kernel32 Sleep -> a WMI event source waited on with a timeout.
+'          Application.Wait cannot do it (measured: one-second granularity,
+'          aligned to the second boundary -- a +40 ms target returns at once,
+'          a +400 ms target waited 861 ms), and Application.OnTime is worse
+'          (a sub-second target fires in ~1 ms, which is a spin). NextEvent
+'          blocks for its timeout and then raises wbemErrTimedout: a real
+'          wait with the thread parked. 40 ms requested measured 45-54 ms.
 '==============================================================================
 Option Explicit
 
@@ -39,7 +56,6 @@ Public Const RDV3_ST_JOINAB As Long = 6
 Public Const RDV3_ST_JOINBC As Long = 7
 
 Public Const RDV3_WORKER_TIMEOUT_S As Double = 180#
-Public Const RDV3_SPAWN_TIMEOUT_S As Double = 30#
 
 ' FE book sheets (the FE holds NO ledger; it is a small UI-only book)
 Public Const RDV3_SHEET_UI As String = "UI"
@@ -54,9 +70,6 @@ Public Const RDV3_LM_CHECKSUM As String = "B2"
 Public Const RDV3_LM_MARKS As String = "B3"
 Public Const RDV3_LM_SAVED As String = "B4"
 Public Const RDV3_LM_FORMAT As String = "B5"
-
-' (Rdv3SidecarPath lives at the end of this module: procedures may not appear
-' before the Declare block.)
 
 ' UI sheet addresses (the builder paints these; the code writes them)
 Public Const RDV3_C_STATE As String = "C3"
@@ -86,77 +99,119 @@ Public Const RDV3_M_DATADIR As String = "C4"
 Public Const RDV3_M_LOGPATH As String = "C5"
 Public Const RDV3_M_WORKER_TOP As Long = 8       ' worker.xlsm base64 in E8 down
 
-#If VBA7 Then
-    Public Declare PtrSafe Function Rdv3Qpc Lib "kernel32" Alias "QueryPerformanceCounter" (ByRef c As Currency) As Long
-    Public Declare PtrSafe Function Rdv3Qpf Lib "kernel32" Alias "QueryPerformanceFrequency" (ByRef f As Currency) As Long
-    Public Declare PtrSafe Sub Rdv3Sleep Lib "kernel32" Alias "Sleep" (ByVal ms As Long)
-    Public Declare PtrSafe Function Rdv3GetCurrentProcessId Lib "kernel32" Alias "GetCurrentProcessId" () As Long
-    Public Declare PtrSafe Function Rdv3GetWindowThreadProcessId Lib "user32" Alias "GetWindowThreadProcessId" ( _
-        ByVal hwnd As LongPtr, ByRef pid As Long) As Long
-    Public Declare PtrSafe Function Rdv3OpenProcess Lib "kernel32" Alias "OpenProcess" ( _
-        ByVal access As Long, ByVal inherit As Long, ByVal pid As Long) As LongPtr
-    Public Declare PtrSafe Function Rdv3GetExitCodeProcess Lib "kernel32" Alias "GetExitCodeProcess" ( _
-        ByVal hProc As LongPtr, ByRef code As Long) As Long
-    Public Declare PtrSafe Function Rdv3TerminateProcess Lib "kernel32" Alias "TerminateProcess" ( _
-        ByVal hProc As LongPtr, ByVal code As Long) As Long
-    Public Declare PtrSafe Function Rdv3CloseHandle Lib "kernel32" Alias "CloseHandle" (ByVal h As LongPtr) As Long
-    Public Declare PtrSafe Function Rdv3ForegroundWindow Lib "user32" Alias "GetForegroundWindow" () As LongPtr
-    Public Declare PtrSafe Function Rdv3FindWindowEx Lib "user32" Alias "FindWindowExA" ( _
-        ByVal hwndParent As LongPtr, ByVal hwndChildAfter As LongPtr, _
-        ByVal lpszClass As String, ByVal lpszWindow As String) As LongPtr
-    Public Declare PtrSafe Function Rdv3IsWindowVisible Lib "user32" Alias "IsWindowVisible" (ByVal hwnd As LongPtr) As Long
-    Public Declare PtrSafe Function Rdv3GetWindowText Lib "user32" Alias "GetWindowTextW" ( _
-        ByVal hwnd As LongPtr, ByVal lpString As LongPtr, ByVal cch As Long) As Long
-    Public Declare PtrSafe Function Rdv3MB2WC Lib "kernel32" Alias "MultiByteToWideChar" ( _
-        ByVal cp As Long, ByVal flags As Long, ByVal mb As LongPtr, ByVal cbMb As Long, _
-        ByVal wc As LongPtr, ByVal ccWc As Long) As Long
-    Public Declare PtrSafe Function Rdv3WC2MB Lib "kernel32" Alias "WideCharToMultiByte" ( _
-        ByVal cp As Long, ByVal flags As Long, ByVal wc As LongPtr, ByVal ccWc As Long, _
-        ByVal mb As LongPtr, ByVal cbMb As Long, ByVal defChar As LongPtr, ByVal usedDef As LongPtr) As Long
-#Else
-    Public Declare Function Rdv3Qpc Lib "kernel32" Alias "QueryPerformanceCounter" (ByRef c As Currency) As Long
-    Public Declare Function Rdv3Qpf Lib "kernel32" Alias "QueryPerformanceFrequency" (ByRef f As Currency) As Long
-    Public Declare Sub Rdv3Sleep Lib "kernel32" Alias "Sleep" (ByVal ms As Long)
-    Public Declare Function Rdv3GetCurrentProcessId Lib "kernel32" Alias "GetCurrentProcessId" () As Long
-    Public Declare Function Rdv3GetWindowThreadProcessId Lib "user32" Alias "GetWindowThreadProcessId" ( _
-        ByVal hwnd As Long, ByRef pid As Long) As Long
-    Public Declare Function Rdv3OpenProcess Lib "kernel32" Alias "OpenProcess" ( _
-        ByVal access As Long, ByVal inherit As Long, ByVal pid As Long) As Long
-    Public Declare Function Rdv3GetExitCodeProcess Lib "kernel32" Alias "GetExitCodeProcess" ( _
-        ByVal hProc As Long, ByRef code As Long) As Long
-    Public Declare Function Rdv3TerminateProcess Lib "kernel32" Alias "TerminateProcess" ( _
-        ByVal hProc As Long, ByVal code As Long) As Long
-    Public Declare Function Rdv3CloseHandle Lib "kernel32" Alias "CloseHandle" (ByVal h As Long) As Long
-    Public Declare Function Rdv3ForegroundWindow Lib "user32" Alias "GetForegroundWindow" () As Long
-    Public Declare Function Rdv3FindWindowEx Lib "user32" Alias "FindWindowExA" ( _
-        ByVal hwndParent As Long, ByVal hwndChildAfter As Long, _
-        ByVal lpszClass As String, ByVal lpszWindow As String) As Long
-    Public Declare Function Rdv3IsWindowVisible Lib "user32" Alias "IsWindowVisible" (ByVal hwnd As Long) As Long
-    Public Declare Function Rdv3GetWindowText Lib "user32" Alias "GetWindowTextW" ( _
-        ByVal hwnd As Long, ByVal lpString As Long, ByVal cch As Long) As Long
-    Public Declare Function Rdv3MB2WC Lib "kernel32" Alias "MultiByteToWideChar" ( _
-        ByVal cp As Long, ByVal flags As Long, ByVal mb As Long, ByVal cbMb As Long, _
-        ByVal wc As Long, ByVal ccWc As Long) As Long
-    Public Declare Function Rdv3WC2MB Lib "kernel32" Alias "WideCharToMultiByte" ( _
-        ByVal cp As Long, ByVal flags As Long, ByVal wc As Long, ByVal ccWc As Long, _
-        ByVal mb As Long, ByVal cbMb As Long, ByVal defChar As Long, ByVal usedDef As Long) As Long
-#End If
+' wait primitive state (module level: declarations precede procedures)
+Private m_evSrc As Object
+Private m_evDead As Boolean
+Private m_evShort As Long
+Private m_evRebuilt As Boolean
 
-Private m_Freq As Currency
-
-Public Function Rdv3Ticks() As Currency
-    Dim c As Currency
-    Rdv3Qpc c
-    Rdv3Ticks = c
+'------------------------------------------------------------------------------
+' clock: VBA Timer, in Double, wrap-corrected. See the module header for what
+' this costs against the QueryPerformanceCounter it replaces.
+'------------------------------------------------------------------------------
+Public Function Rdv3Ticks() As Double
+    Rdv3Ticks = Timer
 End Function
 
-Public Function Rdv3MsBetween(ByVal t0 As Currency, ByVal t1 As Currency) As Double
-    If m_Freq = 0 Then Rdv3Qpf m_Freq
-    Rdv3MsBetween = (CDbl(t1) - CDbl(t0)) * 1000# / CDbl(m_Freq)
+Public Function Rdv3MsBetween(ByVal t0 As Double, ByVal t1 As Double) As Double
+    Dim d As Double
+    d = t1 - t0
+    If d < 0 Then d = d + 86400#                 ' the clock passed midnight
+    Rdv3MsBetween = d * 1000#
 End Function
 
-Public Function Rdv3MsSince(ByVal t0 As Currency) As Double
-    Rdv3MsSince = Rdv3MsBetween(t0, Rdv3Ticks())
+Public Function Rdv3MsSince(ByVal t0 As Double) As Double
+    Rdv3MsSince = Rdv3MsBetween(t0, Timer)
+End Function
+
+'------------------------------------------------------------------------------
+' sub-second blocking wait, without Win32 and without a spin.
+'
+' The source is an extrinsic WMI event class this machine does not raise on its
+' own: nothing is polled on its behalf, so the source costs nothing while we sit
+' in NextEvent. NextEvent(ms) parks the thread for the timeout and then raises
+' wbemErrTimedout, which is the wait.
+'
+' Returns False when the primitive is NOT delivering waits. That is a hard
+' failure, never a silent fall back to spinning: the BE tests it once at the
+' start of its resident loop (Rdv3WaitReady) and then treats every later False
+' as fatal, reporting it and stopping. m_evShort counts consecutive waits that
+' came back far too early, which is how a WMI service that died under us is
+' caught.
+'------------------------------------------------------------------------------
+Public Function Rdv3WaitMs(ByVal ms As Long) As Boolean
+    Dim svc As Object
+    Dim t0 As Double
+    Dim el As Double
+
+    If m_evDead Then Exit Function
+    If ms <= 0 Then
+        Rdv3WaitMs = True
+        Exit Function
+    End If
+    If m_evSrc Is Nothing Then
+        On Error GoTo Fail
+        Set svc = GetObject("winmgmts:\\.\root\cimv2")
+        Set m_evSrc = svc.ExecNotificationQuery("SELECT * FROM Win32_PowerManagementEvent")
+        On Error GoTo 0
+    End If
+
+    t0 = Timer
+    On Error Resume Next
+    Err.Clear
+    m_evSrc.NextEvent ms                          ' returns by timing out
+    Err.Clear
+    On Error GoTo 0
+    el = Rdv3MsBetween(t0, Timer)
+
+    ' A power event (or a broken source) can return early. One early return is
+    ' legitimate; twenty in a row means we are not waiting at all any more.
+    ' A WMI service that restarted under us is worth one rebuild of the source
+    ' before giving up -- but only one, so a permanently broken WMI cannot turn
+    ' this into a spin.
+    If el < CDbl(ms) * 0.25 Then
+        m_evShort = m_evShort + 1
+        If m_evShort >= 20 Then
+            m_evShort = 0
+            Set m_evSrc = Nothing
+            If m_evRebuilt Then
+                m_evDead = True
+                Exit Function
+            End If
+            m_evRebuilt = True
+        End If
+    Else
+        m_evShort = 0
+    End If
+    Rdv3WaitMs = True
+    Exit Function
+Fail:
+    m_evDead = True
+End Function
+
+' One-off self test: ask for 40 ms and insist on getting at least half of it.
+' The first call builds the event source, so it is not the one measured --
+' otherwise the setup cost alone could pass the test for a wait that returns
+' instantly.
+Public Function Rdv3WaitReady(ByRef why As String) As Boolean
+    Dim t0 As Double
+    Dim el As Double
+    why = ""
+    If Not Rdv3WaitMs(40) Then
+        why = "WMI の待機イベントソースを作成できません"
+        Exit Function
+    End If
+    t0 = Timer
+    If Not Rdv3WaitMs(40) Then
+        why = "WMI の待機が失敗しました"
+        Exit Function
+    End If
+    el = Rdv3MsBetween(t0, Timer)
+    If el < 20# Then
+        why = "待機が効いていません (40 ms 要求で " & Format$(el, "0.0") & " ms)"
+        Exit Function
+    End If
+    Rdv3WaitReady = True
 End Function
 
 Public Function Rdv3IsKey(ByVal s As String) As Boolean
@@ -200,22 +255,6 @@ Public Function Rdv3Candidate(ByVal s As String) As String
         st = st - 1
     Loop
     Rdv3Candidate = Trim$(Mid$(s, st, e - st + 1))
-End Function
-
-#If VBA7 Then
-Public Function Rdv3WindowTitle(ByVal h As LongPtr) As String
-#Else
-Public Function Rdv3WindowTitle(ByVal h As Long) As String
-#End If
-    Dim buf As String
-    Dim n As Long
-    buf = String$(320, vbNullChar)
-    n = Rdv3GetWindowText(h, StrPtr(buf), 320)
-    If n > 0 Then
-        Rdv3WindowTitle = Left$(buf, n)
-    Else
-        Rdv3WindowTitle = ""
-    End If
 End Function
 
 Public Function Rdv3StageKey(ByVal i As Long) As String
@@ -294,36 +333,13 @@ Public Function Rdv3NameOfC(ByVal i As Long) As String
     End Select
 End Function
 
-' is the process I started still alive?
-Public Function Rdv3PidAlive(ByVal pid As Long) As Boolean
-    #If VBA7 Then
-        Dim h As LongPtr
-    #Else
-        Dim h As Long
-    #End If
-    Dim code As Long
-    Rdv3PidAlive = False
-    If pid = 0 Then Exit Function
-    h = Rdv3OpenProcess(&H1000&, 0, pid)         ' PROCESS_QUERY_LIMITED_INFORMATION
-    If h = 0 Then Exit Function
-    If Rdv3GetExitCodeProcess(h, code) <> 0 Then
-        If code = 259 Then Rdv3PidAlive = True   ' STILL_ACTIVE
-    End If
-    Rdv3CloseHandle h
-End Function
-
-Public Function Rdv3KillPid(ByVal pid As Long) As Boolean
-    #If VBA7 Then
-        Dim h As LongPtr
-    #Else
-        Dim h As Long
-    #End If
-    Rdv3KillPid = False
-    If pid = 0 Then Exit Function
-    h = Rdv3OpenProcess(&H1&, 0, pid)            ' PROCESS_TERMINATE
-    If h = 0 Then Exit Function
-    If Rdv3TerminateProcess(h, 1) <> 0 Then Rdv3KillPid = True
-    Rdv3CloseHandle h
+' Process identity for the log. GetCurrentProcessId is Win32; Excel's own main
+' window handle is a COM property and identifies the instance just as well
+' (the FE logs its own, and its BE's, so a run can still be traced end to end).
+Public Function Rdv3SelfId() As String
+    On Error Resume Next
+    Rdv3SelfId = "hwnd:" & CStr(Application.hwnd)
+    On Error GoTo 0
 End Function
 
 Public Function Rdv3FmtMs(ByVal ms As Double) As String

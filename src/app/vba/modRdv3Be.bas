@@ -80,7 +80,7 @@ Private m_qWatch As Long
 ' watch state
 Private w_on As Boolean
 Private w_pending As String
-Private w_pendSince As Currency
+Private w_pendSince As Double
 Private w_pendPolls As Long
 Private w_lastFired As String
 Private w_sawEmpty As Boolean
@@ -159,15 +159,26 @@ Public Sub Rdv3BeBootstrap(ByVal sid As String, ByVal dataDir As String, _
     g_ver = 0
     g_exitReason = ""
     Application.DisplayAlerts = False
-    ' The spawn script releases its COM refs once the loop starts, so this
+    ' The FE drops its COM references as soon as this call returns, so this
     ' instance is a ref-count-zero automation server. Excel arms an automatic
     ' shutdown for those and fires it at the next message pump -- measured: a
     ' large Workbooks.Open mid-BootWork pumped, and the process tore itself
     ' down cleanly, no dialog, no crash event. UserControl = True marks the
     ' instance self-owned and disables that shutdown; this process ends only
-    ' through its own SelfQuit.
+    ' through its own SelfQuit. It is set HERE, inside the call the FE is still
+    ' waiting on, so there is no unprotected gap.
     Application.UserControl = True
-    BeLog "bootstrap sid=" & sid & " data=" & dataDir & " ledger=" & ledgerPath
+
+    ' the lease the FE probes for liveness: open before returning, so the FE
+    ' can never read "no lease" and conclude the BE died before it started
+    If Not Rdv3ChBeLeaseOpen(sid) Then
+        Rdv3ChWriteFlag Rdv3ChBeDonePath(sid), "reason=be_lease_failed"
+        Application.DisplayAlerts = False
+        Application.Quit
+        Exit Sub
+    End If
+
+    BeLog "bootstrap sid=" & sid & " be=" & Rdv3SelfId() & " data=" & dataDir & " ledger=" & ledgerPath
     Application.OnTime Now, "'" & ThisWorkbook.Name & "'!Rdv3BeMain"
     Exit Sub
 Failed:
@@ -184,11 +195,21 @@ Public Sub Rdv3BeMain()
     Dim iter As Long
     On Error GoTo Failed
 
-    ' first thing: report our pid. The FE spawned us through a detached script
-    ' and holds no COM reference; this flag is how it learns we exist. The
-    ' script also waits for it before releasing its refs (an idle ref-free
-    ' invisible Excel would shut itself down; once this loop runs it will not).
-    Rdv3ChWriteFlag Rdv3ChBePidPath(g_sid), "pid=" & CStr(Rdv3GetCurrentProcessId())
+    ' the lease opened in the bootstrap is the FE's liveness signal; this is
+    ' only the diagnostic note that the resident loop itself is now running
+    BeLog "loop start be=" & Rdv3SelfId()
+
+    ' This loop paces itself with the sub-second wait; if that primitive is not
+    ' delivering waits, say so and stop -- never fall back to a spin. Tested
+    ' here rather than in the bootstrap so the FE is not held for it.
+    Dim waitWhy As String
+    If Not Rdv3WaitReady(waitWhy) Then
+        BeLog "FATAL wait primitive unavailable: " & waitWhy
+        PublishErr "wait", "待機処理を初期化できません: " & waitWhy
+        g_exitReason = "wait_unavailable"
+        SelfQuit
+        Exit Sub
+    End If
 
     PublishState "boot", ""
     BootWork
@@ -213,7 +234,11 @@ Public Sub Rdv3BeMain()
             lastHb = nowT
             Heartbeat
         End If
-        Rdv3Sleep 40
+        If Not Rdv3WaitMs(RDV3_POLL_MS) Then
+            g_exitReason = "wait_unavailable"
+            PublishErr "wait", "待機処理が機能しなくなりました (空回りを避けるため停止します)"
+            Exit Do
+        End If
     Loop
     SelfQuit
     Exit Sub
@@ -254,6 +279,7 @@ Private Sub SelfQuit()
     BeLog "self-quit reason=" & g_exitReason
     Rdv3ChWriteFlag Rdv3ChBeDonePath(g_sid), "reason=" & g_exitReason & vbCrLf & _
         "closed_at=" & Format$(Now, "yyyy-mm-dd hh:nn:ss")
+    Rdv3ChBeLeaseRelease                     ' the FE's liveness probe, closed cleanly
     ThisWorkbook.Saved = True
     Application.DisplayAlerts = False
     Application.Quit
@@ -263,7 +289,7 @@ End Sub
 ' boot: merge, load the saved state (sidecar fast path), compare, publish
 '------------------------------------------------------------------------------
 Private Sub BootWork()
-    Dim t As Currency
+    Dim t As Double
     Dim same As Boolean
     Dim firstDiff As Long
     Dim meta As String
@@ -405,8 +431,9 @@ Private Function LoadStateFromSidecar(ByRef errMsg As String) As Boolean
         Exit Function
     End If
     On Error GoTo Fail
-    txt = ReadUtf8File(g_sidecarPath)
+    ReadStateFile g_sidecarPath, txt
     lines = Split(txt, vbCrLf)
+    txt = ""                                   ' the lines array owns it now
     If UBound(lines) < 0 Then
         errMsg = "sidecar empty"
         Exit Function
@@ -562,65 +589,70 @@ Fail:
 End Function
 
 '------------------------------------------------------------------------------
-' sidecar IO. UTF-8 (the ledger content originates in UTF-8 CSVs, so a CP932
-' Print# could not round-trip every character), converted in ONE Win32 call:
-' ADODB.Stream.ReadText on a 22 MB file measured 124 SECONDS (incremental
-' BSTR growth); MultiByteToWideChar does the same conversion in milliseconds.
+' sidecar IO. The sidecar is UTF-16LE, no BOM: the ledger content comes from
+' UTF-8 CSVs, so a CP932 Print# could not round-trip every character, and the
+' conversion has to be one bulk operation rather than a per-character loop.
+'
+' v2 did that bulk conversion with MultiByteToWideChar and kept the file in
+' UTF-8. With Win32 gone the file itself carries VBA's own string encoding
+' instead, and then no conversion exists at all: VB's Byte()<->String
+' assignment copies the raw UTF-16LE bytes, and Get/Put move them straight to
+' and from disk. Measured side by side, same 22 MB body, same process, warm:
+'
+'   UTF-16LE  Get + Byte()->String        23.4 ms   (this build)
+'   UTF-8     Get + MultiByteToWideChar   26.0 ms   (what it replaces)
+'
+' So dropping Win32 costs nothing at the conversion. What it does cost is size:
+' the file is twice as big (44.6 MB), and in the app that shows up as about
+' 200 ms more in the state-load stage (386 -> 590 ms), because 22 MB more has
+' to be faulted in right after the merge has filled the heap. Both COM routes
+' were measured on the same body and are unusable: ADODB.Stream.ReadText(all)
+' took 22.2 SECONDS, and mscorlib's System.Text.UTF8Encoding cannot even be
+' created from VBA on this machine (CreateObject raises 0x80131500).
 '------------------------------------------------------------------------------
-Private Function ReadUtf8File(ByVal path As String) As String
+' ByRef, not a String return: the body is ~45 MB and a returned String would be
+' copied once more into the caller. The byte buffer is freed before the caller
+' starts splitting, so the peak stays at two copies instead of three.
+Private Sub ReadStateFile(ByVal path As String, ByRef s As String)
     Dim f As Integer
     Dim b() As Byte
     Dim n As Long
-    Dim need As Long
-    Dim s As String
+    s = ""
     f = FreeFile
     Open path For Binary Access Read As #f
     n = LOF(f)
-    If n <= 0 Then
+    If n < 2 Then
         Close #f
-        ReadUtf8File = ""
-        Exit Function
+        Exit Sub
     End If
+    If (n Mod 2) <> 0 Then n = n - 1          ' truncated tail: drop the odd byte
     ReDim b(0 To n - 1)
     Get #f, 1, b
     Close #f
-    need = Rdv3MB2WC(65001, 0, VarPtr(b(0)), n, 0, 0)
-    If need <= 0 Then
-        ReadUtf8File = ""
-        Exit Function
-    End If
-    s = String$(need, vbNullChar)
-    Rdv3MB2WC 65001, 0, VarPtr(b(0)), n, StrPtr(s), need
-    ReadUtf8File = s
-End Function
+    s = b                                      ' raw UTF-16LE bytes -> String
+    Erase b
+End Sub
 
-Private Function WriteUtf8FileAtomic(ByVal path As String, ByRef txt As String, _
-                                     ByRef errMsg As String) As Boolean
+Private Function WriteStateFileAtomic(ByVal path As String, ByRef txt As String, _
+                                      ByRef errMsg As String) As Boolean
     Dim f As Integer
     Dim b() As Byte
-    Dim n As Long
     Dim tmp As String
     errMsg = ""
     tmp = path & ".tmp"
     On Error GoTo Fail
-    If Len(txt) > 0 Then
-        n = Rdv3WC2MB(65001, 0, StrPtr(txt), Len(txt), 0, 0, 0, 0)
-        If n <= 0 Then
-            errMsg = "utf-8 conversion failed"
-            Exit Function
-        End If
-        ReDim b(0 To n - 1)
-        Rdv3WC2MB 65001, 0, StrPtr(txt), Len(txt), VarPtr(b(0)), n, 0, 0
-    End If
     If Len(Dir$(tmp)) > 0 Then Kill tmp
     f = FreeFile
     Open tmp For Binary Access Write As #f
-    If n > 0 Then Put #f, 1, b
+    If Len(txt) > 0 Then
+        b = txt                                ' String -> raw UTF-16LE bytes
+        Put #f, 1, b
+    End If
     Close #f
     f = 0
     If Len(Dir$(path)) > 0 Then Kill path
     Name tmp As path
-    WriteUtf8FileAtomic = True
+    WriteStateFileAtomic = True
     Exit Function
 Fail:
     errMsg = "state write error " & Err.Number & ": " & Err.Description
@@ -647,9 +679,9 @@ Private Function SidecarWrite(ByRef errMsg As String) As Boolean
            vbTab & "saved=" & Format$(Now, "yyyy-mm-dd hh:nn:ss") & _
            vbTab & "bookmtime=" & FileTimeStr(g_ledgerPath)
     If m_rows > 0 Then
-        SidecarWrite = WriteUtf8FileAtomic(g_sidecarPath, head & vbCrLf & Join(body, vbCrLf) & vbCrLf, errMsg)
+        SidecarWrite = WriteStateFileAtomic(g_sidecarPath, head & vbCrLf & Join(body, vbCrLf) & vbCrLf, errMsg)
     Else
-        SidecarWrite = WriteUtf8FileAtomic(g_sidecarPath, head & vbCrLf, errMsg)
+        SidecarWrite = WriteStateFileAtomic(g_sidecarPath, head & vbCrLf, errMsg)
     End If
 End Function
 
@@ -713,7 +745,7 @@ Private Function WriteLedgerBookAll(ByRef errMsg As String, ByRef saveMs As Doub
     Dim r0 As Long, r1 As Long, i As Long, n As Long
     Dim arr As Variant
     Dim fields As Variant
-    Dim t As Currency
+    Dim t As Double
 
     errMsg = ""
     saveMs = 0
@@ -813,7 +845,7 @@ End Function
 ' adopt / apply
 '------------------------------------------------------------------------------
 Private Sub AdoptActive(ByVal note As String)
-    Dim t As Currency
+    Dim t As Double
     t = Rdv3Ticks()
     BuildIndex
     BeLog "index rows=" & CStr(m_rows) & " ms=" & Format$(Rdv3MsSince(t), "0.0")
@@ -830,7 +862,7 @@ Private Sub DoApply()
     Dim i As Long
     Dim k2 As String
     Dim used As Long
-    Dim t As Currency
+    Dim t As Double
     Dim parts As Long
     Dim at As Long
     Dim chunk As Long
@@ -1032,7 +1064,7 @@ Private Sub DoSearch(ByVal key As String, ByVal t0s As String, ByVal source As S
     Dim i As Long, row As Long
     Dim meta As String
     Dim vals As Variant
-    Dim t As Currency
+    Dim t As Double
 
     t = Rdv3Ticks()
     Set hits = Nothing
@@ -1092,7 +1124,7 @@ Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As Stri
     Dim oldVal As Boolean
     Dim ws As Object
     Dim mt As Object
-    Dim t As Currency
+    Dim t As Double
     Dim saveMs As Double
     Dim k2 As String
     Dim oldMarks As Long
@@ -1214,7 +1246,7 @@ Private Sub PollWatch()
     Dim raw As Variant
     Dim cand As String
     Dim held As Double
-    Dim t0 As Currency
+    Dim t0 As Double
 
     If Not Rdv3UiaBound() Then
         If Rdv3UiaBind() Then
@@ -1230,7 +1262,7 @@ Private Sub PollWatch()
                 w_bound = False
                 PublishState "waiting", "why=" & Replace(Rdv3UiaWhy(), ";", ",")
             End If
-            Rdv3Sleep 360      ' bind retry backoff on top of the loop's 40 ms
+            Rdv3WaitMs 360     ' bind retry backoff on top of the loop's 40 ms
             Exit Sub
         End If
     End If
@@ -1300,7 +1332,7 @@ Private Sub Publish(ByVal kind As String, ByVal meta As String, ByVal values As 
     g_ver = g_ver + 1
     For tries = 1 To 6
         If Rdv3ChPublish(g_sid, kind, g_ver, meta, values) Then Exit Sub
-        Rdv3Sleep 40
+        Rdv3WaitMs 40
     Next tries
     BeLog "publish skipped (file busy) kind=" & kind
 End Sub

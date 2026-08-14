@@ -9,8 +9,10 @@ Attribute VB_Name = "modRdv3App"
 ' is display-sized: a record, a candidate list, a status line. The FE never
 ' materializes rows and never saves itself (there is nothing to save; close
 ' marks the book clean). What runs here:
-'   - Workbook_Open boot (short: prepare session files, Shell the detached
-'     spawn script, arm the pump, return -- no synchronous CreateObject)
+'   - Workbook_Open boot (short: paint the UI, arm the pump, return). The
+'     BE is started by the first tick: CreateObject on an invisible Excel,
+'     open the worker book, call its bootstrap -- which only arms the BE's
+'     own OnTime and returns (~1 s of FE occupancy, logged as spawn_ms)
 '   - the OnTime pump: one short, bounded tick per second that reads the
 '     aggregate channel file once and does at most one small render, then
 '     returns. Between ticks the VBA stack is fully released. Excel natively
@@ -53,7 +55,7 @@ Private m_logPath As String
 Private m_beLogPath As String
 Private m_readOnly As Boolean
 Private m_logBroken As Boolean
-Private m_spawnLogged As Boolean          ' be_pid flag consumed and logged
+Private m_spawnDone As Boolean            ' the first tick has started the BE
 
 ' last consumed channel version per kind
 Private m_verCheck As Long
@@ -93,7 +95,7 @@ Private m_procSeq As Long
 Private m_lastWatchSt As String
 Private m_closePrepared As Boolean
 Private m_closePending As Boolean
-Private m_bootT0 As Currency              ' boot instant (QPC), for startup_ms
+Private m_bootT0 As Double                ' boot instant, for startup_ms
 Private m_startupLogged As Boolean
 
 Private m_events As clsRdv3AppEvents
@@ -137,7 +139,7 @@ Public Function Rdv3BuildTouch() As String
     Set ev = New clsRdv3AppEvents
     Set ev = Nothing
     s = Rdv3ChRoot()
-    s = s & "|" & CStr(Rdv3HostBePid())
+    s = s & "|" & Rdv3HostBeId()
     s = s & "|" & Rdv3UiInputKey()
     s = s & "|" & CStr(Rdv3IsKey("00000000"))
     s = s & "|" & Rdv3SidecarPath("x.xlsx")
@@ -145,10 +147,9 @@ Public Function Rdv3BuildTouch() As String
 End Function
 
 '------------------------------------------------------------------------------
-' boot (Workbook_Open -> OnTime; short: spawn the BE and return)
+' boot (Workbook_Open -> paint, arm the pump, return; the tick spawns the BE)
 '------------------------------------------------------------------------------
 Public Sub Rdv3AppStart()
-    Dim errMsg As String
     Dim n As Long
 
     If m_started Then Exit Sub
@@ -162,7 +163,7 @@ Public Sub Rdv3AppStart()
     m_sid = Format$(Now, "yyyymmddhhnnss") & Format$(CLng(Timer * 1000!) Mod 100000, "00000")
     m_readOnly = ThisWorkbook.ReadOnly
     ResolvePaths
-    AppLog "-", "boot", "pid=" & CStr(Rdv3GetCurrentProcessId()) & " method=vba-dict sid=" & m_sid & _
+    AppLog "-", "boot", "fe=" & Rdv3SelfId() & " method=vba-dict sid=" & m_sid & _
         " book=" & ThisWorkbook.FullName & " data=" & m_dataDir & _
         " ledger=" & m_ledgerPath & " readonly=" & CStr(m_readOnly)
 
@@ -173,7 +174,7 @@ Public Sub Rdv3AppStart()
     Rdv3UiMergeMs -1
     Rdv3UiSearchMs -1
     Rdv3UiError ""
-    Rdv3UiNotepad "未接続 -- メモ帳を開くと自動で接続します"
+    Rdv3UiNotepad "未接続 -- メモ帳の入力欄をクリックすると接続します"
     Rdv3UiWatchButton True
     m_watchOn = True
     If m_readOnly Then
@@ -187,7 +188,7 @@ Public Sub Rdv3AppStart()
 
     m_state = ST_CHECKING
     m_phaseStart = Timer
-    m_spawnLogged = False
+    m_spawnDone = False
     Rdv3UiState "更新を確認中"
     AppLog "R1", "decision", "check started"
 
@@ -197,16 +198,10 @@ Public Sub Rdv3AppStart()
         Exit Sub
     End If
 
-    ' asynchronous: Shell a detached script and return. The pump learns the
-    ' BE's pid (or the spawn failure) from channel flags; nothing here blocks.
-    If Not Rdv3HostSpawnAsync(m_sid, m_dataDir, m_ledgerPath, m_beLogPath, errMsg) Then
-        AppLog "R1", "error", "stage=spawn msg=" & errMsg
-        EnterDead "更新確認を開始できませんでした: " & errMsg
-        Exit Sub
-    End If
-    AppLog "R1", "worker", "spawn dispatched (async) owner_pid=" & _
-        CStr(Rdv3GetCurrentProcessId()) & " sid=" & m_sid
-
+    ' The BE is started by the FIRST PUMP TICK, not here: starting it means
+    ' CreateObject + Workbooks.Open on this thread (~1 s, logged as spawn_ms),
+    ' and doing that inside Workbook_Open would hold the book open with nothing
+    ' on screen. By the tick the UI is painted and the window is up.
     PumpSchedule True
 End Sub
 
@@ -237,7 +232,12 @@ Private Sub PumpSchedule(ByVal firstTick As Boolean)
     If m_state = ST_DEAD Or m_state = ST_BLOCKED Then Exit Sub
     ' single-chain invariant: never schedule on top of a live schedule
     If m_pumpArmed Then Exit Sub
-    If m_fastFollow > 0 And Not firstTick Then
+    If firstTick Then
+        ' the first tick starts the BE, so it must not wait a second for it;
+        ' OnTime with a due time of now fires as soon as Excel pumps, which is
+        ' immediately after Workbook_Open returns
+        m_pumpNext = Now
+    ElseIf m_fastFollow > 0 Then
         m_fastFollow = m_fastFollow - 1
         m_pumpNext = Now
     Else
@@ -274,7 +274,7 @@ Public Sub Rdv3PumpEnsureArmed()
 End Sub
 
 Public Sub Rdv3PumpTick()
-    Dim t As Currency
+    Dim t As Double
     Dim worked As Boolean
     Dim ms As Double
 
@@ -319,9 +319,13 @@ Private Function TickBody() As Boolean
     Dim worked As Boolean
     worked = False
 
-    ' the async spawn reports the BE pid through a flag; consume it whenever
-    ' it appears so stop/kill bookkeeping always knows our child
-    If Rdv3HostBePid() = 0 And m_state <> ST_DEAD Then TryConsumeBePid
+    ' the BE is started from the first tick (see Rdv3AppStart)
+    If Not m_spawnDone And m_state = ST_CHECKING Then
+        m_spawnDone = True
+        If Not SpawnBe() Then Exit Function
+        TickBody = True
+        Exit Function
+    End If
 
     Select Case m_state
         Case ST_CHECKING, ST_APPLY_WAIT
@@ -344,38 +348,31 @@ Private Sub AnimTick()
     End Select
 End Sub
 
-' Spawn is asynchronous, so liveness has two phases. Before the be_pid flag
-' appears, watch for the script's error flag and a short spawn timeout; after
-' it, watch the process itself plus the long phase timeout.
+' start the BE, on this thread, from the first pump tick. Everything after the
+' bootstrap call runs in the BE's own process; spawn_ms is the FE occupancy and
+' is logged as such.
+Private Function SpawnBe() As Boolean
+    Dim errMsg As String
+    Dim spawnMs As Double
+    If Not Rdv3HostSpawn(m_sid, m_dataDir, m_ledgerPath, m_beLogPath, errMsg, spawnMs) Then
+        AppLog "R1", "error", "stage=spawn msg=" & errMsg & " spawn_ms=" & FmtF(spawnMs)
+        EnterDead "更新確認を開始できませんでした: " & errMsg
+        Exit Function
+    End If
+    m_phaseStart = Timer                  ' the phase clock starts with the BE
+    AppLog "R1", "worker", "spawn ok be=" & Rdv3HostBeId() & " fe=" & Rdv3SelfId() & _
+        " sid=" & m_sid & " spawn_ms=" & FmtF(spawnMs)
+    SpawnBe = True
+End Function
+
+' Liveness without a process id: the BE holds its lease lock for its whole
+' life, so an unlocked (or missing) lease means it is gone, however it went.
 Private Sub CheckBeHealth()
     Dim el As Double
-    Dim f As Integer
-    Dim ln As String
 
+    If Not Rdv3HostStarted() Then Exit Sub
     el = Timer - m_phaseStart
     If el < 0 Then el = el + 86400
-
-    If Rdv3HostBePid() = 0 Then
-        If Rdv3ChFlagExists(Rdv3ChSpawnErrPath(m_sid)) Then
-            ln = ""
-            On Error Resume Next
-            f = FreeFile
-            Open Rdv3ChSpawnErrPath(m_sid) For Input Shared As #f
-            Line Input #f, ln
-            Close #f
-            On Error GoTo 0
-            AppLog "R1", "error", "stage=spawn msg=" & ln
-            EnterDead "worker を起動できませんでした: " & ln
-            Exit Sub
-        End If
-        If TryConsumeBePid() Then Exit Sub
-        If el > RDV3_SPAWN_TIMEOUT_S Then
-            AppLog "-", "timeout", "stage=spawn after_s=" & FmtF(el)
-            StopBeNow
-            EnterDead "worker の起動がタイムアウトしました。再起動してください"
-        End If
-        Exit Sub
-    End If
 
     If Not Rdv3HostBeAlive() Then
         AppLog "-", "error", "stage=worker msg=BE process died"
@@ -388,28 +385,6 @@ Private Sub CheckBeHealth()
         EnterDead "更新確認がタイムアウトしました。再起動してください"
     End If
 End Sub
-
-Private Function TryConsumeBePid() As Boolean
-    Dim f As Integer
-    Dim ln As String
-    Dim pid As Long
-    If Not Rdv3ChFlagExists(Rdv3ChBePidPath(m_sid)) Then Exit Function
-    On Error Resume Next
-    f = FreeFile
-    Open Rdv3ChBePidPath(m_sid) For Input Shared As #f
-    Line Input #f, ln
-    Close #f
-    On Error GoTo 0
-    If Left$(ln, 4) = "pid=" Then pid = CLng(Val(Mid$(ln, 5)))
-    If pid = 0 Then Exit Function
-    Rdv3HostNotePid pid
-    If Not m_spawnLogged Then
-        m_spawnLogged = True
-        AppLog "R1", "worker", "spawn pid=" & CStr(pid) & " owner_pid=" & _
-            CStr(Rdv3GetCurrentProcessId()) & " sid=" & m_sid
-    End If
-    TryConsumeBePid = True
-End Function
 
 '------------------------------------------------------------------------------
 ' channel dispatch: one aggregate read, then per-kind version dedup
@@ -812,7 +787,7 @@ End Sub
 
 Private Sub DoManualSearch()
     Dim key As String
-    Dim t0 As Currency
+    Dim t0 As Double
     t0 = Rdv3Ticks()
     If m_state <> ST_READY Then
         Rdv3UiError "更新確認が終わるまで操作できません"
@@ -846,7 +821,7 @@ End Sub
 ' ledger workbook and the sidecar, then confirms through RESULT (marked /
 ' markerr); until then the screen honestly says the save is in flight.
 Private Sub DoProcessed()
-    Dim t0 As Currency
+    Dim t0 As Double
     If m_state <> ST_READY Then
         Rdv3UiError "更新確認が終わるまで操作できません"
         Exit Sub
@@ -889,7 +864,7 @@ Private Sub DoWatchToggle()
 End Sub
 
 Private Sub DoPick(ByVal slot As Long)
-    Dim t0 As Currency
+    Dim t0 As Double
     If m_state <> ST_READY Then Exit Sub
     If slot < 0 Or slot >= m_candCount Then Exit Sub
     t0 = Rdv3Ticks()

@@ -155,8 +155,18 @@ A は `key1` 順、C は `key2` 順、B は種を固定したシャッフル順�
 
 ## 作り直す
 
+**`build.bat` をダブルクリックすれば `dist\` の配布物が全部 (比較 2 種 8 ファイル +
+実用版 2 ルート) ソースから再生成されます。** 管理者権限は不要・レジストリは書きません・
+実行ポリシーも変えません。Excel と、ユーザー単位の設定「VBA プロジェクト オブジェクト
+モデルへのアクセスを信頼する」(トラスト センター、管理者不要) が要ります — `.xlsm` に
+VBA を入れる唯一の経路が `VBProject.VBComponents.Import` だからです。設定が無いときは
+**黙って減らさず**、有効化手順を出して止まります。
+
+個別に走らせるとき:
+
 ```powershell
-powershell -ExecutionPolicy Bypass -File build\build_all.ps1          # 全部
+powershell -ExecutionPolicy Bypass -File build\build_dist.ps1         # build.bat の中身
+powershell -ExecutionPolicy Bypass -File build\build_all.ps1          # 1 対 1 版 4 ファイル
 powershell -ExecutionPolicy Bypass -File build\gen_data.ps1 -Force    # データだけ
 powershell -ExecutionPolicy Bypass -File build\pack_cmd.ps1 -Variant csharp
 powershell -ExecutionPolicy Bypass -File build\pack_cmd.ps1 -Variant hybrid
@@ -295,7 +305,13 @@ VBA 版は同じ設定をシートの `C59` (ログ) `C60` (データフォル�
   その sidecar ミラーは**別プロセスの不可視 Excel (BE)** だけが読み書き・保存します。
   差分なしの起動は sidecar 照合だけで済み、台帳ブックを開きません。承認時の書換・保存も
   「処理済み」の永続化も BE が行い、FE は要求と表示だけ (FE の materialize / Save は v2 で
-  全廃)。spawn も非同期 (Shell + cscript) で、FE の同期占有はありません (`docs/app.md`)。
+  全廃)。
+- **VBA 版の実行コードは Win32 API (`Declare`) も `Shell` も使いません** — VBA と COM だけです。
+  BE の起動は `CreateObject("Excel.Application")` + bootstrap (bootstrap は `OnTime` を
+  仕掛けて即 return するので FE 占有は起動処理そのものだけ)、時計は `Timer`、1 秒未満の
+  待機は WMI イベントの timeout 待ち、メモ帳の特定は UIA の `GetFocusedElement` から親を
+  辿る方式、死活は双方向のリースファイル lock。理由と実測は `docs/app.md` の
+  「Win32 / Shell を使わない実装」。
 - 画面の性能値は**マージ時間と検索時間の 2 つだけ**。細目 (compose、台帳ロード、
   processed 保存、startup、検知 latency) はテキスト実行ログへ出ます。
 - VBA 版の UI はシート描画だけ (UserForm / ActiveX / Shape 不使用)。ボタンは Hyperlink セル
@@ -399,6 +415,7 @@ build\bench_app.ps1            実用版 2 方式の E2E 計測 v2 (全 run 記�
 | `dist\` の 1 対 1 版 4 ファイル | `build\build_all.ps1` |
 | `dist\` の一対多版 4 ファイル | `build\build_all2.ps1` |
 | `dist\app-vba\` / `dist\app-csharp\` の実用版 2 ルート | `build\build_app.ps1` |
+| **`dist\` 全部を一度に** | **`build.bat` (= `build\build_dist.ps1`)** |
 | `work\` の計測ログとビルド ログ | `build\run_bench.ps1` / `run_bench2.ps1` / `bench_app.ps1` |
 
 ## benchmarks/ — 方式選定のための検証

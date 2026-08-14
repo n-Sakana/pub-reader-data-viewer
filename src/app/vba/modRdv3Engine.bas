@@ -233,7 +233,7 @@ End Sub
 ' the merge: 8 timed stages, then the ledger lines
 '------------------------------------------------------------------------------
 Public Function Rdv3EngMerge(ByVal dataDir As String) As Boolean
-    Dim t As Currency
+    Dim t As Double
     Dim msg As String
     Dim dA As Object, dB As Object, dC As Object
     Dim ab() As Long, bc() As Long

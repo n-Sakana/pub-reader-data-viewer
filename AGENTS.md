@@ -41,15 +41,24 @@ against the saved state. The old per-trigger re-read contract applies to the
 frozen comparisons only. The VBA practical build (v2) follows a proven Excel
 FE/BE architecture with the ledger SPLIT OUT of the parent book: the FE is a small
 UI-only workbook; the ledger workbook (`ReaderDataViewer-Ledger.xlsx`) and its
-sidecar mirror (`.state`) are read, compared, carried, written and saved ONLY
-by an invisible BE Excel, which also owns every heavy stage and the Notepad
+sidecar mirror (`.state`, UTF-16LE) are read, compared, carried, written and saved
+ONLY by an invisible BE Excel, which also owns every heavy stage and the Notepad
 watch, publishes atomically to a file channel, and the FE pulls with a short
 bounded OnTime pump. The BE never calls into the FE by COM, the FE holds no
-COM reference to the BE (the spawn goes through a detached cscript), and the
-FE never materializes ledger rows or saves itself (the reasoning, and the
+COM reference to the BE (it drops them as soon as the BE's bootstrap returns),
+and the FE never materializes ledger rows or saves itself (the reasoning, and the
 measurement it rests on, is summarised in `docs/app.md`; v1 — ledger inside the
 FE book — is archived outside the repository and documented at the end of
 `docs/app.md`).
+
+**The practical VBA build (`src/app/vba`) contains no `Declare` and no `Shell`.**
+It runs on VBA + COM only: the BE is started with `CreateObject("Excel.Application")`
+and a bootstrap that arms `Application.OnTime` and returns; the clock is `Timer`;
+sub-second waits come from a WMI event source's `NextEvent` timeout; the Notepad
+window is found with UIA `GetFocusedElement` plus a parent walk; liveness is a
+lease-file lock in both directions. Keep it that way — the reasons, and the
+measurements behind each choice, are in `docs/app.md` ("Win32 / Shell を使わない実装").
+The frozen comparison builds keep their Declare blocks and are not touched.
 
 The 1:1 sources are **frozen**: they still have to reproduce the four distributables that
 were measured for `docs/results.md`. Work on the one-to-many side goes in `src/v2`, even
@@ -64,7 +73,12 @@ when that means a deliberate copy (`Rdv2Watch.cs`, `modRdv2Uia.bas`).
 
 ## Dev commands
 
+```
+build.bat            everything in dist\, from source (double-clickable, no admin)
+```
+
 ```powershell
+powershell -ExecutionPolicy Bypass -File build\build_dist.ps1     # what build.bat runs
 powershell -ExecutionPolicy Bypass -File build\build_all.ps1
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method csharp -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method hybrid -Repeat 7

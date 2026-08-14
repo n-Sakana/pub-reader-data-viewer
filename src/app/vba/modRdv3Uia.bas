@@ -1,9 +1,9 @@
 Attribute VB_Name = "modRdv3Uia"
 '==============================================================================
 ' modRdv3Uia -- Excel VBA as a UI Automation CLIENT, watching Notepad.
-' A deliberate copy of the frozen src\v2\vba\modRdv2Uia.bas with renamed
-' entry points, kept separate so the frozen comparison sources stay untouched
-' (the same convention modRdv2Uia itself followed toward src\vba).
+' Derived from the frozen src\v2\vba\modRdv2Uia.bas (kept separate so the
+' frozen comparison sources stay untouched), with ONE difference: the window
+' is found through UI Automation itself, not through Win32.
 '
 ' Required reference (late binding is impossible here, not merely inconvenient)
 '     "UIAutomationClient" -- TypeLib {944DE083-8FB8-45CF-BCB7-C477ACB2F897}
@@ -11,19 +11,37 @@ Attribute VB_Name = "modRdv3Uia"
 ' VBA's Object IS IDispatch: CreateObject would assign but never call. The
 ' reference is added by build\build_workbook_app.ps1 AFTER the imports.
 '
-' Windows are enumerated with Win32, not with UIA, and that is not a style
-' choice: walking the desktop with UIA from Excel's own UI thread deadlocks on
-' Excel's own provider (measured; see modRdv2Uia). FindWindowEx never enters
-' UIA, and ElementFromHandle attaches to one window without walking the tree.
+' HOW THE WINDOW IS FOUND, AND WHY THIS WAY
+' The frozen builds enumerated top-level windows with FindWindowEx and picked
+' the foreground Notepad, because walking the DESKTOP with UIA from Excel's own
+' UI thread deadlocks on Excel's own provider (measured; see modRdv2Uia). With
+' Win32 gone, the entry point is IUIAutomation.GetFocusedElement: it resolves
+' exactly one element -- the one with keyboard focus -- and never walks the
+' desktop, so the deadlock has no way in. From there ControlViewWalker climbs
+' to the top-level window and the class name decides whether it is Notepad.
+' The operator therefore chooses the window the same way as before: by working
+' in it. The one behaviour change is that a Notepad window that has never had
+' the focus is not adopted; the status line says so.
+'
+' TWO UIA MEMBERS ARE UNUSABLE FROM VBA and both have replacements here:
+'   IUIAutomationElement.CurrentNativeWindowHandle returns UIA_HWND (void*),
+'   which VBA rejects at COMPILE time ("automation type not supported"). In an
+'   automation Excel that compile error is an INVISIBLE modal and the process
+'   hangs forever (measured). GetCurrentPropertyValue returns a VARIANT and is
+'   used instead. CurrentName gives the window title, so GetWindowTextW goes
+'   the same way.
 '
 ' This module only ever reads. It never starts, closes or kills Notepad.
 '==============================================================================
 Option Explicit
 
 Private Const UIA_ControlTypePropertyId As Long = 30003
+Private Const UIA_NativeWindowHandlePropertyId As Long = 30020
 Private Const UIA_ValuePatternId As Long = 10002
 Private Const UIA_DocumentControlTypeId As Long = 50030
 Private Const UIA_EditControlTypeId As Long = 50004
+Private Const NOTEPAD_CLASS As String = "Notepad"
+Private Const WALK_MAX As Long = 8
 
 Private m_Uia As UIAutomationClient.IUIAutomation
 Private m_Doc As UIAutomationClient.IUIAutomationElement
@@ -55,19 +73,14 @@ Public Sub Rdv3UiaReset()
     m_Title = ""
 End Sub
 
-' Notepad windows only; the one in the foreground wins so the operator can
-' pick a window just by clicking it. Same rule as every build before this one.
+' The Notepad window the operator is working in wins -- the same rule as every
+' build before this one, resolved through focus instead of through Win32.
 Public Function Rdv3UiaBind() As Boolean
     Dim c1 As UIAutomationClient.IUIAutomationCondition
     Dim c2 As UIAutomationClient.IUIAutomationCondition
     Dim cOr As UIAutomationClient.IUIAutomationCondition
     Dim d As UIAutomationClient.IUIAutomationElement
     Dim pick As UIAutomationClient.IUIAutomationElement
-    #If VBA7 Then
-        Dim h As LongPtr, hPick As LongPtr, hLast As LongPtr, fg As LongPtr
-    #Else
-        Dim h As Long, hPick As Long, hLast As Long, fg As Long
-    #End If
 
     On Error GoTo Fail
     Rdv3UiaBind = False
@@ -75,26 +88,9 @@ Public Function Rdv3UiaBind() As Boolean
     If m_Uia Is Nothing Then Set m_Uia = New UIAutomationClient.CUIAutomation
 
     m_Why = "find"
-    fg = Rdv3ForegroundWindow()
-    h = 0
-    Do
-        h = Rdv3FindWindowEx(0, h, "Notepad", vbNullString)
-        If h = 0 Then Exit Do
-        If Rdv3IsWindowVisible(h) <> 0 Then
-            hLast = h
-            If h = fg Then hPick = h
-        End If
-    Loop
-    If hPick = 0 Then hPick = hLast
-    If hPick = 0 Then
-        m_Why = "メモ帳のウィンドウがありません"
-        Exit Function
-    End If
-
-    m_Why = "attach"
-    Set pick = m_Uia.ElementFromHandle(ByVal hPick)
+    Set pick = NotepadFromFocus()
     If pick Is Nothing Then
-        m_Why = "メモ帳のウィンドウに接続できません"
+        m_Why = "メモ帳の入力欄をクリックすると接続します"
         Exit Function
     End If
 
@@ -115,11 +111,9 @@ Public Function Rdv3UiaBind() As Boolean
         Exit Function
     End If
 
-    ' handle and title from Win32: reading a UIA property off a TOP-LEVEL
-    ' window from Excel's own UI thread never returns (measured; modRdv2Uia)
     Set m_Doc = d
-    m_Hwnd = hPick
-    m_Title = Rdv3WindowTitle(hPick)
+    m_Hwnd = pick.GetCurrentPropertyValue(UIA_NativeWindowHandlePropertyId)
+    m_Title = pick.CurrentName
     m_Why = ""
     Rdv3UiaBind = True
     Exit Function
@@ -127,6 +121,37 @@ Fail:
     m_Why = m_Why & " で失敗: " & Err.Number & " " & Err.Description
     Rdv3UiaReset
     Rdv3UiaBind = False
+End Function
+
+' focused element -> up the control view -> the Notepad top-level window, or
+' Nothing when the focus is somewhere else entirely. Bounded: a focused element
+' is a handful of levels below its window, and this must not become a walk.
+Private Function NotepadFromFocus() As UIAutomationClient.IUIAutomationElement
+    Dim walker As UIAutomationClient.IUIAutomationTreeWalker
+    Dim el As UIAutomationClient.IUIAutomationElement
+    Dim depth As Long
+
+    On Error GoTo Fail
+    Set el = m_Uia.GetFocusedElement
+    If el Is Nothing Then Exit Function
+    If el.CurrentClassName = NOTEPAD_CLASS Then
+        Set NotepadFromFocus = el
+        Exit Function
+    End If
+    Set walker = m_Uia.ControlViewWalker
+    For depth = 1 To WALK_MAX
+        Set el = walker.GetParentElement(el)
+        If el Is Nothing Then Exit Function
+        If el.CurrentClassName = NOTEPAD_CLASS Then
+            Set NotepadFromFocus = el
+            Exit Function
+        End If
+    Next depth
+    Exit Function
+Fail:
+    ' a provider that is busy or gone answers with an error; that is a "not
+    ' now", not a failure of the app, and the next poll tries again
+    Set NotepadFromFocus = Nothing
 End Function
 
 ' one poll. Null when the binding has gone stale, so the caller can tell "the
