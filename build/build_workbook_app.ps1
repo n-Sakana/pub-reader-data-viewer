@@ -39,7 +39,6 @@ function Step([string] $m) {
 }
 
 $modules = @('modRdv3Spec', 'modRdv3Chan', 'modRdv3Host', 'modRdv3Ui', 'modRdv3App')
-$classes = @('clsRdv3AppEvents')
 $workerModules = @('modRdv3Spec', 'modRdv3Chan', 'modRdv3Uia', 'modRdv3Engine', 'modRdv3Be')
 $allModules = @($workerModules + $modules | Select-Object -Unique)
 $src = Join-Path $Root 'src\app\vba'
@@ -54,7 +53,6 @@ if (-not (Test-Path -LiteralPath (Join-Path $dataDir 'tableA.csv'))) {
 }
 
 function Src([string] $name) {
-  if ($classes -contains $name) { return (Join-Path $src "$name.cls") }
   return (Join-Path $src "$name.bas")
 }
 
@@ -79,7 +77,7 @@ $varRe = '(?<![A-Za-z0-9_])([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s+As\s'
 $collisions = @()
 $oneLiners = @()
 $misplaced = @()
-foreach ($m in ($allModules + $classes)) {
+foreach ($m in $allModules) {
   $seen = @{}
   $ln = 0
   $seenProc = $false
@@ -120,14 +118,14 @@ Write-Output 'name / one-line / declaration-order preflight: ok'
 $stage = Join-Path $env:TEMP ("rdv3_bas_" + [Guid]::NewGuid().ToString('N').Substring(0, 8))
 New-Item -ItemType Directory -Path $stage | Out-Null
 $cp932 = [Text.Encoding]::GetEncoding(932)
-foreach ($m in ($allModules + $classes)) {
+foreach ($m in $allModules) {
   $p = Src $m
   $t = [IO.File]::ReadAllText($p)
   if ($t -ne $cp932.GetString($cp932.GetBytes($t))) {
     throw "$p has characters that cannot survive CP932; VBE would import them as '?'"
   }
-  # CRLF, always: VBE only recognises the VERSION/BEGIN/END header of a .cls
-  # when the lines end in CRLF (docs/results2.md trap 1)
+  # CRLF, always: the VBE importer is line-ending sensitive
+  # (docs/results2.md trap 1)
   $t = $t -replace "`r`n", "`n"
   $t = $t -replace "`n", "`r`n"
   $ext = [IO.Path]::GetExtension($p)
@@ -383,13 +381,9 @@ try {
     [void]$wb.VBProject.VBComponents.Import((Join-Path $stage "$m.bas"))
     Step "  imported $m"
   }
-  foreach ($m in $classes) {
-    [void]$wb.VBProject.VBComponents.Import((Join-Path $stage "$m.cls"))
-    Step "  imported $m (class)"
-  }
 
   # the FE needs no UIA reference: the Notepad watch lives only in the worker
-  Step 'compile probe (every FE module + the class)'
+  Step 'compile probe (every FE module)'
   $wb.Save()
   [void]$xl.Run("'" + (Split-Path -Leaf $outPath) + "'!modRdv3App.Rdv3BuildTouch")
 
@@ -437,6 +431,21 @@ Private Sub Workbook_BeforeClose(Cancel As Boolean)
     Else
         Cancel = True
     End If
+End Sub
+
+' Pump watchdog. If the OnTime chain ended without a schedule -- a tick error
+' before its reschedule -- the next change or activation in THIS book re-arms
+' it. These two are the workbook's own events, so they fire for this book and
+' nothing else; the logic and the pump itself stay in modRdv3App. This is not
+' a result-notification path: BE results arrive only through the file channel.
+Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    On Error Resume Next
+    modRdv3App.Rdv3PumpEnsureArmed
+End Sub
+
+Private Sub Workbook_SheetActivate(ByVal Sh As Object)
+    On Error Resume Next
+    modRdv3App.Rdv3PumpEnsureArmed
 End Sub
 '@)
 

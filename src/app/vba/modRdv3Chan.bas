@@ -2,10 +2,11 @@ Attribute VB_Name = "modRdv3Chan"
 '==============================================================================
 ' modRdv3Chan -- the file channel between FE and BE. Modeled directly on a
 ' proven file channel from an earlier project: the worker never calls into
-' the FE process, results are published to files atomically (write "<path>.tmp"
-' then Kill the target and Name the tmp over it), and the FE pulls them from
-' its own OnTime pump. A reader that finds a file missing or unreadable skips
-' that cycle and retries on the next.
+' the FE process, results are published to files atomically (write "<path>.tmp",
+' park the live file under "<path>.bak" by rename, rename the tmp into place,
+' then drop the parked copy -- see Rdv3ChReplaceFile for why it is that order),
+' and the FE pulls them from its own OnTime pump. A reader that finds a file
+' missing or unreadable skips that cycle and retries on the next.
 '
 ' Why files and not COM: a cross-process COM write parks against an FE whose
 ' user is editing a cell, the OLE channel retries flood the message queue, and
@@ -27,6 +28,9 @@ Attribute VB_Name = "modRdv3Chan"
 '                             OS drops the lock the instant the process ends)
 '   rdv3_<sid>_be_done.flag   BE exit note (diagnostic)
 '   rdv3_<sid>_worker.xlsm    the extracted worker book copy
+'   <any of the above>.tmp   the half-written next version (writer only)
+'   <any of the above>.bak   the live version parked during a replace; exists
+'                             only inside that window, or after a crash in it
 '
 ' The 100k-row ledger itself never crosses this channel: it lives in its own
 ' ledger workbook owned entirely by the BE (read, compare, carry, write, save).
@@ -62,6 +66,9 @@ Private m_leaseSid As String
 ' BE lease handle (the mirror image, held by the BE process)
 Private m_beLeaseNo As Integer
 Private m_beLeaseSid As String
+
+' last failure code from Rdv3ChReplaceFile, for the caller's log
+Private m_lastReplaceErr As Long
 
 '------------------------------------------------------------------------------
 ' paths
@@ -137,21 +144,110 @@ Public Sub Rdv3ChDeleteQuiet(ByVal path As String)
 End Sub
 
 '------------------------------------------------------------------------------
-' atomic write: tmp -> Kill dest -> Name tmp As dest
+' atomic replace (was AtomicReplace: tmp -> Kill dest -> Name tmp As dest).
+'
+' The old order could lose data two ways, and did: a Name that failed AFTER the
+' Kill destroyed the live file -- and with it every OTHER kind's record in the
+' aggregate -- and the error path then killed the tmp as well, so the new record
+' went with it. Neither loss was reported: the function just returned False and
+' the next publish rebuilt an aggregate that no longer held the missing record.
+' Measured symptom: searches the BE served that the FE never rendered (2 in 39
+' on this machine, present before this change too).
+'
+' The live file is now PARKED by rename, never deleted before the replacement is
+' in place:
+'
+'   path -> path.bak      (park; on failure nothing has moved)
+'   tmp  -> path          (on failure the parked file goes straight back)
+'   Kill path.bak         (only once the new file is live)
+'
+' So every failure leaves BOTH the live file and the tmp on disk and returns
+' False: the caller can simply try again. A process death between the two
+' renames leaves the live file parked, and the next writer-side call puts it
+' back (HealParked). A .bak that cannot be deleted afterwards is harmless -- the
+' replacement already happened -- and the next call removes it.
+'
+' The last failure code is kept for the caller's log: nothing here is silent.
 '------------------------------------------------------------------------------
-Private Function AtomicReplace(ByVal tmpPath As String, ByVal path As String) As Boolean
+Public Function Rdv3ChReplaceFile(ByVal tmpPath As String, ByVal path As String) As Boolean
+    Dim bak As String
+    Dim e As Long
+
+    m_lastReplaceErr = 0
+    bak = path & ".bak"
     On Error Resume Next
-    If Len(Dir$(path)) > 0 Then Kill path
-    Err.Clear
-    Name tmpPath As path
-    If Err.Number <> 0 Then
-        Kill tmpPath
+    HealParked path
+
+    If Len(Dir$(tmpPath)) = 0 Then
+        m_lastReplaceErr = 53                    ' file not found: nothing to put in place
         On Error GoTo 0
         Exit Function
     End If
+
+    If Len(Dir$(path)) = 0 Then
+        Err.Clear
+        Name tmpPath As path                     ' nothing to displace
+        e = Err.Number
+        Err.Clear
+        m_lastReplaceErr = e
+        On Error GoTo 0
+        Rdv3ChReplaceFile = (e = 0)
+        Exit Function
+    End If
+
+    If Len(Dir$(bak)) > 0 Then
+        Err.Clear
+        Kill bak                                 ' stale park from an earlier failure
+        Err.Clear
+    End If
+
+    Name path As bak
+    e = Err.Number
+    Err.Clear
+    If e <> 0 Then
+        m_lastReplaceErr = e                     ' live file untouched, tmp kept
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    Name tmpPath As path
+    e = Err.Number
+    Err.Clear
+    If e <> 0 Then
+        Name bak As path                         ' put the live file back
+        Err.Clear
+        m_lastReplaceErr = e                     ' tmp kept: the retry reuses it
+        On Error GoTo 0
+        Exit Function
+    End If
+
+    Kill bak
+    Err.Clear
     On Error GoTo 0
-    AtomicReplace = True
+    Rdv3ChReplaceFile = True
 End Function
+
+' the error number of the last failed replace, for the caller's log
+Public Function Rdv3ChLastReplaceErr() As Long
+    Rdv3ChLastReplaceErr = m_lastReplaceErr
+End Function
+
+' A crash between the two renames leaves the live file parked. Only the writer
+' of a given file calls this (the BE for the aggregate, the FE for requests), so
+' the two processes never rename the same file.
+Private Sub HealParked(ByVal path As String)
+    Dim bak As String
+    bak = path & ".bak"
+    On Error Resume Next
+    If Len(Dir$(path)) = 0 Then
+        If Len(Dir$(bak)) > 0 Then
+            Err.Clear
+            Name bak As path
+            Err.Clear
+        End If
+    End If
+    On Error GoTo 0
+End Sub
 
 '------------------------------------------------------------------------------
 ' cell encoding (canonical N/S/E)
@@ -203,6 +299,12 @@ Public Function Rdv3ChPublish(ByVal sid As String, ByVal kind As String, ByVal v
     Set lines = New Collection
     On Error GoTo Failed
 
+    ' the other kinds' records are carried over from the live file, so a live
+    ' file still parked from an interrupted replace has to be put back BEFORE
+    ' that read -- otherwise this publish would quietly write an aggregate that
+    ' holds nothing but its own record
+    HealParked path
+
     If Len(Dir$(path)) > 0 Then
         inNo = FreeFile
         Open path For Input Shared As #inNo
@@ -230,7 +332,7 @@ Public Function Rdv3ChPublish(ByVal sid As String, ByVal kind As String, ByVal v
     Close #outNo
     outNo = 0
 
-    Rdv3ChPublish = AtomicReplace(tmp, path)
+    Rdv3ChPublish = Rdv3ChReplaceFile(tmp, path)
     Exit Function
 Failed:
     On Error Resume Next
@@ -357,7 +459,7 @@ Public Function Rdv3ChWriteReq(ByVal sid As String, ByVal kind As String, _
     Print #f, "q" & vbTab & CStr(version) & vbTab & CleanMeta(args)
     Close #f
     f = 0
-    Rdv3ChWriteReq = AtomicReplace(tmp, path)
+    Rdv3ChWriteReq = Rdv3ChReplaceFile(tmp, path)
     Exit Function
 Failed:
     On Error Resume Next

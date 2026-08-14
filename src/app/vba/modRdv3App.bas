@@ -21,6 +21,12 @@ Attribute VB_Name = "modRdv3App"
 '     normal behavior, not an error.
 '   - click dispatch (Worksheet_FollowHyperlink): validates, writes a small
 '     request file for the BE, arms a few fast follow-up ticks, returns
+'   - the pump watchdog (Rdv3PumpEnsureArmed), called by ThisWorkbook's own
+'     SheetChange / SheetActivate
+'
+' The event entry points live in the workbook's document modules (ThisWorkbook
+' and the UI sheet) and do nothing but call in here; all of the logic, and the
+' OnTime pump itself, stay in this module.
 '
 ' Everything heavy -- CSV read, merge, comparison, carry-over, ledger
 ' write/save, "processed" persistence, search, the Notepad watch -- runs in
@@ -98,8 +104,6 @@ Private m_closePending As Boolean
 Private m_bootT0 As Double                ' boot instant, for startup_ms
 Private m_startupLogged As Boolean
 
-Private m_events As clsRdv3AppEvents
-
 '------------------------------------------------------------------------------
 ' log
 '------------------------------------------------------------------------------
@@ -131,13 +135,10 @@ Public Function Rdv3Ping() As Double
     Rdv3Ping = Timer
 End Function
 
-' build-time compile probe: touches every module (and the class) so a compile
-' error anywhere fails the BUILD, not the first user launch
+' build-time compile probe: touches every module so a compile error anywhere
+' fails the BUILD, not the first user launch
 Public Function Rdv3BuildTouch() As String
-    Dim ev As clsRdv3AppEvents
     Dim s As String
-    Set ev = New clsRdv3AppEvents
-    Set ev = Nothing
     s = Rdv3ChRoot()
     s = s & "|" & Rdv3HostBeId()
     s = s & "|" & Rdv3UiInputKey()
@@ -179,11 +180,6 @@ Public Sub Rdv3AppStart()
     m_watchOn = True
     If m_readOnly Then
         Rdv3UiError "読み取り専用で開かれています (既に開いていませんか)。更新の承認と処理済み登録はできません"
-    End If
-
-    If m_events Is Nothing Then
-        Set m_events = New clsRdv3AppEvents
-        Set m_events.App = Application
     End If
 
     m_state = ST_CHECKING
@@ -259,10 +255,18 @@ End Function
 ' letting the armed tick fire into a state that refuses to reschedule, and a
 ' close hands itself off to that tick (Rdv3AppPrepareClose / Rdv3FinishClose).
 
-' Watchdog (FE-local events only): if the chain ended without a schedule --
-' a tick error before its reschedule -- re-arm it. armed=True always means a
-' real schedule exists (ticks clear the flag on entry), so re-arming is only
-' ever done from the unarmed state; that keeps the chain strictly single.
+' Watchdog: if the chain ended without a schedule -- a tick error before its
+' reschedule -- re-arm it. armed=True always means a real schedule exists
+' (ticks clear the flag on entry), so re-arming is only ever done from the
+' unarmed state; that keeps the chain strictly single.
+'
+' The trigger is THIS workbook's own SheetChange / SheetActivate, handled in
+' ThisWorkbook and dispatched straight here (there used to be a WithEvents
+' class listening to Application-level events and filtering them down to this
+' book; the workbook's own events are already that filter). It is NOT a
+' result-notification path: BE results arrive only through the file channel,
+' pulled by the pump. Duplicate ticks are harmless -- every channel record
+' dedups by version.
 Public Sub Rdv3PumpEnsureArmed()
     If m_inTick Then Exit Sub
     If Not m_started Then Exit Sub
@@ -895,10 +899,6 @@ Public Function Rdv3AppPrepareClose() As Boolean
     m_state = ST_DEAD          ' a tick that still fires does nothing and ends the chain
     If Not m_closePrepared Then
         m_closePrepared = True
-        If Not m_events Is Nothing Then
-            Set m_events.App = Nothing
-            Set m_events = Nothing
-        End If
         If m_started Then StopBeNow
         Rdv3ChReleaseLease
         Rdv3ChDeleteSession m_sid

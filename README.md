@@ -396,7 +396,7 @@ build\summarize2.ps1           ログから中央値・最小・最大
 src\app\csharp\Rdv3*.cs        C# 実用版 (worker スレッド + xlsx 台帳 + WinForms)
 src\app\cmd\boot-app.ps1       .cmd のブートストラップ
 src\app\vba\modRdv3*.bas       VBA 実用版 v2 (小 FE + 別プロセス BE + ファイルチャネル +
-src\app\vba\clsRdv3AppEvents.cls                台帳ブック/sidecar は BE 専有)
+                               台帳ブック/sidecar は BE 専有)
 
 build\pack_app.ps1             src\app\csharp → dist\app-csharp\ReaderDataViewer.cmd
 build\build_workbook_app.ps1   src\app\vba → 小 FE xlsm + 台帳ブック + sidecar (worker book 埋込み)

@@ -650,8 +650,12 @@ Private Function WriteStateFileAtomic(ByVal path As String, ByRef txt As String,
     End If
     Close #f
     f = 0
-    If Len(Dir$(path)) > 0 Then Kill path
-    Name tmp As path
+    ' same replace rule as the channel: park the live sidecar by rename, never
+    ' delete it before the new one is in place (modRdv3Chan.Rdv3ChReplaceFile)
+    If Not Rdv3ChReplaceFile(tmp, path) Then
+        errMsg = "sidecar replace failed (err " & CStr(Rdv3ChLastReplaceErr()) & ")"
+        Exit Function
+    End If
     WriteStateFileAtomic = True
     Exit Function
 Fail:
@@ -1334,7 +1338,11 @@ Private Sub Publish(ByVal kind As String, ByVal meta As String, ByVal values As 
         If Rdv3ChPublish(g_sid, kind, g_ver, meta, values) Then Exit Sub
         Rdv3WaitMs 40
     Next tries
-    BeLog "publish skipped (file busy) kind=" & kind
+    ' nothing was lost -- the live aggregate and the pending tmp are both still
+    ' there (Rdv3ChReplaceFile) -- but this record did not reach the FE, so say
+    ' so with the reason rather than dropping it silently
+    BeLog "publish skipped kind=" & kind & " after 6 tries, last replace err=" & _
+        CStr(Rdv3ChLastReplaceErr())
 End Sub
 
 Private Sub PublishState(ByVal st As String, ByVal extra As String)

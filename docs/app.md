@@ -183,9 +183,9 @@ v2 での変更はロジックなし・計測の明示のみ (`startup boot_to_r
 | `modRdv3Host.bas` | FE 側の BE 所有: 埋込 worker book の展開、`CreateObject` による BE 起動と bootstrap 呼出し、リース probe による死活、stop (flag → BE の self-Quit を待つ。kill 経路は無い) |
 | `modRdv3App.bas` | FE 本体: 短い boot、OnTime pump、dispatch、描画呼出し、ログ (台帳への書込・Save は存在しない) |
 | `modRdv3Ui.bas` / `modRdv3Uia.bas` / `modRdv3Engine.bas` / `modRdv3Spec.bas` | 描画 / UIA 検知 / マージエンジン / 定数 (v2 由来) |
-| `clsRdv3AppEvents.cls` | FE ローカルイベント → pump 再アーム watchdog (BE 通知には使わない) |
+| `ThisWorkbook` / UI シートのイベント | 自ブックの SheetChange・SheetActivate → pump 再アーム watchdog、Hyperlink クリック → dispatch。入口だけを持ち、処理は `.bas` 側 (BE 通知には使わない) |
 
-FE ブックのモジュールは Spec/Chan/Host/Ui/App + class の 5+1 のみ。Engine/Be/Uia は
+FE ブックのモジュールは Spec/Chan/Host/Ui/App の 5 本のみ (クラスモジュールは無い)。Engine/Be/Uia は
 worker book (META に base64 埋込、実行時に `%TEMP%\rdv3\` へ session 固有名で展開) だけが持つ。
 
 要点:
@@ -536,24 +536,47 @@ cold (launch 1) 込み・失敗 run も TSV に FAIL 行で記録** (最終走�
   `worker spawn ok ... spawn_ms=`) が最初の pump tick に乗る。ただし壁時計は上表のとおり
   変わっていない — 除去前も同じ時間を cscript が使っていて、FE が待っていた。
 
-### 実行中に見つかった既存不具合: publish された RESULT がまれに描画されない
+### 取りこぼしていた置換の修正: publish された RESULT がまれに描画されない
 
-3 回の 7 launch で BE が serve した検索は各 39 件。FE が描画したのは
-**除去前 37 / 除去後 (中間) 39 / 除去後 (最終) 37** で、**除去前から同じ率で 2 件落ちている**
-(今回の変更で入ったものではない)。最終 run ではその 1 件がベンチの検査対象キーに当たり、
-`search_00021001` が FAIL 1 件として TSV に記録された (ベンチは全 run 記録なので消えていない)。
-落ちた側の BE ログには `search ... serve_ms=` があり、FE ログには対応する `search` 行が無く、
-`publish skipped` も `result skipped` も出ていない。
+**症状** — 3 回の 7 launch で BE が serve した検索は各 39 件。FE が描画したのは
+**Win32 除去前 37 / 除去後 (中間) 39 / 除去後 (最終) 37** で、**除去前から同じ率で 2 件
+落ちていた** (Win32/Shell 除去で入ったものではない)。最終 run ではその 1 件がベンチの
+検査対象キーに当たり、`search_00021001` が FAIL 1 件として TSV に記録されている
+(ベンチは全 run 記録なので消していない)。落ちた側の BE ログには `search ... serve_ms=` が
+あり、FE ログには対応する `search` 行が無く、`publish skipped` も `result skipped` も
+出ていなかった — つまり**どこにも報告されずに消えていた**。
 
-コードを読む限りの機序は `modRdv3Chan.AtomicReplace` にある: `Kill` が成功した直後に
-`Name` が失敗すると、**その時点で aggregate ファイルが消え、まだ FE が読んでいない他種別の
-レコードごと道連れになる** (関数は False を返し、呼び出し側は「今の 1 件」だけを書き直す)。
-`Kill` が失敗する側 (FE が読んでいる最中) は retry で救われるが、この順の失敗は救われない。
-直すなら「tmp → 別名へ Name → 旧をKill」ではなく、**失敗時に旧 aggregate を復元できる形**
-(`Name path As path & ".bak"` → `Name tmp As path` → 成功時に bak を Kill) にするのが素直。
-今回の作業範囲 (Win32/Shell 除去と build.bat) の外なので**直していない**。別件として残す。
+**機序** — 旧 `modRdv3Chan.AtomicReplace` は `Kill dest` → `Name tmp As dest` の順だった。
+`Kill` が成功した直後に `Name` が失敗すると、その時点で aggregate ファイルが消え、
+**まだ FE が読んでいない他種別のレコードごと道連れ**になる。しかも失敗経路は tmp まで
+`Kill` していたので、**新しいレコードも同時に失われた**。関数は False を返すだけで、
+呼び出し側は「今の 1 件」を書き直すため、消えた RESULT は二度と現れない。
+`Kill` が失敗する側 (FE が読んでいる最中) は retry で救われるが、この順の失敗は救えない。
 
-### 実テストの通過状況 (v2、scratch コピー上、自起動プロセスのみ使用)
+**修正** — `Rdv3ChReplaceFile` に置き換え、**既存ファイルを消してから改名する経路を廃止**した:
+
+```
+path -> path.bak   live を「消さずに退避」(失敗しても何も動いていない)
+tmp  -> path       失敗したら bak を即座に戻す
+Kill path.bak      新しい版が live になってから初めて捨てる
+```
+
+どの失敗でも **live と tmp の両方がディスクに残り** False を返すので、呼び出し側はそのまま
+再試行できる。2 つの Name の間でプロセスが落ちた場合は live が `.bak` に退避されたまま
+残るが、**次に書く側が復元する** (`HealParked`。aggregate は他種別を引き継ぐために publish の
+読み込み前にも復元する)。失敗は握りつぶさず `Rdv3ChLastReplaceErr()` に残り、BE が 6 回の
+retry で諦めたときの `publish skipped kind=... last replace err=` に出る。
+sidecar の書換 (`modRdv3Be.WriteStateFileAtomic`) も同じ関数を通すようにした。
+
+**確認** — 実モジュール (`modRdv3Spec` + `modRdv3Chan`) を読み込んだ VBA で 24 チェック全通過:
+成功経路 (live 置換・tmp 消費・`.bak` を残さない) / live が無い初回書込 /
+**置換失敗時**(live を deny-all で開いた状態: False を返す・エラー番号 55 を報告・live の内容は
+`OLD` のまま・tmp は `NEW` のまま・孤児 `.bak` なし) / 障害解消後の再試行で成功 /
+クラッシュ窓 (live 不在・`.bak` あり) からの復元 / **aggregate 単位** (STATE 公開 → ロック下の
+RESULT publish が False → その後も aggregate に STATE が残っている → 再試行で STATE と RESULT の
+両方が揃う) / 退避されたままの aggregate を次の publish が復元して 3 種別とも揃う。
+
+### 実テストの通過状況 (v2、scratch コピー上、自起動プロセスのみ使用)### 実テストの通過状況 (v2、scratch コピー上、自起動プロセスのみ使用)
 
 - C#: **50 チェック全通過** (v2 計測コード込みで再実行) — 更新なし / 単一検索 (30 項目照合) /
   複数候補 + 実マウス選択 / 処理済み確認ダイアログ + 永続化 / クリア / 再起動後の保持 /
