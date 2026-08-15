@@ -57,11 +57,26 @@ public abstract class Rdv3Dialog : Form
     private readonly Dictionary<string, Rectangle> rc = new Dictionary<string, Rectangle>();
     private readonly List<string> clip = new List<string>();
 
+    // The dialog carries its OWN chrome, so it has no system frame.
+    //
+    // The reference is a modal inside a browser page: no title bar exists, so
+    // the card draws its own header -- title, subtitle and the dismiss mark.
+    // Put that on a FixedDialog and Windows adds a second title with a second
+    // close button on top of it, which is what shipped and was wrong. The
+    // header IS the title bar: one title, one close, and the card is dragged
+    // by the header the way a title bar drags a window.
+    private bool dragging;
+    private Point dragFrom;
+
+    // the part of the client area that behaves like a title bar (set by the
+    // dialog once it knows its own layout)
+    protected Rectangle DragZone = Rectangle.Empty;
+
     protected Rdv3Dialog()
     {
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer
             | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
-        FormBorderStyle = FormBorderStyle.FixedDialog;
+        FormBorderStyle = FormBorderStyle.None;
         MaximizeBox = false;
         MinimizeBox = false;
         ShowInTaskbar = false;
@@ -71,15 +86,53 @@ public abstract class Rdv3Dialog : Form
         KeyPreview = true;
     }
 
+    // CS_DROPSHADOW: the reference's "0 12px 32px rgba(43,43,45,.22)", drawn by
+    // the window manager. A managed class style, not an API call.
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ClassStyle |= 0x00020000;
+            return cp;
+        }
+    }
+
+    protected override void OnMouseDown(MouseEventArgs e)
+    {
+        if (e.Button == MouseButtons.Left && DragZone.Contains(e.Location))
+        {
+            dragging = true;
+            dragFrom = e.Location;
+        }
+        base.OnMouseDown(e);
+    }
+
+    protected override void OnMouseMove(MouseEventArgs e)
+    {
+        if (dragging)
+        {
+            Location = new Point(Location.X + e.X - dragFrom.X, Location.Y + e.Y - dragFrom.Y);
+        }
+        base.OnMouseMove(e);
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        dragging = false;
+        base.OnMouseUp(e);
+    }
+
     // The design is a fixed shape. If the screen's scaling would push it past
     // the work area the WHOLE dialog is scaled down instead: proportions and
-    // reading order survive, only the type gets smaller.
+    // reading order survive, only the type gets smaller. There is no system
+    // frame to allow for -- the client area is the whole window.
     protected static float FitScale(double cssW, double cssH)
     {
         float sc = Rdv3Skin.Scale;
         Rectangle wa = Screen.PrimaryScreen.WorkingArea;
-        double mw = Math.Max(360.0, wa.Width - 40.0);
-        double mh = Math.Max(280.0, wa.Height - 64.0);
+        double mw = Math.Max(360.0, wa.Width - 24.0);
+        double mh = Math.Max(280.0, wa.Height - 24.0);
         if (cssW * sc > mw) { sc = (float)(mw / cssW); }
         if (cssH * sc > mh) { sc = (float)(mh / cssH); }
         if (sc > Rdv3Skin.Scale) { sc = Rdv3Skin.Scale; }
@@ -917,6 +970,10 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
             sb.Y + (sb.Height - fi) / 2, fi, fi));
         Rdv3SetGeom.R fn = Rdv3SetGeom.FootNote;
         Put("foot.note", fn.X, fn.Y, Rdv3SetGeom.FootSave.X - 20.4 - fn.X, fn.H);
+
+        // the header is this window's title bar, so it drags it (the close
+        // button is a child control and takes its own clicks)
+        DragZone = At("head");
     }
 
     private string MetaText()
@@ -1646,6 +1703,9 @@ public sealed class Rdv3PickerForm : Rdv3Dialog
         Rectangle ur = At("pk.use"), cr = At("pk.close");
         btnUse.SetBounds(ur.X, ur.Y, ur.Width, ur.Height);
         btnClose.SetBounds(cr.X, cr.Y, cr.Width, cr.Height);
+        // the panel sits over the application being inspected, so it has to be
+        // movable: everything above the rule drags it
+        DragZone = new Rectangle(0, 0, ClientSize.Width, At("pk.rule").Y);
     }
 
     private double Wid(string s, Font f)
