@@ -209,4 +209,25 @@ public static class Rdv3Text
     public const string ColElement = "要素";
     public const string LblPatterns = "取得可能";
     public const string LblProcessOf = "プロセス";
+
+    // ---- the settings modal, rebuilt to the ver4 reference ------------------
+    // Section headings carry the question they answer, so a heading is worth
+    // reading: "ウィンドウ" alone says nothing the fields below do not.
+    public const string SetSubtitle = "監視対象や動作の設定を変更します";
+    public const string SetMetaSchema = " ・ SCHEMA ";
+    public const string SecTargetList = "対象リスト";
+    public const string SecWindowLong = "ウィンドウ — どの画面か";
+    public const string SecFieldLong = "欄 — どの入力欄を読むか";
+    public const string SecKeyLong = "番号 — 何を検索キーとするか";
+    public const string SecWatchLong = "監視 — 読み取りのタイミング";
+    public const string SecFilesLong = "ファイル — 場所の指定";
+    public const string NoteKeyForm = "この形式に一致した入力だけを番号として確定し、検索します。";
+    public const string NoteWatchTiming = "確定待ちの間、値が変化しなければ検索を実行します。対象を見失ったときは再接続間隔ごとに探し直します。";
+    public const string NoteFilesBase = "相対パスはプログラムと同じフォルダーが基準です。ファイルの変更は次回の起動から有効になります。";
+    public const string HintPick = "対象の欄にカーソルを合わせて Ctrl + Shift で取り込み。Esc で中止します。";
+    public const string LblStepNone = "なし — ウィンドウ直下から探索します";
+    public const string LblValuePattern = "ValuePattern 必須";
+    public const string LblDisabled = "無効";
+    public const string TagTopMost = "最前面";
+    public const string NoteNoTargetShort = "監視対象がありません";
 }

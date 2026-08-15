@@ -158,6 +158,22 @@ internal static class Rdv3Skin
             semiIsBold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
     }
 
+    // The settings modal is a fixed-proportion design that scales itself down
+    // when the work area cannot hold it, so it asks for its sizes at ITS scale
+    // rather than the screen's. Everything else keeps using the global one.
+    public static int P(double cssPx, float sc) { return (int)Math.Round(cssPx * sc); }
+
+    public static Font F(double cssPx, FontStyle st, float sc)
+    {
+        return new Font(family, (float)(cssPx * sc), st, GraphicsUnit.Pixel);
+    }
+
+    public static Font S(double cssPx, float sc)
+    {
+        return new Font(semiFamily, (float)(cssPx * sc),
+            semiIsBold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
+    }
+
     // color-mix(in srgb, var(--color-text) N%, transparent) laid over the page
     public static Color Mix(double f) { return Mix(Bg, f); }
 
@@ -457,6 +473,18 @@ internal static class Rdv3Skin
         }
     }
 
+    // the modal's dismiss mark
+    public static void IconClose(Graphics g, Rectangle r, Color c)
+    {
+        using (Pen p = new Pen(c, Math.Max(1f, 1.4f * Scale)))
+        {
+            p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
+            int m = Math.Max(1, r.Width / 4);
+            g.DrawLine(p, r.X + m, r.Y + m, r.Right - m, r.Bottom - m);
+            g.DrawLine(p, r.Right - m, r.Y + m, r.X + m, r.Bottom - m);
+        }
+    }
+
     public static void IconPerson(Graphics g, Rectangle r, Color c)
     {
         using (Pen p = new Pen(c, Math.Max(1f, 1.4f * Scale)))
@@ -485,7 +513,15 @@ internal static class Rdv3Skin
 public sealed class Rdv3Btn : Button
 {
     public bool Primary;
-    public int Icon;                 // 0 none, 1 search, 2 check, 3 refresh
+    public int Icon;                 // 0 none, 1 search, 2 check, 3 refresh, 4 gear, 5 close
+    // a link-weight action: no border, no fill, accent ink. The reference uses
+    // it for the modal's close mark and for "delete this path step" -- actions
+    // that must be reachable but must not compete with the real buttons.
+    public bool Ghost;
+    // the settings modal scales itself down when the work area cannot hold the
+    // design (Rdv3SettingsForm.FitScale), so its buttons cannot take the global
+    // scale for their icon. 0 means "use the global one".
+    public float Sc;
     private bool over, down;
 
     public Rdv3Btn()
@@ -507,7 +543,7 @@ public sealed class Rdv3Btn : Button
     protected override void OnPaint(PaintEventArgs e)
     {
         Graphics g = e.Graphics;
-        using (SolidBrush b = new SolidBrush(Rdv3Skin.Bg)) { g.FillRectangle(b, ClientRectangle); }
+        using (SolidBrush b = new SolidBrush(BackColor)) { g.FillRectangle(b, ClientRectangle); }
         if (Enabled) { Render(g, 0, 0); return; }
         // disabled is opacity .45 over the page, so the whole face is composited
         using (Bitmap bmp = new Bitmap(Math.Max(1, Width), Math.Max(1, Height)))
@@ -515,7 +551,7 @@ public sealed class Rdv3Btn : Button
             using (Graphics gb = Graphics.FromImage(bmp))
             {
                 gb.SmoothingMode = SmoothingMode.AntiAlias;
-                using (SolidBrush b = new SolidBrush(Rdv3Skin.Bg)) { gb.FillRectangle(b, 0, 0, Width, Height); }
+                using (SolidBrush b = new SolidBrush(BackColor)) { gb.FillRectangle(b, 0, 0, Width, Height); }
                 Render(gb, 0, 0);
             }
             using (ImageAttributes ia = new ImageAttributes())
@@ -539,6 +575,12 @@ public sealed class Rdv3Btn : Button
             ink = Rdv3Skin.Bg;
             edge = Rdv3Skin.Accent;
         }
+        else if (Ghost)
+        {
+            back = down ? Rdv3Skin.Mix(BackColor, 0.14) : (over ? Rdv3Skin.Mix(BackColor, 0.07) : BackColor);
+            ink = down ? Rdv3Skin.Accent800 : Rdv3Skin.Accent;
+            edge = Color.Empty;
+        }
         else
         {
             back = down ? Rdv3Skin.Mix(0.14) : (over ? Rdv3Skin.Mix(0.07) : Rdv3Skin.Bg);
@@ -546,12 +588,14 @@ public sealed class Rdv3Btn : Button
             edge = Rdv3Skin.Divider;
         }
         using (SolidBrush b = new SolidBrush(back)) { g.FillRectangle(b, r); }
-        Rdv3Skin.Frame(g, edge, r);
+        if (edge != Color.Empty) { Rdv3Skin.Frame(g, edge, r); }
 
-        int sz = Rdv3Skin.P(14), gap = Rdv3Skin.P(6);
+        float sc = (Sc > 0f) ? Sc : Rdv3Skin.Scale;
+        int sz = (int)Math.Round(14.0 * sc), gap = (int)Math.Round(6.0 * sc);
         int tw = Rdv3Skin.Measure(Text, Font).Width;
         int th = Rdv3Skin.Measure(Text, Font).Height;
-        int all = (Icon > 0) ? (sz + gap + tw) : tw;
+        // an icon-only button (the modal's close mark) centres the icon alone
+        int all = (Icon > 0) ? (sz + ((tw > 0) ? (gap + tw) : 0)) : tw;
         int x = r.X + (r.Width - all) / 2;
         if (Icon > 0)
         {
@@ -559,6 +603,7 @@ public sealed class Rdv3Btn : Button
             if (Icon == 1) { Rdv3Skin.IconSearch(g, ir, ink); }
             else if (Icon == 2) { Rdv3Skin.IconCheck(g, ir, ink); }
             else if (Icon == 4) { Rdv3Skin.IconGear(g, ir, ink); }
+            else if (Icon == 5) { Rdv3Skin.IconClose(g, ir, ink); }
             else { Rdv3Skin.IconRefresh(g, ir, ink); }
             x += sz + gap;
         }

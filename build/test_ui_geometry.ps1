@@ -45,7 +45,7 @@ if ($Quick) { $Scales = @(1.0); $Sizes = @('1240x689'); $States = @('multi', 'pi
 
 # ---- the product, compiled exactly as the packer compiles it ---------------
 $sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs', 'Rdv3Jobs.cs',
-             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3Json.cs', 'Rdv3Config.cs',
+             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3SetGeom.cs', 'Rdv3Json.cs', 'Rdv3Config.cs',
              'Rdv3Uia.cs', 'Rdv3Ui.cs', 'Rdv3Settings.cs', 'Rdv3App.cs')
 $usings = New-Object System.Collections.Specialized.OrderedDictionary
 $bodies = New-Object System.Text.StringBuilder
