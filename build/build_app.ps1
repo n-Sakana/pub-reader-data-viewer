@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # build_app.ps1 -- the two practical distribution roots, from sources.
 #
 #   dist\app-csharp\ReaderDataViewer.cmd            self-contained
@@ -49,6 +49,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv'))) {
 Head 'preflight: ps1 encoding'
 foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_workbook_app.ps1', 'build\bench_app.ps1',
                   'build\bench_save.ps1', 'build\bench_e2e.ps1', 'build\test_exit_guard.ps1',
+                  'build\test_ui_geometry.ps1',
                   'src\app\cmd\boot-app.ps1')) {
   $p = Join-Path $Root $ps
   if (-not (Test-Path -LiteralPath $p)) { continue }
