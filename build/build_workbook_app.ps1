@@ -39,7 +39,7 @@ function Step([string] $m) {
 }
 
 $modules = @('modRdv3Spec', 'modRdv3Chan', 'modRdv3Host', 'modRdv3Ui', 'modRdv3App')
-$workerModules = @('modRdv3Spec', 'modRdv3Chan', 'modRdv3Uia', 'modRdv3Engine', 'modRdv3Be')
+$workerModules = @('modRdv3Spec', 'modRdv3Chan', 'modRdv3Uia', 'modRdv3Engine', 'modRdv3Zip', 'modRdv3Save', 'modRdv3Be')
 $allModules = @($workerModules + $modules | Select-Object -Unique)
 $src = Join-Path $Root 'src\app\vba'
 $destRoot = Join-Path $Root 'dist\app-vba'
@@ -331,6 +331,15 @@ try {
   [void]$wbW.VBProject.References.AddFromGuid('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
   $wbW.Save()
   Step ('  worker compile probe: ' + $xl.Run("'" + $wbW.Name + "'!modRdv3Be.Rdv3BeIsActive"))
+  # the save methods carry their own arithmetic (CRC-32, its one-byte update,
+  # and the deflate tables); the build checks them against the published values
+  $self = $xl.Run("'" + $wbW.Name + "'!modRdv3Save.Rdv3SaveSelfTest")
+  Step ('  save self-test: ' + $self)
+  if ($self -notmatch 'crc\(123456789\)=CBF43926') { throw "CRC-32 self-test failed: $self" }
+  if ($self -notmatch 'delta_ok=True') { throw "CRC-32 one-byte update self-test failed: $self" }
+  if ($self -notmatch 'rev\(1,3\)=4' -or $self -notmatch 'lencode\(258\)=28' -or $self -notmatch 'distcode\(32768\)=29') {
+    throw "deflate tables/bit order do not match RFC 1951: $self"
+  }
 
   # seed the initial ledger workbook + sidecar THROUGH THE WORKER's own code
   # path (Rdv3BeBuildInitial = engine merge + WriteLedgerBookAll + sidecar)
@@ -419,13 +428,21 @@ Private Sub Workbook_Open()
 End Sub
 
 ' UI cell writes are cosmetic and every ledger change was saved when it was
-' made, so nothing real is lost by closing without a save prompt. When a due
-' pump tick cannot be canceled the close is deferred by about a second
-' (Cancel = True) and Rdv3FinishClose closes the book once the tick fired --
-' otherwise the tick would fire against a closed book and Excel would reopen
-' it behind a security prompt.
+' made, so nothing real is lost by closing without a save prompt. Two things
+' can still hold a close back, and they are checked in this order:
+'   1. a "processed" save whose outcome is not decided yet -- the close is
+'      REFUSED (nothing is torn down) and the operator is told why; it is
+'      allowed again as soon as the save is confirmed or failed.
+'   2. a due pump tick that cannot be canceled -- the close is DEFERRED by
+'      about a second (Cancel = True) and Rdv3FinishClose closes the book once
+'      the tick fired; otherwise the tick would fire against a closed book and
+'      Excel would reopen it behind a security prompt.
 Private Sub Workbook_BeforeClose(Cancel As Boolean)
     On Error Resume Next
+    If modRdv3App.Rdv3AppCloseHeldBySave() Then
+        Cancel = True
+        Exit Sub
+    End If
     If modRdv3App.Rdv3AppPrepareClose() Then
         Me.Saved = True
     Else

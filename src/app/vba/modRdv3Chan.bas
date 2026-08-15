@@ -38,6 +38,17 @@ Attribute VB_Name = "modRdv3Chan"
 '
 ' Aggregate record, one line per kind (tab separated):
 '   r <TAB> kind <TAB> version <TAB> meta(k=v;...) <TAB> rows <TAB> cols <TAB> cells...
+'
+' One line PER KIND means the kind is the delivery slot, and kinds fall into
+' two classes:
+'   latest-wins   STATE / CHECK / READY / APPLY / BEERR / RESULT -- only the
+'                 newest record carries meaning (a heartbeat, the newest search
+'                 answer). Losing an older one costs nothing.
+'   must-deliver  MARK -- the confirmation that ONE processed record reached
+'                 the disk. It gets its own slot precisely so a search answer
+'                 cannot take its place, and it is rewritten only by the next
+'                 save request, which the exit guard will not allow until this
+'                 one has been consumed.
 ' Cells are encoded S<text> / N<number> / E (empty), tabs stripped from text.
 ' The session id comes from a timestamp, never from Application.hWnd (which
 ' can change between startup and later calls).
@@ -52,6 +63,17 @@ Public Const RDV3_K_RESULT As String = "RESULT"
 Public Const RDV3_K_STATE As String = "STATE"
 Public Const RDV3_K_APPLY As String = "APPLY"
 Public Const RDV3_K_BEERR As String = "BEERR"
+' A "processed" save is confirmed in its OWN slot, never in RESULT. The
+' aggregate keeps one record per kind, so two records of the SAME kind
+' published between two FE ticks lose the older one -- which is right for a
+' search (only the newest answer is wanted) and wrong for a save confirmation
+' (measured: a search issued 200 ms into a save replaced res=marked 441 ms
+' later, the screen never saw the save, and the exit guard then held the book
+' for its full 180 s ceiling and called a SUCCESSFUL save undecided;
+' work\race-evidence-before\). MARK is only ever rewritten by the NEXT save
+' request, and the exit guard refuses one until the FE has taken this one, so
+' an unread confirmation cannot be overwritten.
+Public Const RDV3_K_MARK As String = "MARK"
 
 Public Const RDV3_RQ_DECISION As String = "decision"
 Public Const RDV3_RQ_SEARCH As String = "search"

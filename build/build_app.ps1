@@ -47,7 +47,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv'))) {
 # .ps1 files of the practical build that contain non-ASCII must carry a UTF-8
 # BOM (Windows PowerShell 5.1 reads BOM-less files in the ANSI code page).
 Head 'preflight: ps1 encoding'
-foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_workbook_app.ps1', 'build\bench_app.ps1', 'src\app\cmd\boot-app.ps1')) {
+foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_workbook_app.ps1', 'build\bench_app.ps1',
+                  'build\bench_save.ps1', 'build\bench_e2e.ps1', 'build\test_exit_guard.ps1',
+                  'src\app\cmd\boot-app.ps1')) {
   $p = Join-Path $Root $ps
   if (-not (Test-Path -LiteralPath $p)) { continue }
   $bytes = [IO.File]::ReadAllBytes($p)

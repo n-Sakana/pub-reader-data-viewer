@@ -26,7 +26,11 @@ Attribute VB_Name = "modRdv3Be"
 '   CHECK   merge stages + comparison outcome        -> FE decides via MsgBox
 '   APPLY   carry stats + ledger write/save figures  -> FE logs them
 '   READY   active rows + note                       -> FE enables operations
-'   RESULT  search/pick render block or mark confirm -> FE renders
+'   RESULT  search / pick render block                -> FE renders
+'   MARK    "that one record is on disk" (or failed) -> FE releases the guard.
+'           Its own slot, and it carries req=<version of the request it
+'           answers>, so a search answered a moment later can neither replace
+'           it nor be mistaken for it.
 '   STATE   watch binding / heartbeat                -> FE status line
 '   BEERR   a failure, explicitly                    -> FE error line
 '
@@ -69,6 +73,7 @@ Private m_savedLoadMs As Double
 Private m_stateSrc As String                       ' "sidecar" / "book" / ""
 Private m_marks As Long                            ' persisted mark counter
 Private m_lb As Object                             ' the ledger workbook, open lazily (RW)
+Private m_saveMethod As Long                       ' how a mark reaches the file
 
 ' request bookkeeping (latest processed version per kind)
 Private m_qDecision As Long
@@ -154,6 +159,10 @@ Public Sub Rdv3BeBootstrap(ByVal sid As String, ByVal dataDir As String, _
     g_ledgerPath = ledgerPath
     g_sidecarPath = Rdv3SidecarPath(ledgerPath)
     g_logPath = logPath
+    ' how a "processed" mark reaches the file. book unless a "<ledger>.savemethod"
+    ' file next to the ledger names another one -- and no distribution ships
+    ' that file, so what ships is unchanged (modRdv3Save).
+    m_saveMethod = Rdv3SaveMethodFromFile(ledgerPath)
     g_active = True
     g_state = "CHECKING"
     g_ver = 0
@@ -178,7 +187,8 @@ Public Sub Rdv3BeBootstrap(ByVal sid As String, ByVal dataDir As String, _
         Exit Sub
     End If
 
-    BeLog "bootstrap sid=" & sid & " be=" & Rdv3SelfId() & " data=" & dataDir & " ledger=" & ledgerPath
+    BeLog "bootstrap sid=" & sid & " be=" & Rdv3SelfId() & " data=" & dataDir & _
+        " ledger=" & ledgerPath & " savemethod=" & Rdv3SaveMethodName(m_saveMethod)
     Application.OnTime Now, "'" & ThisWorkbook.Name & "'!Rdv3BeMain"
     Exit Sub
 Failed:
@@ -1039,7 +1049,9 @@ Private Sub PollRequests()
             m_qMark = ver
             parts = Split(args, "|")
             If UBound(parts) >= 2 And g_state = "READY" Then
-                DoMark CLng(Val(parts(0))), (CStr(parts(1)) = "1"), CStr(parts(2))
+                ' the request's own version travels with the answer, so the FE
+                ' can tell THIS confirmation from any other
+                DoMark CLng(Val(parts(0))), (CStr(parts(1)) = "1"), CStr(parts(2)), ver
             End If
         End If
     End If
@@ -1122,7 +1134,12 @@ End Sub
 ' "processed": the BE persists it -- workbook cell, workbook save, sidecar --
 ' and only then confirms. On any failure the memory flag is reverted and the
 ' FE gets an explicit markerr: state never degrades silently.
-Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As String)
+'
+' The confirmation goes out on RDV3_K_MARK, its own channel slot, and carries
+' req=<the version of the request it answers>: a search answered a moment later
+' can no longer take its place, and the FE can tell which request it belongs to.
+Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As String, _
+                   ByVal reqVer As Long)
     Dim errMsg As String
     Dim scErr As String
     Dim oldVal As Boolean
@@ -1134,8 +1151,8 @@ Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As Stri
     Dim oldMarks As Long
 
     If row < 0 Or row >= m_rows Then
-        Publish RDV3_K_RESULT, "res=markerr;row=" & CStr(row) & ";t0=" & t0s & _
-            ";msg=" & Replace("行が不正です", ";", ","), Empty
+        Publish RDV3_K_MARK, "res=markerr;row=" & CStr(row) & ";req=" & CStr(reqVer) & _
+            ";t0=" & t0s & ";msg=" & Replace("行が不正です", ";", ","), Empty
         Exit Sub
     End If
     k2 = LineField(m_lines(row), 1)
@@ -1144,16 +1161,38 @@ Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As Stri
     m_proc(row) = newVal
 
     On Error GoTo Fail
-    If Not EnsureLedgerBook(errMsg) Then GoTo FailMsg
-    Set ws = m_lb.Worksheets(RDV3_LB_SHEET)
-    Set mt = m_lb.Worksheets(RDV3_LB_META)
-    ws.Cells(2 + row, 1).Value2 = newVal
-    m_marks = m_marks + 1
-    mt.Range(RDV3_LM_MARKS).Value2 = m_marks
-    mt.Range(RDV3_LM_SAVED).Value2 = Format$(Now, "yyyy-mm-dd hh:nn:ss")
-    t = Rdv3Ticks()
-    m_lb.Save
-    saveMs = Rdv3MsSince(t)
+    If m_saveMethod = RDV3_SAVE_BOOK Then
+        If Not EnsureLedgerBook(errMsg) Then GoTo FailMsg
+        Set ws = m_lb.Worksheets(RDV3_LB_SHEET)
+        Set mt = m_lb.Worksheets(RDV3_LB_META)
+        ws.Cells(2 + row, 1).Value2 = newVal
+        m_marks = m_marks + 1
+        mt.Range(RDV3_LM_MARKS).Value2 = m_marks
+        mt.Range(RDV3_LM_SAVED).Value2 = Format$(Now, "yyyy-mm-dd hh:nn:ss")
+        t = Rdv3Ticks()
+        m_lb.Save
+        saveMs = Rdv3MsSince(t)
+    Else
+        ' the comparison methods work on the CLOSED file, so the workbook this
+        ' process may be holding open has to be let go first
+        If Not m_lb Is Nothing Then
+            m_lb.Close False
+            Set m_lb = Nothing
+            Rdv3SaveReset
+        End If
+        t = Rdv3Ticks()
+        If m_saveMethod = RDV3_SAVE_ADO Then
+            If Not Rdv3SaveOneAdo(g_ledgerPath, 2 + row, newVal, errMsg) Then GoTo FailMsg
+        Else
+            If Not Rdv3SaveOneZip(g_ledgerPath, 2 + row, m_rows, newVal, errMsg) Then GoTo FailMsg
+        End If
+        saveMs = Rdv3MsSince(t)
+        ' the counter still moves and still reaches the sidecar, which is where
+        ' the next boot reads it; the ledger's META copy is only refreshed by
+        ' the book method, so on these two it can lag until the next full write
+        m_marks = m_marks + 1
+        BeLog "mark via " & Rdv3SaveMethodName(m_saveMethod) & " " & Rdv3SaveLastNote()
+    End If
 
     If Not SidecarWrite(scErr) Then
         ' the saved workbook is the authority; a stale sidecar only costs the
@@ -1161,9 +1200,9 @@ Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As Stri
         BeLog "sidecar write FAILED after mark: " & scErr
     End If
 
-    Publish RDV3_K_RESULT, "res=marked;row=" & CStr(row) & ";k2=" & k2 & _
+    Publish RDV3_K_MARK, "res=marked;row=" & CStr(row) & ";k2=" & k2 & _
         ";proc=" & IIf(newVal, "1", "0") & ";save_ms=" & Format$(saveMs, "0.00") & _
-        ";t0=" & t0s, Empty
+        ";req=" & CStr(reqVer) & ";t0=" & t0s, Empty
     BeLog "mark row=" & row & " k2=" & k2 & " value=" & IIf(newVal, "TRUE", "FALSE") & _
         " save_ms=" & Format$(saveMs, "0.0")
     Exit Sub
@@ -1173,8 +1212,8 @@ FailMsg:
     On Error Resume Next
     m_proc(row) = oldVal
     m_marks = oldMarks
-    Publish RDV3_K_RESULT, "res=markerr;row=" & CStr(row) & ";k2=" & k2 & _
-        ";t0=" & t0s & ";msg=" & Replace(errMsg, ";", ","), Empty
+    Publish RDV3_K_MARK, "res=markerr;row=" & CStr(row) & ";k2=" & k2 & _
+        ";req=" & CStr(reqVer) & ";t0=" & t0s & ";msg=" & Replace(errMsg, ";", ","), Empty
     BeLog "mark FAILED row=" & row & ": " & errMsg
 End Sub
 

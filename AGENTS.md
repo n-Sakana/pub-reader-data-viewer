@@ -25,6 +25,8 @@ Entry-point notes. For details see [README.md](README.md).
 - `docs/results.md` — the 1:1 measurements and everything that had to be discovered
 - `docs/results2.md` — the one-to-many measurements: what an index costs, and the traps
 - `docs/app.md` — the practical build: ledger model, FE/BE architecture, measurements
+- `docs/save-methods.md` — the three ways the VBA build can persist ONE processed record
+  (the shipped one, ADO, and a pure-VBA ZIP + deflate rewrite), measured against each other
 
 Two frozen comparisons and one practical build live here, with separate sources,
 distributables and measurements:
@@ -94,12 +96,56 @@ powershell -ExecutionPolicy Bypass -File build\run_bench2.ps1 -Method vdict -Rep
 powershell -ExecutionPolicy Bypass -File build\build_app.ps1
 powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method csharp -Launches 7
 powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method vba    -Launches 7
+
+powershell -ExecutionPolicy Bypass -File build\bench_save.ps1                  # the 3 save methods (micro)
+powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1                   # the 3 save methods (real path)
+powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1 -Build csharp     # the C# build, same two jobs
+powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1 -Mode race        # search vs save confirmation
+powershell -ExecutionPolicy Bypass -File build\test_exit_guard.ps1             # the exit guard, both builds
 ```
+
+`bench_save.ps1` calls the save functions directly (a microbenchmark); `bench_e2e.ps1`
+drives the real distributable through its own screen and times the two jobs a person
+actually waits for, from outside, by watching the FE/BE file channel. The two are not
+interchangeable and their numbers are not comparable — see `docs/save-methods.md`.
+
+The practical build persists ONE processed record per operation and never batches. While
+that one save is unresolved, both builds refuse a second mark AND refuse to close, saying
+why; the close is allowed again once the save is decided (saved or failed). Do not turn
+that into a queue, a flush-on-exit, or a longer exit protocol — it guards the single save
+that is already running (`docs/app.md`, "未確定の 1 件保存を黙って落とさない終了保護").
+
+The VBA build carries three ways to write that record (`src/app/vba/modRdv3Save.bas`):
+the shipped one (the BE's open workbook + `Workbook.Save`), ADO/ACE against the closed
+file, and a pure-VBA edit of ONE BYTE of the original sheet XML (`modRdv3Zip`: deflate
+decoder, block re-emitter, bit splice, CRC-32 with a GF(2) one-byte update). **What ships
+is unchanged**: the BE uses the first unless a `<ledger>.savemethod` file sits next to the
+ledger, and no distribution contains that file. Measured in `docs/save-methods.md`: only
+the third one leaves every other byte of the package alone.
 
 ## Guardrails
 
 - Never touch an Excel instance or process this code did not start. No `GetActiveObject`,
   no running-object-table lookups — bind from a window handle only.
+- A ledger written by anything other than Excel is not proven by a checksum. `xl/worksheets`
+  can be byte-consistent, CRC-correct and well-formed and still be a file Excel refuses to
+  open (measured: `docs/save-methods.md`). Prove a writer by REOPENING what it produced —
+  every part inflated by an independent inflater, and every row compared in Excel.
+- Changing one byte of a deflated part is not one byte of the stream. Later data is encoded
+  as matches that COPY the changed byte (measured: one edit moved 58,033 rows), and a stored
+  block further on breaks if the bit alignment shifts. Any edit of a compressed part must
+  re-emit every block that can reach back to it and resume on a byte boundary.
+- The FE/BE channel keeps ONE record per KIND, so the kind IS the delivery slot. That is
+  right for state (a heartbeat, the newest search answer — losing an older one costs
+  nothing) and wrong for anything that must be delivered: a save confirmation therefore has
+  its own kind (`MARK`) and names the request it answers. Measured before the split: a
+  search issued 200 ms into a save replaced `res=marked` 441 ms later, the screen never saw
+  the save, and the exit guard held the book for its full 180 s ceiling and then called a
+  SUCCESSFUL save undecided (`work\race-evidence-before\`). Anything new that must arrive
+  gets its own kind — never a second record of an existing one.
+- An invisible automation Excel shows a VBA COMPILE ERROR as a modal nobody can see:
+  `Application.Run` never returns and the process sits at 0% CPU. Module-level declarations
+  after a procedure are the usual cause. The builders check for it; so should any harness.
 - Never start, close or kill Notepad. The app attaches to a window that is already there
   and only reads from it.
 - Do not commit generated artifacts: `data\` (241 MB), `dist\` (the four distributables),

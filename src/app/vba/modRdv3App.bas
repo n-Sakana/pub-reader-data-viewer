@@ -52,6 +52,13 @@ Private Const ST_DEAD As Long = 5
 Private Const PHASE_TIMEOUT_S As Double = 300#
 Private Const PUMP_GRACE_S As Long = 5
 
+' How long a single "processed" save may stay undecided before the FE calls it
+' a failure. The BE persists one record per request (cell + Save + sidecar) and
+' the worst measured case is the first mark of a session, which also opens the
+' ledger workbook: ~21 s. This ceiling only exists so a BE that died mid-save
+' cannot leave the workbook permanently unclosable.
+Private Const MARK_TIMEOUT_S As Double = 180#
+
 Private m_started As Boolean
 Private m_state As Long
 Private m_sid As String
@@ -67,6 +74,7 @@ Private m_spawnDone As Boolean            ' the first tick has started the BE
 Private m_verCheck As Long
 Private m_verReady As Long
 Private m_verResult As Long
+Private m_verMark As Long
 Private m_verState As Long
 Private m_verApply As Long
 Private m_verErr As Long
@@ -101,6 +109,27 @@ Private m_procSeq As Long
 Private m_lastWatchSt As String
 Private m_closePrepared As Boolean
 Private m_closePending As Boolean
+
+' ---- the exit guard around one unfinished "processed" save ------------------
+' The BE persists a mark the moment it is requested -- one record, its own
+' workbook Save, its own sidecar write -- and answers on the MARK slot (marked
+' or markerr), naming the request it answers. Its OWN slot is what makes that
+' answer undroppable: a search answered in the same second lands in RESULT and
+' cannot take its place (measured before the split: a confirmation was
+' overwritten 441 ms later, the screen never saw it, and this guard then held
+' the book for its full 180 s ceiling and called a SUCCESSFUL save undecided --
+' work\race-evidence-before\).
+' Between the request and that answer the outcome is not known, and
+' closing the book in that window would tear the session down (stop flag,
+' session files) without the operator ever learning whether the record was
+' saved. So in that window the FE refuses a second mark AND refuses the close,
+' both with the reason on screen. Nothing is queued or held back: this guards
+' the single save that is already running on disk.
+Private m_markPending As Boolean
+Private m_markSince As Double
+Private m_markKey2 As String
+Private m_markReqVer As Long              ' the request this FE is waiting on
+Private m_closeAskedWhileSaving As Boolean
 Private m_bootT0 As Double                ' boot instant, for startup_ms
 Private m_startupLogged As Boolean
 
@@ -338,6 +367,7 @@ Private Function TickBody() As Boolean
             If Not worked Then CheckBeHealth
         Case ST_READY
             If DispatchChannel() Then worked = True
+            If m_markPending Then CheckMarkPending
     End Select
     TickBody = worked
 End Function
@@ -425,6 +455,15 @@ Private Function DispatchChannel() As Boolean
                 If CLng(rec(1)) > m_verResult Then
                     m_verResult = CLng(rec(1))
                     HandleResult CStr(rec(2)), rec(3)
+                    worked = True
+                End If
+            ' the save confirmation has its own slot and its own counter, so a
+            ' search answered in the same second neither replaces it nor delays
+            ' it: both are read in this one pass and both are rendered
+            Case RDV3_K_MARK
+                If CLng(rec(1)) > m_verMark Then
+                    m_verMark = CLng(rec(1))
+                    HandleMark CStr(rec(2))
                     worked = True
                 End If
             Case RDV3_K_STATE
@@ -594,7 +633,8 @@ Private Sub HandleState(ByVal metaString As String)
             m_watchOn = True
             Rdv3UiWatchButton True
             Rdv3UiNotepad CStr(d("title")) & "  (hwnd " & CStr(d("hwnd")) & ")"
-            If m_state = ST_READY Then Rdv3UiState "監視中"
+            ' a heartbeat must not paint over "処理済みを保存中"
+            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "監視中"
             If m_lastWatchSt <> "bound" Then
                 AppLog "-", "watch", "bound hwnd=" & CStr(d("hwnd")) & " title=" & CStr(d("title"))
             End If
@@ -602,14 +642,14 @@ Private Sub HandleState(ByVal metaString As String)
             m_watchOn = True
             Rdv3UiWatchButton True
             Rdv3UiNotepad "未接続 -- " & CStr(d("why"))
-            If m_state = ST_READY Then Rdv3UiState "メモ帳を待機中"
+            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "メモ帳を待機中"
             If m_lastWatchSt <> "waiting" Then
                 AppLog "-", "watch", "waiting why=" & CStr(d("why"))
             End If
         Case "watch_off"
             m_watchOn = False
             Rdv3UiWatchButton False
-            If m_state = ST_READY Then Rdv3UiState "停止中 (監視再開で戻ります)"
+            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "停止中 (監視再開で戻ります)"
             If m_lastWatchSt <> "watch_off" Then AppLog "-", "watch", "off"
     End Select
     If st = "bound" Or st = "waiting" Or st = "watch_off" Then m_lastWatchSt = st
@@ -640,12 +680,6 @@ Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
 
     If m_state <> ST_READY Then
         AppLog "-", "search", "result skipped (state=" & CStr(m_state) & ") res=" & res
-        Exit Sub
-    End If
-
-    ' mark confirmations carry their own P-tag; everything else is a search
-    If res = "marked" Or res = "markerr" Then
-        HandleMarkResult res, d
         Exit Sub
     End If
 
@@ -729,8 +763,33 @@ Empty_:
     SafeCell = ""
 End Function
 
-' the "processed" confirmation from the BE: it has updated the ledger
-' workbook, SAVED it and rewritten the sidecar -- or explicitly failed
+' The "processed" confirmation from the BE, on its own channel slot: the BE has
+' updated the ledger workbook, SAVED it and rewritten the sidecar -- or
+' explicitly failed. It carries req=<version of the request it answers>, and
+' only the request this FE is actually waiting on is accepted: anything else
+' is a stale or foreign record and is logged and dropped, never acted on.
+Private Sub HandleMark(ByVal metaString As String)
+    Dim d As Object
+    Dim res As String
+    Dim reqVer As Long
+
+    Set d = Rdv3ChMeta(metaString)
+    res = CStr(d("res"))
+    reqVer = CLng(Val(CStr(d("req"))))
+
+    If Not m_markPending Then
+        AppLog "-", "processed", "confirmation ignored (no save is pending) res=" & res & _
+            " req=" & CStr(reqVer)
+        Exit Sub
+    End If
+    If reqVer <> m_markReqVer Then
+        AppLog "-", "processed", "confirmation ignored (answers request " & CStr(reqVer) & _
+            ", waiting for " & CStr(m_markReqVer) & ") res=" & res
+        Exit Sub
+    End If
+    HandleMarkResult res, d
+End Sub
+
 Private Sub HandleMarkResult(ByVal res As String, ByVal d As Object)
     Dim tag As String
     Dim e2e As Double
@@ -745,14 +804,76 @@ Private Sub HandleMarkResult(ByVal res As String, ByVal d As Object)
         AppLog tag, "processed", "key2=" & CStr(d("k2")) & " row=" & (CLng(Val(CStr(d("row")))) + 1) & _
             " value=" & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE") & _
             " save_ms=" & CStr(d("save_ms")) & " e2e_ms=" & FmtF(e2e)
+        EndMarkSave tag, True, ""
     Else
         If CLng(Val(CStr(d("row")))) = m_shownRow Then
             ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: FALSE"
         End If
         Rdv3UiError "処理済みを保存できませんでした: " & CStr(d("msg"))
         AppLog tag, "error", "stage=processed msg=" & CStr(d("msg"))
+        EndMarkSave tag, False, CStr(d("msg"))
     End If
 End Sub
+
+' The save is decided -- saved or failed, either is a decision -- so the next
+' mark and the close are released again.
+Private Sub EndMarkSave(ByVal tag As String, ByVal ok As Boolean, ByVal why As String)
+    If Not m_markPending Then Exit Sub
+    m_markPending = False
+    m_markKey2 = ""
+    If m_state = ST_READY Then
+        Rdv3UiState IIf(m_watchOn, "監視中", "停止中 (監視再開で戻ります)")
+    End If
+    AppLog tag, "exit", "processed save decided (" & IIf(ok, "saved", "failed") & _
+        IIf(Len(why) > 0, ": " & why, "") & "); exit released"
+    If m_closeAskedWhileSaving Then
+        m_closeAskedWhileSaving = False
+        If ok Then
+            Rdv3UiError "処理済みの保存が完了しました。終了できます"
+        Else
+            Rdv3UiError "処理済みの保存は失敗として確定しました。終了できます"
+        End If
+    End If
+End Sub
+
+' While a mark is undecided the FE refuses to close, so it must be able to
+' decide the mark itself when the BE can no longer answer: a dead BE or a save
+' that overran the ceiling is reported as a FAILED save (explicitly, on screen
+' and in the log), never as a silent success and never as a permanent hold.
+Private Sub CheckMarkPending()
+    Dim el As Double
+    If Not m_markPending Then Exit Sub
+    el = Timer - m_markSince
+    If el < 0 Then el = el + 86400
+    If Rdv3HostStarted() Then
+        If Not Rdv3HostBeAlive() Then
+            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: 不明 (保存未確定)"
+            Rdv3UiError "処理済みの保存を確認できませんでした: worker プロセスが終了しました。台帳を開いて確認してください"
+            AppLog "-", "error", "stage=processed msg=BE died while the save was undecided key2=" & m_markKey2
+            EndMarkSave "-", False, "worker died"
+            Exit Sub
+        End If
+    End If
+    If el > MARK_TIMEOUT_S Then
+        ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: 不明 (保存未確定)"
+        Rdv3UiError "処理済みの保存が " & Format$(el, "0") & " 秒たっても確定しません。台帳を開いて確認してください"
+        AppLog "-", "timeout", "stage=processed after_s=" & FmtF(el) & " key2=" & m_markKey2
+        EndMarkSave "-", False, "timeout"
+    End If
+End Sub
+
+' Called from Workbook_BeforeClose BEFORE anything is torn down. True = refuse
+' this close; the operator has just been told why.
+Public Function Rdv3AppCloseHeldBySave() As Boolean
+    If Not m_markPending Then Exit Function
+    m_closeAskedWhileSaving = True
+    Rdv3UiError "処理済みを保存中です。確定するまで終了できません"
+    AppLog "-", "exit", "close refused: a processed save is still in flight (key2=" & m_markKey2 & ")"
+    Rdv3AppCloseHeldBySave = True
+    MsgBox "処理済みの保存がまだ確定していません。" & vbCrLf & _
+           "保存が成功または失敗として確定してから、もう一度閉じてください。", _
+           vbOKOnly + vbInformation, "保存中のため終了できません"
+End Function
 
 '------------------------------------------------------------------------------
 ' click dispatch (short: validate, write a request file, arm fast ticks)
@@ -822,12 +943,19 @@ Private Sub DoClear()
 End Sub
 
 ' "processed": the FE only sends the request. The BE updates and saves the
-' ledger workbook and the sidecar, then confirms through RESULT (marked /
+' ledger workbook and the sidecar, then confirms on the MARK slot (marked /
 ' markerr); until then the screen honestly says the save is in flight.
 Private Sub DoProcessed()
     Dim t0 As Double
     If m_state <> ST_READY Then
         Rdv3UiError "更新確認が終わるまで操作できません"
+        Exit Sub
+    End If
+    ' one save at a time: a second mark while the first is undecided would ask
+    ' the BE to rewrite the same workbook from under its own save
+    If m_markPending Then
+        Rdv3UiError "処理済みを保存中です。確定するまで次の操作はできません"
+        AppLog "-", "processed", "refused: a processed save is still in flight (key2=" & m_markKey2 & ")"
         Exit Sub
     End If
     If m_shownRow < 0 Then
@@ -847,9 +975,19 @@ Private Sub DoProcessed()
     Rdv3UiError ""
     t0 = Rdv3Ticks()
     ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: TRUE (保存中...)"
+    ' the save is now running in the BE and its outcome is undecided: hold the
+    ' exit and the next mark until MARK marked / markerr says which it was
+    m_markPending = True
+    m_markSince = Timer
+    m_markKey2 = m_shownKey2
+    m_closeAskedWhileSaving = False
+    Rdv3UiState "処理済みを保存中"
     SendReq RDV3_RQ_MARK, CStr(m_shownRow) & "|1|" & Trim$(Str$(CDbl(t0)))
+    ' the version SendReq just used: the confirmation must name it
+    m_markReqVer = m_reqVer
     m_fastFollow = 6
-    AppLog "-", "processed", "dispatched key2=" & m_shownKey2 & " row=" & CStr(m_shownRow + 1)
+    AppLog "-", "processed", "dispatched key2=" & m_shownKey2 & " row=" & CStr(m_shownRow + 1) & _
+        " req=" & CStr(m_markReqVer) & " (exit held until it is decided)"
 End Sub
 
 Private Sub DoWatchToggle()

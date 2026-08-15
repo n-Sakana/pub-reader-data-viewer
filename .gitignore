@@ -25,3 +25,6 @@ work/
 
 # Excel の一時ファイル
 ~$*
+
+# MCP ツールの一時出力
+.playwright-mcp/
