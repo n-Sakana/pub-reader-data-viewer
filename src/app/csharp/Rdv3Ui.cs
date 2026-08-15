@@ -67,6 +67,9 @@ internal static class Rdv3Skin
     // labels and box captions use it instead of N600: at 11-12 px the lighter
     // tone was legible on a browser's rendering and not on this one.
     public static readonly Color N700 = Color.FromArgb(0x5D, 0x5D, 0x60);
+    // input validation, said quietly: a brick red that sits in the same
+    // muted family as the rest of the palette rather than a signal red
+    public static readonly Color Danger = Color.FromArgb(0xB0, 0x4A, 0x3E);
     public static readonly Color N800 = Color.FromArgb(0x42, 0x42, 0x44);
 
     public static float Scale = 1f;
@@ -434,6 +437,26 @@ internal static class Rdv3Skin
         }
     }
 
+    public static void IconGear(Graphics g, Rectangle r, Color c)
+    {
+        float cx = r.X + r.Width / 2f, cy = r.Y + r.Height / 2f;
+        float rad = Math.Min(r.Width, r.Height) / 2f;
+        float ring = rad * 0.56f;
+        using (Pen pen = new Pen(c, Math.Max(1f, rad * 0.20f)))
+        {
+            pen.StartCap = LineCap.Round;
+            pen.EndCap = LineCap.Round;
+            g.DrawEllipse(pen, cx - ring, cy - ring, ring * 2f, ring * 2f);
+            for (int i = 0; i < 8; i++)
+            {
+                double a = Math.PI * i / 4.0;
+                float dx = (float)Math.Cos(a), dy = (float)Math.Sin(a);
+                g.DrawLine(pen, cx + dx * (ring + rad * 0.10f), cy + dy * (ring + rad * 0.10f),
+                    cx + dx * rad, cy + dy * rad);
+            }
+        }
+    }
+
     public static void IconPerson(Graphics g, Rectangle r, Color c)
     {
         using (Pen p = new Pen(c, Math.Max(1f, 1.4f * Scale)))
@@ -535,6 +558,7 @@ internal sealed class Rdv3Btn : Button
             Rectangle ir = new Rectangle(x, r.Y + (r.Height - sz) / 2, sz, sz);
             if (Icon == 1) { Rdv3Skin.IconSearch(g, ir, ink); }
             else if (Icon == 2) { Rdv3Skin.IconCheck(g, ir, ink); }
+            else if (Icon == 4) { Rdv3Skin.IconGear(g, ir, ink); }
             else { Rdv3Skin.IconRefresh(g, ir, ink); }
             x += sz + gap;
         }
@@ -877,6 +901,7 @@ public sealed class Rdv3Form : Form
     private readonly Rdv3Btn btnClear = new Rdv3Btn();
     private readonly Rdv3Btn btnProcessed = new Rdv3Btn();
     private readonly Rdv3Btn btnRebind = new Rdv3Btn();
+    private readonly Rdv3Btn btnSettings = new Rdv3Btn();
     private readonly Rdv3CandTable table = new Rdv3CandTable();
     private readonly TextBox txtMemo = new TextBox();
     private readonly TextBox txtRemark = new TextBox();
@@ -887,6 +912,7 @@ public sealed class Rdv3Form : Form
     public Action OnClear;
     public Action OnProcessed;
     public Action OnRebind;
+    public Action OnSettings;
     public Action<int> OnPick;
 
     // screen state
@@ -899,10 +925,19 @@ public sealed class Rdv3Form : Form
     private string sSaved = "";
     private string sState = Rdv3Text.StateBoot;
     private string sNotepad = Rdv3Text.NotepadNone;
+    // which target the status line names, and the input label with the key
+    // length filled in: both come from the settings file
+    private string sWatchLabel = Rdv3Text.LabelNotepad;
+    private string sKeyLabel = Rdv3Text.LabelSearchBox.Replace("{n}",
+        Rdv3Spec.KeyLen.ToString(CultureInfo.InvariantCulture));
     private string sLedger = "";
     private string sMerge = Rdv3Text.NotYet;
     private string sSearch = Rdv3Text.NotYet;
     private string sError = "";
+    // a bad key is answered under the input box, not in the error row at the
+    // bottom: it belongs to the thing the operator just typed, and moving the
+    // rest of the screen for it would be worse than the mistake
+    private string sInputError = "";
     private string sVerdict = "";
     private string sCandTag = "";
     private string sPid = "";
@@ -949,6 +984,10 @@ public sealed class Rdv3Form : Form
         txtKey.Font = Rdv3Skin.F(14, FontStyle.Regular);
         txtKey.BackColor = Rdv3Skin.Surface;
         txtKey.ForeColor = Rdv3Skin.Ink;
+        txtKey.TextChanged += delegate
+        {
+            if (sInputError.Length > 0) { sInputError = ""; Layout1(); }
+        };
         txtKey.KeyDown += delegate(object s, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; Fire(OnSearch); }
@@ -959,12 +998,16 @@ public sealed class Rdv3Form : Form
         StyleButton(btnClear, Rdv3Text.BtnClear, false, 0);
         StyleButton(btnProcessed, Rdv3Text.BtnProcessed, false, 2);
         StyleButton(btnRebind, Rdv3Text.BtnRebind, false, 3);
+        StyleButton(btnSettings, Rdv3Text.BtnSettings, false, 4);
         btnRebind.Font = fBtnSm;
+        btnSettings.Font = fBtnSm;
+        btnSettings.Click += delegate { if (OnSettings != null) { OnSettings(); } };
         btnSearch.Click += delegate { Fire(OnSearch); };
         btnClear.Click += delegate { if (OnClear != null) { OnClear(); } };
         btnProcessed.Click += delegate { if (OnProcessed != null) { OnProcessed(); } };
         btnRebind.Click += delegate { if (OnRebind != null) { OnRebind(); } };
-        Controls.Add(btnSearch); Controls.Add(btnClear); Controls.Add(btnProcessed); Controls.Add(btnRebind);
+        Controls.Add(btnSearch); Controls.Add(btnClear); Controls.Add(btnProcessed);
+        Controls.Add(btnRebind); Controls.Add(btnSettings);
 
         table.OnPick = delegate(int i) { if (OnPick != null) { OnPick(i); } };
         Controls.Add(table);
@@ -1234,8 +1277,11 @@ public sealed class Rdv3Form : Form
         double t2 = Math.Max(Rdv3Geom.NavTagLedger.W, TagW(Rdv3Text.TagLedger));
         Put("nav.tagLedger", x, Rdv3Geom.NavTagMethod.Y, t2, Rdv3Geom.NavTagMethod.H);
         Rdv3Geom.R rb = Rdv3Geom.NavBtnRebind;
+        double edge = rb.X + rb.W + exW;
+        double sw = BtnCss(btnSettings, fBtnSm);
+        Put("nav.btnSettings", edge - sw, rb.Y, sw, rb.H);
         double rw = Math.Max(rb.W, BtnCss(btnRebind, fBtnSm));
-        Put("nav.btnRebind", rb.X + rb.W + exW - rw, rb.Y, rw, rb.H);
+        Put("nav.btnRebind", edge - sw - 6.8 - rw, rb.Y, rw, rb.H);
         Put("nav.rule", n.X, n.Y + n.H - 1.0, n.W + exW, 1.0);
     }
 
@@ -1305,12 +1351,14 @@ public sealed class Rdv3Form : Form
         PutFigure("sum.rows", div2 + 14.3, wRows);
 
         Rdv3Geom.R fl = Rdv3Geom.SumFieldLabel;
-        Put("sum.field.label", fieldX, fl.Y, inW, fl.H);
+        Put("sum.field.label", fieldX, fl.Y, Math.Max(inW, MW(sKeyLabel, fSub12)), fl.H);
         Put("sum.input", fieldX, Rdv3Geom.SumInput.Y, inW, Rdv3Geom.SumInput.H);
         double bx = fieldX + inW + 6.8, by = Rdv3Geom.SumBtnSearch.Y, bh = Rdv3Geom.SumBtnSearch.H;
         Put("sum.btnSearch", bx, by, wS, bh); bx += wS + 6.8;
         Put("sum.btnClear", bx, by, wC, bh); bx += wC + 6.8;
         Put("sum.btnProcessed", bx, by, wP, bh);
+
+        Put("sum.field.error", fieldX, 130.0, fieldW, 16.0);
 
         Put("sum.ident.div", idDiv, Rdv3Geom.SumIdentDiv.Y, 1.0, Rdv3Geom.SumIdentDiv.H);
         Put("sum.ident.icon", idX, 93.6, 26.0, 26.0);
@@ -1479,7 +1527,7 @@ public sealed class Rdv3Form : Form
         double x = 0.7 + pad;
         Put("status.dot", x, top + (stH - 7.0) / 2.0, 7.0, 7.0);
         x += 7.0 + 6.0;
-        string[] seg = { sState, Rdv3Text.LabelNotepad + " " + sNotepad,
+        string[] seg = { sState, sWatchLabel + " " + sNotepad,
             Rdv3Text.LabelLedger + " " + sLedger,
             Rdv3Text.LabelMergeMs + " " + sMerge, Rdv3Text.LabelSearchMs + " " + sSearch };
         string[] key = { "status.state", "status.notepad", "status.ledger", "status.merge", "status.search" };
@@ -1544,6 +1592,7 @@ public sealed class Rdv3Form : Form
         btnClear.Bounds = At("sum.btnClear");
         btnProcessed.Bounds = At("sum.btnProcessed");
         btnRebind.Bounds = At("nav.btnRebind");
+        btnSettings.Bounds = At("nav.btnSettings");
         table.Bounds = At("list.scroll");
         int bp = PX(10.2), bq = PX(6.8), hair = Rdv3Skin.Hair();
         Rectangle m = At("rec.memoBox");
@@ -1653,13 +1702,18 @@ public sealed class Rdv3Form : Form
         Div(g, "sum.rows.div");
         Figure(g, "sum.rows", Rdv3Text.LabelLedgerRows, sRows, SavedSub, Rdv3Skin.Ink, true);
 
-        T(g, "sum.field.label", Rdv3Text.LabelSearchBox, fSub12, Rdv3Skin.N700);
+        T(g, "sum.field.label", sKeyLabel, fSub12, Rdv3Skin.N700);
         Rectangle box = At("sum.input");
         using (SolidBrush b = new SolidBrush(Rdv3Skin.Surface)) { g.FillRectangle(b, box); }
         // .input / .input:hover (text 45%) / .input:focus-visible (accent)
         Color edge = txtKey.Focused ? Rdv3Skin.Accent
             : (inputHot ? Rdv3Skin.Mix(Rdv3Skin.Surface, 0.45) : Rdv3Skin.Divider);
         Rdv3Skin.Frame(g, edge, box);
+
+        if (sInputError.Length > 0)
+        {
+            T(g, "sum.field.error", sInputError, fBoxLabel, Rdv3Skin.Danger);
+        }
 
         Div(g, "sum.ident.div");
         Rdv3Skin.IconPerson(g, At("sum.ident.icon"), Rdv3Skin.Accent700);
@@ -1797,7 +1851,7 @@ public sealed class Rdv3Form : Form
         Rectangle dot = At("status.dot");
         Rdv3Skin.Line(g, Rdv3Skin.Accent300, dot.X, dot.Y, dot.Width, dot.Height);
         StatusSeg(g, "status.state", sState, fStatusB, Rdv3Skin.Bg);
-        StatusSeg(g, "status.notepad", Rdv3Text.LabelNotepad + " " + sNotepad, fStatus, Rdv3Skin.Bg);
+        StatusSeg(g, "status.notepad", sWatchLabel + " " + sNotepad, fStatus, Rdv3Skin.Bg);
         StatusSeg(g, "status.ledger", Rdv3Text.LabelLedger + " " + sLedger, fStatus, Rdv3Skin.Bg);
         StatusPair(g, "status.merge", Rdv3Text.LabelMergeMs, sMerge);
         StatusPair(g, "status.search", Rdv3Text.LabelSearchMs, sSearch);
@@ -1948,7 +2002,8 @@ public sealed class Rdv3Form : Form
     private void ApplyFonts()
     {
         txtKey.Font = Rdv3Skin.F(14, FontStyle.Regular);
-        btnSearch.Font = fBtn; btnClear.Font = fBtn; btnProcessed.Font = fBtn; btnRebind.Font = fBtnSm;
+        btnSearch.Font = fBtn; btnClear.Font = fBtn; btnProcessed.Font = fBtn;
+        btnRebind.Font = fBtnSm; btnSettings.Font = fBtnSm;
         txtMemo.Font = fBox; txtRemark.Font = fBox;
         table.MakeFonts();
     }
@@ -2016,6 +2071,28 @@ public sealed class Rdv3Form : Form
         Ui(delegate { sNotepad = detail; RelayoutStatus(); });
     }
 
+    // the watch target's name, from ReaderDataViewer.json
+    public void SetWatchLabel(string label)
+    {
+        Ui(delegate
+        {
+            sWatchLabel = (label == null || label.Length == 0) ? Rdv3Text.LabelNotepad : label;
+            RelayoutStatus();
+        });
+    }
+
+    // the key rule, so the input label and the box agree with the settings
+    public void SetKeyRule(int length)
+    {
+        Ui(delegate
+        {
+            txtKey.MaxLength = length;
+            sKeyLabel = Rdv3Text.LabelSearchBox.Replace("{n}",
+                length.ToString(CultureInfo.InvariantCulture));
+            Layout1();
+        });
+    }
+
     public void SetLedgerInfo(string text)
     {
         Ui(delegate { sLedger = text; RelayoutStatus(); });
@@ -2034,6 +2111,18 @@ public sealed class Rdv3Form : Form
     public void SetSearchMs(double ms)
     {
         Ui(delegate { sSearch = Rdv3Log.F(ms) + Rdv3Text.MsUnit; RelayoutStatus(); });
+    }
+
+    // the answer to a bad key: under the box, in the gap that is already there
+    public void SetInputError(string text)
+    {
+        Ui(delegate
+        {
+            string t = (text == null) ? "" : text;
+            if (t == sInputError) { return; }
+            sInputError = t;
+            Layout1();
+        });
     }
 
     public void SetError(string text)
@@ -2148,6 +2237,7 @@ public sealed class Rdv3Form : Form
         sCandTag = Rdv3Text.CandCount.Replace("{n}", "0");
         sKey2 = "";
         sRecStatus = "";
+        sInputError = "";
         rec = null;
         recProc = false;
         table.SetRows(new List<Rdv3CandRow>(), -1);

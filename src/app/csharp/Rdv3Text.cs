@@ -39,9 +39,14 @@ public static class Rdv3Text
     public const string LabelMergeMs = "マージ時間";
     public const string LabelSearchMs = "検索時間";
     public const string LabelKey = "現在の番号 (番号1)";
-    public const string LabelSearchBox = "番号1（8桁）を入力";
+    public const string LabelSearchBox = "番号1（{n}桁）を入力";
     public const string LabelProcessed = "処理済み";
     public const string NotepadNone = "未接続 — メモ帳を開くと自動で接続します";
+    // {name} is the watch target from the settings file, so the screen says
+    // what is actually being watched rather than always saying "notepad"
+    public const string WatchNoneFmt = "未接続 — {name} を開くと自動で接続します";
+    public const string StateWaitingFmt = "{name} を待機中";
+    public const string LabelWatch = "監視";
     public const string LedgerRows = "{n} 件";
 
     public const string BtnSearch = "検索";
@@ -95,7 +100,8 @@ public static class Rdv3Text
     public const string CloseBlockedBody = "処理済みの保存がまだ確定していません。\r\n保存が成功または失敗として確定してから、もう一度閉じてください。";
     public const string NoteSaveDoneCanClose = "処理済みの保存が完了しました。終了できます";
     public const string NoteSaveFailedCanClose = "処理済みの保存は失敗として確定しました。終了できます";
-    public const string ErrBadKey = "番号1 は 8 桁の数字で入力してください";
+    public const string ErrBadKey = "番号1 は {n} 桁の数字で入力してください";
+    public const string ErrBadKeyAny = "番号1 は {n} 文字で入力してください";
     public const string ErrNoRecordShown = "処理済みにする統合レコードが表示されていません";
 
     // Nothing chosen yet is BLANK: the sub-line already says so, and a row of
@@ -134,4 +140,57 @@ public static class Rdv3Text
     public const string SubOne = "一致 1 件 ・ 番号2 = {key2}";
     public const string SubPicked = "候補 {i}/{n} ・ 番号2 = {key2}";
     public const string SubMulti = "複数ヒット（候補 {n} 件）";
+
+    // ---- 設定モーダル (docs\settings.md) ----------------------------------
+    public const string BtnSettings = "設定";
+    public const string TipSettings = "監視対象や動作の設定を変更します";
+    public const string SettingsTitle = "設定";
+    public const string SecTargets = "監視対象";
+    public const string SecTarget = "対象の指定";
+    public const string SecBehaviour = "動作";
+    public const string SecPaths = "ファイル";
+    public const string BtnAdd = "追加";
+    public const string BtnCopy = "複製";
+    public const string BtnRemove = "削除";
+    public const string BtnInspect = "画面を調べる";
+    public const string BtnSave = "保存";
+    public const string BtnCancel = "取消";
+    public const string BtnClose = "閉じる";
+    public const string BtnRefresh = "再取得";
+    public const string BtnUseElement = "この要素を対象にする";
+    public const string LblName = "名前";
+    public const string LblEnabled = "有効";
+    public const string LblWindow = "ウィンドウ";
+    public const string LblPath = "中間パス";
+    public const string LblField = "欄";
+    public const string LblRead = "値の取り方";
+    public const string LblAutomationId = "AutomationId";
+    public const string LblClassName = "クラス名";
+    public const string LblNameLike = "名前 (* ?)";
+    public const string LblProcess = "プロセス名";
+    public const string LblControlTypes = "種類";
+    public const string LblIndex = "何番目";
+    public const string LblScope = "探索範囲";
+    public const string LblScopeChildren = "直下のみ";
+    public const string LblScopeDesc = "子孫すべて";
+    public const string LblKeyLen = "番号の桁数";
+    public const string LblDigitsOnly = "数字のみ";
+    public const string LblPollMs = "監視間隔 (ms)";
+    public const string LblStableMs = "確定待ち (ms)";
+    public const string LblRebindMs = "再接続間隔 (ms)";
+    public const string LblPreferFocus = "前面のウィンドウを優先";
+    public const string LblCandRows = "候補の表示行数";
+    public const string LblDataDir = "データ (CSV) フォルダー";
+    public const string LblLedger = "統合台帳";
+    public const string LblLog = "ログ";
+    public const string NoteRestart = "ファイルの変更は次回の起動から有効になります";
+    public const string NoteSavedTo = "保存先";
+    public const string NoteInspectHint = "対象の画面を開いてから「再取得」。要素を選んで下のボタンへ。";
+    public const string NoteNoTarget = "監視対象がありません。「追加」か「画面を調べる」で指定してください。";
+    public const string ErrSettingsSave = "設定を保存できませんでした: ";
+    public const string ErrSettingsRead = "設定を読めませんでした (既定値で動作します): ";
+    public const string NoteSettingsApplied = "設定を保存しました";
+    public const string ColElement = "要素";
+    public const string LblPatterns = "取得可能";
+    public const string LblProcessOf = "プロセス";
 }

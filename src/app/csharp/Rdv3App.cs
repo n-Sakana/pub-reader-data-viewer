@@ -86,8 +86,8 @@ public sealed class Rdv3App
     private const int StReady = 3;
     private const int StBlocked = 4;
 
-    private const int CandShowMax = 10;      // candidate rows on screen; more is said, never hidden
-    private const double CheckTimeoutMs = 180000.0;
+    // everything that was a constant here now comes from ReaderDataViewer.json
+    private readonly Rdv3Config cfg;
 
     private readonly Rdv3Form form;
     private readonly Rdv3Worker worker = new Rdv3Worker();
@@ -141,9 +141,10 @@ public sealed class Rdv3App
     private readonly long bootT0 = Rdv3Clock.Now();
     private bool startupLogged;
 
-    public Rdv3App(Rdv3Form f, string data, string ledger, string logPath)
+    public Rdv3App(Rdv3Form f, string data, string ledger, string logPath, Rdv3Config settings)
     {
         form = f;
+        cfg = (settings == null) ? Rdv3Config.Defaults() : settings;
         dataDir = data;
         ledgerPath = ledger;
         pid = System.Diagnostics.Process.GetCurrentProcess().Id;
@@ -158,8 +159,13 @@ public sealed class Rdv3App
         form.OnRebind = delegate { log.Write("-", "watch", "rebind requested"); watch.Rebind(); };
         form.OnPick = PickCandidate;
 
+        watch.Cfg = cfg;
         watch.OnConfirmed = Detected;
         watch.OnState = WatchState;
+        watch.OnLabel = delegate(string name) { form.SetWatchLabel(name); };
+        form.OnSettings = OpenSettings;
+        form.SetWatchLabel(WatchName());
+        form.SetKeyRule(cfg.KeyLength);
 
         // the session block of the reference screen: who is signed in, on what
         // machine, and whether this session may write -- all real, none of it
@@ -180,7 +186,7 @@ public sealed class Rdv3App
             "PID " + pid.ToString(CultureInfo.InvariantCulture),
             System.IO.Path.GetFileName(logPath));
 
-        watchdog.Interval = 1000;
+        watchdog.Interval = cfg.PumpMs;
         watchdog.Tick += delegate(object s, EventArgs e) { CheckOverdue(); };
 
         form.Shown += delegate(object s, EventArgs e)
@@ -207,6 +213,8 @@ public sealed class Rdv3App
 
     public void LogBoot(double compileMs)
     {
+        log.Write("-", "settings", cfg.Describe());
+        for (int i = 0; i < cfg.Notes.Count; i++) { log.Write("-", "settings", cfg.Notes[i]); }
         log.Write("-", "boot", "pid=" + pid.ToString(CultureInfo.InvariantCulture)
             + " method=csharp-dict data=" + dataDir + " ledger=" + ledgerPath
             + " compile_ms=" + Rdv3Log.F(compileMs));
@@ -228,7 +236,7 @@ public sealed class Rdv3App
         Rdv3Job job = new Rdv3Job();
         job.RunId = rid;
         job.Kind = "check";
-        job.TimeoutMs = CheckTimeoutMs;
+        job.TimeoutMs = cfg.CheckTimeoutMs;
         job.Work = delegate { CheckJob(rid); };
         worker.Start();
         worker.Post(job);
@@ -386,7 +394,7 @@ public sealed class Rdv3App
         Rdv3Job job = new Rdv3Job();
         job.RunId = rid;
         job.Kind = "adopt";
-        job.TimeoutMs = CheckTimeoutMs;
+        job.TimeoutMs = cfg.CheckTimeoutMs;
         job.Work = delegate
         {
             long t = Rdv3Clock.Now();
@@ -414,7 +422,7 @@ public sealed class Rdv3App
         Rdv3Job job = new Rdv3Job();
         job.RunId = rid;
         job.Kind = "apply";
-        job.TimeoutMs = CheckTimeoutMs;
+        job.TimeoutMs = cfg.CheckTimeoutMs;
         job.Work = delegate
         {
             long t = Rdv3Clock.Now();
@@ -511,7 +519,8 @@ public sealed class Rdv3App
         mergeResult = null;
         form.HideOverlay();
         form.EnableOps(true);
-        form.SetState(watch.Bound ? Rdv3Text.StateReady : Rdv3Text.StateWaitingNotepad, watch.Bound ? 1 : 2);
+        form.SetState(watch.Bound ? Rdv3Text.StateReady
+            : Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName()), watch.Bound ? 1 : 2);
         // status bar: the file and its size; summary block: the same count and
         // the ledger's own last-write stamp (the reference's "最終更新")
         string rowsText = ledLines.Length.ToString("N0", CultureInfo.InvariantCulture);
@@ -558,7 +567,8 @@ public sealed class Rdv3App
         }
         if (!Rdv3Spec.IsKey(key))
         {
-            form.SetError(Rdv3Text.ErrBadKey);
+            form.SetInputError((cfg.KeyDigitsOnly ? Rdv3Text.ErrBadKey : Rdv3Text.ErrBadKeyAny)
+                .Replace("{n}", cfg.KeyLength.ToString(CultureInfo.InvariantCulture)));
             log.Write("-", "search", "ignored key=" + key + " reason=bad-key");
             return;
         }
@@ -589,7 +599,7 @@ public sealed class Rdv3App
         Rdv3Job job = new Rdv3Job();
         job.RunId = sid;
         job.Kind = "search";
-        job.TimeoutMs = 30000;
+        job.TimeoutMs = cfg.SearchTimeoutMs;
         job.Work = delegate { SearchJob(sid, key, source, t0); };
         worker.Post(job);
     }
@@ -643,7 +653,7 @@ public sealed class Rdv3App
         }
         else
         {
-            int show = (n > CandShowMax) ? CandShowMax : n;
+            int show = (n > cfg.CandidateRowsShown) ? cfg.CandidateRowsShown : n;
             List<Rdv3CandRow> rows = new List<Rdv3CandRow>(show);
             List<int> candRows = new List<int>(show);
             for (int i = 0; i < show; i++)
@@ -734,7 +744,7 @@ public sealed class Rdv3App
         Rdv3Job job = new Rdv3Job();
         job.RunId = pidTag;
         job.Kind = "processed";
-        job.TimeoutMs = 60000;
+        job.TimeoutMs = cfg.SaveTimeoutMs;
         job.Work = delegate
         {
             bool was = ledProcessed[row];
@@ -789,7 +799,8 @@ public sealed class Rdv3App
         form.EnableProcessed(state == StReady);
         if (state == StReady)
         {
-            form.SetState(watch.Bound ? Rdv3Text.StateReady : Rdv3Text.StateWaitingNotepad, watch.Bound ? 1 : 2);
+            form.SetState(watch.Bound ? Rdv3Text.StateReady
+            : Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName()), watch.Bound ? 1 : 2);
         }
         log.Write(tag, "exit", "processed save decided (" + (ok ? "saved" : "failed") + "); exit released");
         if (closeAskedWhileSaving)
@@ -810,6 +821,38 @@ public sealed class Rdv3App
     }
 
     // ---- watch / timeout / shutdown ---------------------------------------
+    // The settings dialog edits a copy; when it comes back, the file is written
+    // and the running session adopts what it can without a restart.
+    private void OpenSettings()
+    {
+        Rdv3Config edited = Rdv3SettingsForm.Edit(form, cfg);
+        if (edited == null) { return; }
+        string err = edited.Save(cfg.SourcePath);
+        if (err != null)
+        {
+            form.SetError(Rdv3Text.ErrSettingsSave + err);
+            log.Write("-", "settings", "save failed: " + err);
+            return;
+        }
+        cfg.AdoptRuntimeFrom(edited);
+        Rdv3Spec.KeyLength = cfg.KeyLength;
+        Rdv3Spec.KeyDigitsOnly = cfg.KeyDigitsOnly;
+        form.SetKeyRule(cfg.KeyLength);
+        form.SetWatchLabel(WatchName());
+        form.SetInputError("");
+        watch.Rebind();
+        log.Write("-", "settings", "saved: " + cfg.Describe());
+        form.SetError(Rdv3Text.NoteSettingsApplied);
+    }
+
+    // what the screen calls the thing being watched
+    private string WatchName()
+    {
+        if (cfg.Targets.Count == 1) { return cfg.Targets[0].Name; }
+        if (cfg.Targets.Count == 0) { return Rdv3Text.LabelNotepad; }
+        return Rdv3Text.LabelWatch;
+    }
+
     private void WatchState(string st, string detail)
     {
         // while a save is in flight the state line says so; the watch line is
@@ -821,8 +864,11 @@ public sealed class Rdv3App
         }
         else if (st == "WAITING")
         {
-            form.SetNotepad(Rdv3Text.NotepadNone);
-            if (state == StReady && !savingMark) { form.SetState(Rdv3Text.StateWaitingNotepad, 2); }
+            form.SetNotepad(Rdv3Text.WatchNoneFmt.Replace("{name}", WatchName()));
+            if (state == StReady && !savingMark)
+            {
+                form.SetState(Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName()), 2);
+            }
         }
     }
 
@@ -916,8 +962,26 @@ public sealed class Rdv3App
 
 public static class Rdv3Program
 {
-    public static int Run(string dataDir, string ledgerPath, string logPath, double compileMs)
+    // the console the .cmd opened is a launcher, not part of the app
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    private static extern IntPtr GetConsoleWindow();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr h, int cmd);
+
+    public static void HideConsole()
     {
+        try
+        {
+            IntPtr h = GetConsoleWindow();
+            if (h != IntPtr.Zero) { ShowWindow(h, 0); }     // SW_HIDE
+        }
+        catch (Exception) { }
+    }
+
+    public static int Run(string dataDir, string ledgerPath, string logPath, string configPath, double compileMs)
+    {
+        HideConsole();
         if (IntPtr.Size != 8)
         {
             MessageBox.Show(Rdv3Text.ErrNo64, Rdv3Text.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
@@ -950,8 +1014,14 @@ public static class Rdv3Program
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
 
+            // the settings come first: the key rule shapes the screen itself
+            Rdv3Config cfg = Rdv3Config.Load(configPath);
+            Rdv3Spec.KeyLength = cfg.KeyLength;
+            Rdv3Spec.KeyDigitsOnly = cfg.KeyDigitsOnly;
+
             Rdv3Form form = new Rdv3Form();
-            Rdv3App app = new Rdv3App(form, dataDir, ledgerPath, logPath);
+            Rdv3App app = new Rdv3App(form, dataDir, ledgerPath, logPath, cfg);
+            if (cfg.Error.Length > 0) { form.SetError(Rdv3Text.ErrSettingsRead + cfg.Error); }
             app.LogBoot(compileMs);
             Application.Run(form);
             return 0;

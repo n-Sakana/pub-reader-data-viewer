@@ -24,7 +24,12 @@ using System.Text;
 
 public static class Rdv3Spec
 {
+    // the built-in default; the running rule comes from ReaderDataViewer.json
+    // (key.length / key.digitsOnly) and is set once at start-up
     public const int KeyLen = 8;
+    public static int KeyLength = KeyLen;
+    public static bool KeyDigitsOnly = true;
+
     public const int Fields = 10;
     public const long Mod = 1000000007L;
 
@@ -44,7 +49,8 @@ public static class Rdv3Spec
 
     public static bool IsKey(string s)
     {
-        if (s == null || s.Length != KeyLen) { return false; }
+        if (s == null || s.Length != KeyLength) { return false; }
+        if (!KeyDigitsOnly) { return true; }
         for (int i = 0; i < s.Length; i++)
         {
             if (s[i] < '0' || s[i] > '9') { return false; }

@@ -1,56 +1,94 @@
 // ============================================================================
-// Rdv3Watch.cs -- reading detection for the practical build. A deliberate copy
-// of src\v2\csharp\Rdv2Watch.cs with the same three rules, renamed so the
-// frozen comparison sources stay untouched (the same convention Rdv2Watch.cs
-// itself followed toward src\csharp\RdvWatch.cs).
+// Rdv3Watch.cs -- reading detection for the practical build, driven entirely by
+// UI Automation and entirely by the settings file.
 //
-//   format+length   exactly 8 digits
-//   quiet time      the value must survive StableMs of polling
-//   no repeat       the same value does not fire twice in a row, unless the
-//                   field went empty in between (a deliberate re-read)
+//   format+length   the key rule from ReaderDataViewer.json (default 8 digits)
+//   quiet time      the value must survive stableMs of polling
+//   no repeat       the same value does not fire twice in a row from the same
+//                   source, unless the field went empty in between
 //
-// The watcher never starts, closes or kills Notepad. It attaches to a window
-// that is already there and only ever reads from it.
+// SEVERAL TARGETS AT ONCE. Every enabled target in the settings file is bound
+// and polled; whichever confirms a key first drives the search. Each source
+// keeps its own pending/last-fired state, so two applications showing the same
+// number are two separate readings, and one going away does not disturb the
+// others. Targets that are not running yet are retried every rebindMs.
+//
+// The watcher never starts, closes or kills anything. It attaches to windows
+// that are already there and only ever reads from them.
 //
 // In the practical build a confirmed number triggers a SEARCH of the current
 // ledger -- not a re-merge. The merge belongs to the startup update check.
+//
+// C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
 // ============================================================================
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
+using System.Text;
 using System.Threading;
 using System.Windows.Automation;
 
 public sealed class Rdv3Watch
 {
-    public int PollMs = 40;
-    public int StableMs = 120;
+    // one bound target: the window, the field inside it, and this source's own
+    // idea of what it has already reported
+    private sealed class Src
+    {
+        public Rdv3Target T;
+        public AutomationElement Win;
+        public AutomationElement Field;
+        public string Title = "";
+        public int Hwnd;
+        public string Pending = "";
+        public long PendingSince;
+        public int PendingPolls;
+        public string LastFired = "";
+        public bool SawEmpty = true;
+    }
 
-    private AutomationElement win;
-    private AutomationElement doc;
-    private ValuePattern val;
-    private int hwnd;
-    private string title = "";
+    public Rdv3Config Cfg = Rdv3Config.Defaults();
 
-    private string pending = "";
-    private long pendingSince;
-    private int pendingPolls;
-    private string lastFired = "";
-    private bool sawEmpty = true;
+    private readonly List<Src> live = new List<Src>();
+    private readonly object gate = new object();
+    private long lastBindTry;
     private volatile bool stop;
     private volatile bool rebindWanted;
     private Thread thread;
+    private string activeName = "";
+    private string activeDetail = "";
 
-    // key, detection latency in ms, poll count, and the confirm timestamp
+    // key, detection latency in ms, poll count, the confirm timestamp
     public Action<string, double, int, long> OnConfirmed;
     public Action<string, string> OnState;      // state, detail
     public Action<string> OnRaw;                // current field text, every poll
+    public Action<string> OnLabel;              // which target the status line names
 
-    public int Hwnd { get { return hwnd; } }
-    public string Title { get { return title; } }
-    public bool Bound { get { return doc != null; } }
+    public int PollMs { get { return Cfg.PollMs; } }
+    public int StableMs { get { return Cfg.StableMs; } }
 
-    // What the reader last delivered: the final non-empty line of the document.
+    public int Hwnd
+    {
+        get { lock (gate) { return (live.Count > 0) ? live[0].Hwnd : 0; } }
+    }
+
+    public string Title
+    {
+        get { lock (gate) { return (live.Count > 0) ? live[0].Title : ""; } }
+    }
+
+    public bool Bound
+    {
+        get { lock (gate) { return live.Count > 0; } }
+    }
+
+    public int BoundCount
+    {
+        get { lock (gate) { return live.Count; } }
+    }
+
+    // What the reader last delivered: the final non-empty line of the field.
     public static string Candidate(string s)
     {
         if (s == null) { return ""; }
@@ -65,63 +103,74 @@ public sealed class Rdv3Watch
     }
 
     // ---- binding -----------------------------------------------------------
-    // Never GetActiveObject-style guesswork: walk the desktop's children, take
-    // Notepad windows only, and prefer the one in the foreground so the user
-    // can choose which window feeds the app just by clicking it.
-    public bool Bind()
+    // window -> optional path steps -> field, each matched on the properties UIA
+    // exposes. Nothing is guessed and nothing is looked up by window handle.
+    private AutomationElement Resolve(Rdv3Target t, AutomationElement win)
     {
-        try
+        AutomationElement at = win;
+        for (int i = 0; i < t.Steps.Count && at != null; i++)
         {
-            AutomationElement root = AutomationElement.RootElement;
-            AutomationElementCollection wins = root.FindAll(TreeScope.Children,
-                new PropertyCondition(AutomationElement.ClassNameProperty, "Notepad"));
-            if (wins.Count == 0) { doc = null; val = null; win = null; return false; }
+            at = Rdv3Uia.FindOne(at, t.Steps[i], t.Steps[i].Descendants);
+        }
+        if (at == null) { return null; }
+        return Rdv3Uia.FindOne(at, t.Field, t.Field.Descendants);
+    }
 
-            IntPtr fg = Rdv3NativeFg.GetForegroundWindow();
+    private bool AlreadyBound(Rdv3Target t)
+    {
+        for (int i = 0; i < live.Count; i++) { if (live[i].T == t) { return true; } }
+        return false;
+    }
+
+    // Bind every enabled target that is not bound yet. Called at most every
+    // rebindMs so a target that is not running costs one search per second,
+    // not one per poll.
+    private bool BindMissing()
+    {
+        bool changed = false;
+        AutomationElement root;
+        try { root = AutomationElement.RootElement; }
+        catch (Exception) { return false; }
+        AutomationElement focused = Cfg.PreferFocusedWindow ? Rdv3Uia.FocusedWindow() : null;
+
+        for (int i = 0; i < Cfg.Targets.Count; i++)
+        {
+            Rdv3Target t = Cfg.Targets[i];
+            if (!t.Enabled) { continue; }
+            lock (gate) { if (AlreadyBound(t)) { continue; } }
+
+            List<AutomationElement> wins = Rdv3Uia.FindAll(root, t.Window, false);
+            if (wins.Count == 0) { continue; }
+
             AutomationElement pick = null;
-            for (int i = 0; i < wins.Count; i++)
+            if (focused != null)
             {
-                if (new IntPtr(wins[i].Current.NativeWindowHandle) == fg) { pick = wins[i]; break; }
+                for (int k = 0; k < wins.Count; k++)
+                {
+                    if (Rdv3Uia.Same(wins[k], focused)) { pick = wins[k]; break; }
+                }
             }
-            if (pick == null) { pick = wins[wins.Count - 1]; }
+            if (pick == null) { pick = wins[Math.Min(t.Window.Index, wins.Count - 1)]; }
 
-            AutomationElement d = FindTextHost(pick);
-            if (d == null) { return false; }
-            ValuePattern vp = (ValuePattern)d.GetCurrentPattern(ValuePattern.Pattern);
+            AutomationElement field = Resolve(t, pick);
+            if (field == null) { continue; }
+            if (!Rdv3Uia.CanRead(field, t.ReadMode)) { continue; }
 
-            win = pick;
-            doc = d;
-            val = vp;
-            hwnd = pick.Current.NativeWindowHandle;
-            title = pick.Current.Name;
-            return true;
+            Src s = new Src();
+            s.T = t;
+            s.Win = pick;
+            s.Field = field;
+            try { s.Title = pick.Current.Name; s.Hwnd = pick.Current.NativeWindowHandle; }
+            catch (Exception) { s.Title = ""; }
+            lock (gate) { live.Add(s); }
+            changed = true;
         }
-        catch (Exception)
-        {
-            doc = null; val = null; win = null;
-            return false;
-        }
+        return changed;
     }
 
-    // Windows 11 Notepad is a RichEditD2DPT Document; the classic one is an
-    // Edit. Both expose ValuePattern, so ask for the pattern, not the class.
-    private static AutomationElement FindTextHost(AutomationElement w)
+    private void Drop(Src s)
     {
-        AutomationElement d = w.FindFirst(TreeScope.Descendants,
-            new AndCondition(
-                new PropertyCondition(AutomationElement.IsValuePatternAvailableProperty, true),
-                new OrCondition(
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Document),
-                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Edit))));
-        return d;
-    }
-
-    public string ReadField()
-    {
-        if (val == null) { return null; }
-        try { return val.Current.Value; }
-        catch (ElementNotAvailableException) { doc = null; val = null; return null; }
-        catch (Exception) { return null; }
+        lock (gate) { live.Remove(s); }
     }
 
     // ---- the loop ----------------------------------------------------------
@@ -155,67 +204,136 @@ public sealed class Rdv3Watch
             if (rebindWanted)
             {
                 rebindWanted = false;
-                doc = null; val = null; win = null;
-                lastFired = ""; pending = ""; sawEmpty = true;
-            }
-            if (doc == null)
-            {
-                if (!Bind())
-                {
-                    if (!saidWaiting) { Fire2("WAITING", ""); saidWaiting = true; }
-                    Thread.Sleep(400);
-                    continue;
-                }
+                lock (gate) { live.Clear(); }
+                lastBindTry = 0;
+                activeDetail = "";
                 saidWaiting = false;
-                Fire2("WATCHING", title + "  (hwnd " + hwnd.ToString(System.Globalization.CultureInfo.InvariantCulture) + ")");
-                pending = ""; pendingPolls = 0;
             }
 
-            string raw = ReadField();
-            if (raw == null) { Thread.Sleep(PollMs); continue; }
-
-            string cand = Candidate(raw);
-            if (OnRaw != null) { OnRaw(cand); }
-
-            if (cand.Length == 0)
+            bool haveAll;
+            lock (gate) { haveAll = (live.Count >= EnabledCount()); }
+            if (!haveAll && (lastBindTry == 0 || Rdv3Clock.MsSince(lastBindTry) >= Cfg.RebindMs))
             {
-                sawEmpty = true;
-                pending = "";
-                pendingPolls = 0;
+                lastBindTry = Rdv3Clock.Now();
+                if (BindMissing()) { Announce(); saidWaiting = false; }
             }
-            else if (cand != pending)
+
+            Src[] now;
+            lock (gate) { now = live.ToArray(); }
+            if (now.Length == 0)
             {
-                pending = cand;
-                pendingSince = Stopwatch.GetTimestamp();
-                pendingPolls = 1;
+                if (!saidWaiting) { Fire2("WAITING", ""); saidWaiting = true; }
+                Thread.Sleep(Math.Min(Cfg.RebindMs, 400));
+                continue;
             }
-            else
+
+            // the focused window's source is looked at first, so that when two
+            // applications hold a value the one the operator is using wins
+            if (Cfg.PreferFocusedWindow && now.Length > 1)
             {
-                pendingPolls++;
-                double held = Rdv3Clock.MsSince(pendingSince);
-                if (held >= StableMs && Rdv3Spec.IsKey(cand) && (cand != lastFired || sawEmpty))
+                AutomationElement f = Rdv3Uia.FocusedWindow();
+                if (f != null)
                 {
-                    lastFired = cand;
-                    sawEmpty = false;
-                    long confirmAt = Stopwatch.GetTimestamp();
-                    if (OnConfirmed != null)
+                    for (int i = 0; i < now.Length; i++)
                     {
-                        OnConfirmed(cand, Rdv3Clock.MsBetween(pendingSince, confirmAt), pendingPolls, confirmAt);
+                        if (Rdv3Uia.Same(now[i].Win, f))
+                        {
+                            Src tmp = now[0]; now[0] = now[i]; now[i] = tmp;
+                            break;
+                        }
                     }
                 }
             }
-            Thread.Sleep(PollMs);
+
+            bool lost = false;
+            for (int i = 0; i < now.Length; i++)
+            {
+                Src s = now[i];
+                string raw;
+                try { raw = Rdv3Uia.ReadValueOf(s.Field, s.T.ReadMode); }
+                catch (ElementNotAvailableException) { Drop(s); lost = true; continue; }
+                if (raw == null) { Drop(s); lost = true; continue; }
+
+                string cand = Candidate(raw);
+                if (i == 0 && OnRaw != null) { OnRaw(cand); }
+
+                if (cand.Length == 0)
+                {
+                    s.SawEmpty = true;
+                    s.Pending = "";
+                    s.PendingPolls = 0;
+                    continue;
+                }
+                if (cand != s.Pending)
+                {
+                    s.Pending = cand;
+                    s.PendingSince = Rdv3Clock.Now();
+                    s.PendingPolls = 1;
+                    continue;
+                }
+                s.PendingPolls++;
+                double held = Rdv3Clock.MsSince(s.PendingSince);
+                if (held >= Cfg.StableMs && Rdv3Spec.IsKey(cand) && (cand != s.LastFired || s.SawEmpty))
+                {
+                    s.LastFired = cand;
+                    s.SawEmpty = false;
+                    activeName = s.T.Name;
+                    activeDetail = Detail(s);
+                    Announce();
+                    long confirmAt = Rdv3Clock.Now();
+                    if (OnConfirmed != null)
+                    {
+                        OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls, confirmAt);
+                    }
+                    break;                     // one reading per tick
+                }
+            }
+            if (lost) { Announce(); }
+            Thread.Sleep(Cfg.PollMs);
         }
+    }
+
+    private int EnabledCount()
+    {
+        int n = 0;
+        for (int i = 0; i < Cfg.Targets.Count; i++) { if (Cfg.Targets[i].Enabled) { n++; } }
+        return n;
+    }
+
+    private static string Detail(Src s)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.Append(s.Title);
+        if (s.Hwnd != 0)
+        {
+            sb.Append("  (hwnd ").Append(s.Hwnd.ToString(CultureInfo.InvariantCulture)).Append(")");
+        }
+        return sb.ToString();
+    }
+
+    // What the status line says: the source that last delivered, or the first
+    // bound one, plus how many are being watched when it is more than one.
+    private void Announce()
+    {
+        Src[] now;
+        lock (gate) { now = live.ToArray(); }
+        if (now.Length == 0) { Fire2("WAITING", ""); return; }
+        Src pick = now[0];
+        for (int i = 0; i < now.Length; i++)
+        {
+            if (now[i].T.Name == activeName) { pick = now[i]; break; }
+        }
+        string detail = Detail(pick);
+        if (now.Length > 1)
+        {
+            detail = detail + "   [" + now.Length.ToString(CultureInfo.InvariantCulture) + "]";
+        }
+        if (OnLabel != null) { OnLabel(pick.T.Name); }
+        Fire2("WATCHING", detail);
     }
 
     private void Fire2(string a, string b)
     {
         if (OnState != null) { OnState(a, b); }
     }
-}
-
-public static class Rdv3NativeFg
-{
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    public static extern IntPtr GetForegroundWindow();
 }

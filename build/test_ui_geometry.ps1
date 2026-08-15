@@ -30,7 +30,8 @@ param(
   [double[]] $Scales = @(1.0, 1.25, 1.5),
   [string[]] $Sizes = @('1240x689', '1366x768', '1480x800', '1920x1040'),
   [string[]] $States = @('boot', 'checking', 'applying', 'watching', 'waiting', 'searching',
-                         'none', 'single', 'multi', 'picked', 'processed', 'saving', 'error', 'cleared'),
+                         'none', 'single', 'multi', 'picked', 'processed', 'saving', 'error', 'cleared',
+                         'badkey'),
   [string[]] $Data = @('ref', 'long'),
   [double] $Tol = 2.0,
   [switch] $Quick,
@@ -44,7 +45,8 @@ if ($Quick) { $Scales = @(1.0); $Sizes = @('1240x689'); $States = @('multi', 'pi
 
 # ---- the product, compiled exactly as the packer compiles it ---------------
 $sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs', 'Rdv3Jobs.cs',
-             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3Ui.cs', 'Rdv3App.cs')
+             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3Json.cs', 'Rdv3Config.cs',
+             'Rdv3Uia.cs', 'Rdv3Ui.cs', 'Rdv3Settings.cs', 'Rdv3App.cs')
 $usings = New-Object System.Collections.Specialized.OrderedDictionary
 $bodies = New-Object System.Text.StringBuilder
 foreach ($f in $sources) {
@@ -202,6 +204,8 @@ function Set-State([string] $st, [string] $kind) {
                   $form.SelectCandidate(2, $rows[2].Line, $false, 8)
                   $form.SetError([Rdv3Text]::ErrPersist + 'ReaderDataViewer-Ledger.xlsx は他のプロセスが使用中です') }
     'cleared'   { $form.SetState([Rdv3Text]::StateReady, 0); $form.ClearResult() }
+    'badkey'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText('123')
+                  $form.SetInputError([Rdv3Text]::ErrBadKey.Replace('{n}', '8')) }
     default     { throw "unknown state: $st" }
   }
   [System.Windows.Forms.Application]::DoEvents()

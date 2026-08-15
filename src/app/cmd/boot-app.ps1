@@ -14,6 +14,17 @@
 # ---------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
 
+# The console window belongs to the launcher, not to the app: hide it as early
+# as PowerShell can. Everything the operator needs to see is on the app's own
+# window, and a start-up failure still comes up as a message box (Rdv-Fail).
+try {
+  Add-Type -Name RdvCon -Namespace Rdv -MemberDefinition '
+    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);'
+  $RdvConH = [Rdv.RdvCon]::GetConsoleWindow()
+  if ($RdvConH -ne [IntPtr]::Zero) { [void][Rdv.RdvCon]::ShowWindow($RdvConH, 0) }
+} catch { }
+
 function Rdv-Tokens([string] $line) {
   $out = @()
   if ([string]::IsNullOrEmpty($line)) { return $out }
@@ -40,14 +51,15 @@ function Rdv-Opt([string[]] $tokens, [string] $name) {
   return ''
 }
 
-function Rdv-DataDir([string[]] $tokens, [string] $here) {
+function Rdv-DataDir([string[]] $tokens, [string] $here, [string] $fromJson) {
   $cand = New-Object System.Collections.ArrayList
   $skip = $false
   foreach ($t in $tokens) {
     if ($skip) { $skip = $false; continue }
-    if ($t -eq '-log' -or $t -eq '-ledger') { $skip = $true; continue }
+    if ($t -eq '-log' -or $t -eq '-ledger' -or $t -eq '-config') { $skip = $true; continue }
     if ($t -notlike '-*') { [void]$cand.Add($t) }
   }
+  if (-not [string]::IsNullOrEmpty($fromJson)) { [void]$cand.Add($fromJson) }
   [void]$cand.Add((Join-Path $here 'data'))
   foreach ($c in $cand) {
     if ([string]::IsNullOrEmpty($c)) { continue }
@@ -80,12 +92,43 @@ function Rdv-Refs() {
 
 $RdvHere = Split-Path -Parent $env:RDV_SELF
 $RdvTokens = Rdv-Tokens $env:RDV_ARGS
-$RdvData = Rdv-DataDir $RdvTokens $RdvHere
+
+# The settings file is the second half of the distribution. It is read here as
+# well as in the app, because the preflight below has to know where the CSVs
+# are before anything is compiled. Order everywhere: command line, then the
+# settings file, then the built-in default.
+$RdvConfig = Rdv-Opt $RdvTokens '-config'
+if ([string]::IsNullOrEmpty($RdvConfig)) { $RdvConfig = Join-Path $RdvHere 'ReaderDataViewer.json' }
+$RdvJson = $null
+if (Test-Path -LiteralPath $RdvConfig) {
+  try {
+    $RdvRaw = [IO.File]::ReadAllText($RdvConfig, [Text.Encoding]::UTF8)
+    $RdvRaw = [regex]::Replace($RdvRaw, '(?m)^\s*//.*$', '')
+    $RdvJson = $RdvRaw | ConvertFrom-Json
+  } catch { $RdvJson = $null }
+}
+function Rdv-Path([string] $fromJson, [string] $fallback) {
+  if ([string]::IsNullOrEmpty($fromJson)) { return $fallback }
+  if ([IO.Path]::IsPathRooted($fromJson)) { return $fromJson }
+  return (Join-Path $RdvHere $fromJson)
+}
+$RdvJsonData = $null; $RdvJsonLedger = $null; $RdvJsonLog = $null
+if ($null -ne $RdvJson -and $null -ne $RdvJson.paths) {
+  $RdvJsonData = $RdvJson.paths.dataDir
+  $RdvJsonLedger = $RdvJson.paths.ledger
+  $RdvJsonLog = $RdvJson.paths.log
+}
+
+$RdvData = Rdv-DataDir $RdvTokens $RdvHere (Rdv-Path $RdvJsonData $null)
 
 $RdvLedger = Rdv-Opt $RdvTokens '-ledger'
-if ([string]::IsNullOrEmpty($RdvLedger)) { $RdvLedger = Join-Path $RdvHere 'ReaderDataViewer-Ledger.xlsx' }
+if ([string]::IsNullOrEmpty($RdvLedger)) {
+  $RdvLedger = Rdv-Path $RdvJsonLedger (Join-Path $RdvHere 'ReaderDataViewer-Ledger.xlsx')
+}
 $RdvLog = Rdv-Opt $RdvTokens '-log'
-if ([string]::IsNullOrEmpty($RdvLog)) { $RdvLog = Join-Path $RdvHere 'ReaderDataViewer.log' }
+if ([string]::IsNullOrEmpty($RdvLog)) {
+  $RdvLog = Rdv-Path $RdvJsonLog (Join-Path $RdvHere 'ReaderDataViewer.log')
+}
 
 if ([IntPtr]::Size -ne 8) {
   Rdv-Fail "This build needs 64-bit Windows PowerShell."
@@ -105,5 +148,5 @@ $RdvSw.Stop()
 $RdvCompileMs = $RdvSw.Elapsed.TotalMilliseconds
 
 # see boot-csharp.ps1: exit does not evaluate a method call in its argument
-$RdvRc = [Rdv3Program]::Run($RdvData, $RdvLedger, $RdvLog, $RdvCompileMs)
+$RdvRc = [Rdv3Program]::Run($RdvData, $RdvLedger, $RdvLog, $RdvConfig, $RdvCompileMs)
 exit $RdvRc

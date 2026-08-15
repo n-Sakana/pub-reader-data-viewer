@@ -297,6 +297,11 @@ VBA 版は同じ設定をシートの `C59` (ログ) `C60` (データフォル�
 | `dist\app-vba\` | 小さな FE `ReaderDataViewer.xlsm` (~240 KB) + 台帳ブック `ReaderDataViewer-Ledger.xlsx` + sidecar `.state` + `data\` (CSV 3 本) | VBA + 遅延バインド Scripting.Dictionary |
 | `dist\app-csharp\` | `ReaderDataViewer.cmd` + 閲覧用 `ReaderDataViewer-Ledger.xlsx` + `data\` | C# + `Dictionary<string, List<int>>` |
 
+- **C# 版の配布は 2 枚**: プログラム (`.cmd`) と設定 (`.json`)。監視するアプリのウィンドウと
+  その中の欄 (UI Automation の AutomationId 等で指定・**複数可**)、番号の桁数、監視間隔、
+  台帳やログの場所などは設定ファイル側にあります。画面右上の「設定」から GUI で編集でき、
+  「画面を調べる」で対象アプリの UIA ツリーを見ながら欄を選べます →
+  [docs/settings.md](docs/settings.md)。設定ファイルが無くても既定値で動きます。
 - 統合台帳は A+B+C 統合の 10 万行 (統合レコード 1 件 = 1 行、identity は番号2)。
   `処理済み` 列を持ち、CSV 更新後も変更のないレコードへ引き継ぎます。
 - 起動時に「更新を確認中」を表示しながら新しい統合結果を作り、**保存済み台帳の内容と比較**

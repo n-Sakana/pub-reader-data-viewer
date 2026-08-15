@@ -79,6 +79,12 @@ if (-not $SkipCSharp) {
   & (Join-Path $Root 'build\pack_app.ps1') -Root $Root
   Copy-Data $destC
 
+  # the distribution is two files: the .cmd and its settings
+  $cfgSrc = Join-Path $Root 'srcpp\config\ReaderDataViewer.json'
+  $cfgDst = Join-Path $destC 'ReaderDataViewer.json'
+  Copy-Item -LiteralPath $cfgSrc -Destination $cfgDst -Force
+  Write-Output ('  settings: ' + $cfgDst)
+
   Write-Output '  initial ledger: compiling the app sources and merging...'
   $srcDir = Join-Path $Root 'src\app\csharp'
   $sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs')
