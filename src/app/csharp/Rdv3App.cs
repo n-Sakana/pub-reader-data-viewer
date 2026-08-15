@@ -962,26 +962,8 @@ public sealed class Rdv3App
 
 public static class Rdv3Program
 {
-    // the console the .cmd opened is a launcher, not part of the app
-    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-    private static extern IntPtr GetConsoleWindow();
-
-    [System.Runtime.InteropServices.DllImport("user32.dll")]
-    private static extern bool ShowWindow(IntPtr h, int cmd);
-
-    public static void HideConsole()
-    {
-        try
-        {
-            IntPtr h = GetConsoleWindow();
-            if (h != IntPtr.Zero) { ShowWindow(h, 0); }     // SW_HIDE
-        }
-        catch (Exception) { }
-    }
-
     public static int Run(string dataDir, string ledgerPath, string logPath, string configPath, double compileMs)
     {
-        HideConsole();
         if (IntPtr.Size != 8)
         {
             MessageBox.Show(Rdv3Text.ErrNo64, Rdv3Text.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);

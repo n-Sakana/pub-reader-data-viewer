@@ -1,4 +1,4 @@
-# ---------------------------------------------------------------------------
+﻿# ---------------------------------------------------------------------------
 # boot-app.ps1 -- bootstrap for the practical build's single .cmd.
 #
 # Same job as src\cmd\boot-common.ps1 / src\v2\cmd\boot-common2.ps1, kept
@@ -14,16 +14,6 @@
 # ---------------------------------------------------------------------------
 $ErrorActionPreference = 'Stop'
 
-# The console window belongs to the launcher, not to the app: hide it as early
-# as PowerShell can. Everything the operator needs to see is on the app's own
-# window, and a start-up failure still comes up as a message box (Rdv-Fail).
-try {
-  Add-Type -Name RdvCon -Namespace Rdv -MemberDefinition '
-    [DllImport("kernel32.dll")] public static extern IntPtr GetConsoleWindow();
-    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr h, int n);'
-  $RdvConH = [Rdv.RdvCon]::GetConsoleWindow()
-  if ($RdvConH -ne [IntPtr]::Zero) { [void][Rdv.RdvCon]::ShowWindow($RdvConH, 0) }
-} catch { }
 
 function Rdv-Tokens([string] $line) {
   $out = @()
