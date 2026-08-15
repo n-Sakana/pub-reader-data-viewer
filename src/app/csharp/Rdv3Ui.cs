@@ -49,7 +49,7 @@ internal static class Rdv3Skin
     public static readonly Color RowLine = Color.FromArgb(12, 0x1D, 0x1F, 0x20);      // ~5%
     public static readonly Color Hover = Color.FromArgb(10, 0x1D, 0x1F, 0x20);        // 4%
     public static readonly Color Press = Color.FromArgb(36, 0x1D, 0x1F, 0x20);        // 14%
-    public static readonly Color Corner = Color.FromArgb(140, 0x1D, 0x1F, 0x20);      // 55%
+    public static readonly Color Corner = Color.FromArgb(168, 0x1D, 0x1F, 0x20);      // 66% (reference 55%)
     public static readonly Color ThInk = Color.FromArgb(153, 0x1D, 0x1F, 0x20);       // 60%
 
     public static readonly Color Accent = Color.FromArgb(0x59, 0x80, 0xA6);
@@ -63,6 +63,10 @@ internal static class Rdv3Skin
     public static readonly Color N100 = Color.FromArgb(0xF5, 0xF5, 0xF8);
     public static readonly Color N400 = Color.FromArgb(0xB7, 0xB7, 0xBA);
     public static readonly Color N600 = Color.FromArgb(0x7A, 0x7A, 0x7D);
+    // the reference's next step down the same neutral ramp. Sub-lines, key
+    // labels and box captions use it instead of N600: at 11-12 px the lighter
+    // tone was legible on a browser's rendering and not on this one.
+    public static readonly Color N700 = Color.FromArgb(0x5D, 0x5D, 0x60);
     public static readonly Color N800 = Color.FromArgb(0x42, 0x42, 0x44);
 
     public static float Scale = 1f;
@@ -87,11 +91,19 @@ internal static class Rdv3Skin
         return fallback;
     }
 
+    private static bool semiIsBold;
+
     public static void PickFamily()
     {
-        family = FirstInstalled(new string[] { "Yu Gothic UI", "Meiryo UI", "MS UI Gothic", "Segoe UI" },
+        // Yu Gothic UI is what Windows dresses its own dialogs in, but at the
+        // 10-13 px this screen is set in it renders THIN: the operator's first
+        // note on the rebuilt screen was that it was hard to read. Meiryo UI is
+        // the heavier, denser Japanese UI face on the same machine and is a
+        // straight improvement at these sizes (compared side by side at 12 and
+        // 13 px against Yu Gothic UI, Noto Sans JP and BIZ UDP Gothic).
+        family = FirstInstalled(new string[] { "Meiryo UI", "Yu Gothic UI", "Meiryo", "MS UI Gothic", "Segoe UI" },
             FontFamily.GenericSansSerif.Name);
-        lightFamily = FirstInstalled(new string[] { "Yu Gothic UI Light", "Yu Gothic UI Semilight", "Segoe UI Light" }, family);
+        lightFamily = family;
         // The reference sets its headings and figures in Barlow Condensed, which
         // Windows does not ship. Bahnschrift's cuts are the closest thing that
         // IS on the machine -- but no single cut matches both halves of Barlow
@@ -106,9 +118,11 @@ internal static class Rdv3Skin
             "Bahnschrift SemiBold SemiConden", "Segoe UI Semibold" }, family);
         figFamily = FirstInstalled(new string[] { "Bahnschrift SemiBold", "Bahnschrift",
             "Segoe UI Semibold" }, family);
-        // the reference's buttons and headings are weight 600, not 700: bold
-        // is what made the screen read as flat slabs
-        semiFamily = FirstInstalled(new string[] { "Yu Gothic UI Semibold", "Meiryo UI", "Segoe UI Semibold" }, family);
+        // weight 600: a dedicated semibold cut if the body face has one (Yu
+        // Gothic UI does), otherwise the family's own bold (Meiryo UI)
+        string dedicated = FirstInstalled(new string[] { family + " Semibold" }, "");
+        if (dedicated.Length > 0) { semiFamily = dedicated; semiIsBold = false; }
+        else { semiFamily = family; semiIsBold = true; }
     }
 
     public static Font F(double cssPx, FontStyle st)
@@ -137,7 +151,8 @@ internal static class Rdv3Skin
     // weight 600
     public static Font S(double cssPx)
     {
-        return new Font(semiFamily, (float)(cssPx * Scale), FontStyle.Regular, GraphicsUnit.Pixel);
+        return new Font(semiFamily, (float)(cssPx * Scale),
+            semiIsBold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
     }
 
     // color-mix(in srgb, var(--color-text) N%, transparent) laid over the page
@@ -173,6 +188,7 @@ internal static class Rdv3Skin
     public static void ResetMetrics()
     {
         lock (memo) { memo.Clear(); }
+        lock (memoF) { memoF.Clear(); }
     }
 
     public static Size Measure(string s, Font f)
@@ -262,10 +278,26 @@ internal static class Rdv3Skin
         return typo;
     }
 
+    // Sub-pixel prefix widths. The tracked runs place one glyph at a time, so
+    // taking each prefix from the ROUNDED cache accumulated up to a couple of
+    // pixels over a short run -- enough to push the last digit of the key past
+    // its box and have it dropped ("0001616" for 00016168).
+    private static readonly Dictionary<string, float> memoF = new Dictionary<string, float>();
+
     private static float RunW(string s, Font f)
     {
         if (s == null || s.Length == 0) { return 0f; }
-        return Measure(s, f).Width;
+        string k = f.Name + "" + f.Size.ToString(CultureInfo.InvariantCulture)
+            + "" + ((int)f.Style).ToString(CultureInfo.InvariantCulture) + "" + s;
+        float hit;
+        lock (memoF) { if (memoF.TryGetValue(k, out hit)) { return hit; } }
+        hit = Scratch().MeasureString(s, f, PointF.Empty, Typo()).Width;
+        lock (memoF)
+        {
+            if (memoF.Count > 8000) { memoF.Clear(); }
+            memoF[k] = hit;
+        }
+        return hit;
     }
 
     public static int MeasureTracked(string s, Font f, double track)
@@ -273,6 +305,8 @@ internal static class Rdv3Skin
         if (s == null || s.Length == 0) { return 0; }
         return (int)Math.Ceiling(RunW(s, f) + track * Scale * (s.Length - 1));
     }
+
+    private static float TrackPx(double track) { return (float)(track * Scale); }
 
     public static int HeightOf(Font f) { return HeightTracked("A", f); }
 
@@ -290,12 +324,14 @@ internal static class Rdv3Skin
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         using (SolidBrush br = new SolidBrush(c))
         {
-            double t = track * Scale;
+            float t = TrackPx(track);
+            float pen = x;
             for (int i = 0; i < s.Length; i++)
             {
-                float at = x + RunW(s.Substring(0, i), f) + (float)(t * i);
-                if (at + RunW(s.Substring(i, 1), f) > rightLimit) { break; }
-                g.DrawString(s.Substring(i, 1), f, br, at, y, Typo());
+                float w = RunW(s.Substring(0, i + 1), f) - RunW(s.Substring(0, i), f);
+                if (pen + w > rightLimit + 1f) { break; }
+                g.DrawString(s.Substring(i, 1), f, br, pen, y, Typo());
+                pen += w + t;
             }
         }
         g.TextRenderingHint = keep;
@@ -856,7 +892,7 @@ public sealed class Rdv3Form : Form
     // screen state
     private string sKey = "";
     private string sKeySub = "";
-    private string sStatus = "—";
+    private string sStatus = "";
     private string sStatusSub = "";
     private bool sStatusNg;
     private string sRows = "0";
@@ -876,8 +912,8 @@ public sealed class Rdv3Form : Form
     private string sRole = "";
     private string[] rec;                 // the selected ledger line, split
     private bool recProc;
-    private string sKey2 = "—";
-    private string sRecStatus = "—";
+    private string sKey2 = "";
+    private string sRecStatus = "";
     private string procSuffix = "";
 
     // fonts
@@ -1077,9 +1113,14 @@ public sealed class Rdv3Form : Form
     private static int PX(double v) { return (int)Math.Round(v * Rdv3Skin.Scale); }
     private static double CX(int devicePx) { return devicePx / (double)Rdv3Skin.Scale; }
 
+    // One device pixel of slack. Widths are measured in device pixels, carried
+    // as CSS px and rounded back, and that round trip can leave a box a pixel
+    // short of its own text -- which the painter then ellipsises. At 125% the
+    // longest sub-line ("HOLD / 未処理 (保存中...)") lost its tail to exactly
+    // that pixel.
     private double MW(string s, Font f)
     {
-        return Rdv3Skin.Measure(s, f).Width / (double)Rdv3Skin.Scale;
+        return (Rdv3Skin.Measure(s, f).Width + 1) / (double)Rdv3Skin.Scale;
     }
 
     private double TagW(string s)
@@ -1184,8 +1225,7 @@ public sealed class Rdv3Form : Form
         Rdv3Geom.R n = Rdv3Geom.Nav;
         Put("nav", n.X, n.Y, n.W + exW, n.H);
         Rdv3Geom.R b = Rdv3Geom.NavBrand;
-        double bw = Math.Max(b.W, Rdv3Skin.MeasureTracked(Rdv3Text.AppTitle, fBrand, 0.38)
-            / (double)Rdv3Skin.Scale);
+        double bw = Math.Max(b.W, MW(Rdv3Text.AppTitle, fBrand));
         Put("nav.brand", b.X, b.Y, bw, b.H);
         double x = b.X + bw + 10.2;
         double t1 = Math.Max(Rdv3Geom.NavTagMethod.W, TagW(Rdv3Text.Method));
@@ -1296,22 +1336,29 @@ public sealed class Rdv3Form : Form
     // (tracking included) -- otherwise the painter would clip its own figure
     private double FigW(string label, string value, string sub, bool rows)
     {
-        double v = Rdv3Skin.MeasureTracked(value, fBig, ValueTrack) / (double)Rdv3Skin.Scale;
+        double v = (Rdv3Skin.MeasureTracked(value, fBig, ValueTrack) + 1) / (double)Rdv3Skin.Scale;
         if (rows) { v += 4.0 + MW(Rdv3Text.UnitRows, fBig13); }
-        double w = Math.Max(Rdv3Skin.MeasureTracked(label, fLabel10, LabelTrack) / (double)Rdv3Skin.Scale, v);
+        double w = Math.Max((Rdv3Skin.MeasureTracked(label, fLabel10, LabelTrack) + 1) / (double)Rdv3Skin.Scale, v);
         return Math.Max(w, MW(sub, fSub12));
     }
 
     // the label and the figure: the part of a block that may not be cut
     private double FigFloor(string label, string value, bool rows)
     {
-        double v = Rdv3Skin.MeasureTracked(value, fBig, ValueTrack) / (double)Rdv3Skin.Scale;
+        double v = (Rdv3Skin.MeasureTracked(value, fBig, ValueTrack) + 1) / (double)Rdv3Skin.Scale;
         if (rows) { v += 4.0 + MW(Rdv3Text.UnitRows, fBig13); }
-        return Math.Max(Rdv3Skin.MeasureTracked(label, fLabel10, LabelTrack) / (double)Rdv3Skin.Scale, v);
+        return Math.Max((Rdv3Skin.MeasureTracked(label, fLabel10, LabelTrack) + 1) / (double)Rdv3Skin.Scale, v);
     }
 
+    // The reference tracks its 10 px section labels at 0.1em, which is what
+    // makes them read as labels rather than text, and its 34 px figures at
+    // 0.06em. The figures DO NOT get it here: Barlow Condensed is narrow, so a
+    // little air suits it, while the Bahnschrift cut standing in for it is
+    // already wide and the same tracking just looks stretched -- and the key
+    // will hold letters as well as digits, where per-glyph spacing is exactly
+    // where unevenness would show. Labels are fixed Japanese words and keep it.
     private const double LabelTrack = 1.0;
-    private const double ValueTrack = 2.04;
+    private const double ValueTrack = 0.0;
 
     private void LayList()
     {
@@ -1345,13 +1392,13 @@ public sealed class Rdv3Form : Form
         Put("rec.h4", Rdv3Geom.RecH4.X, Rdv3Geom.RecH4.Y + dy, hw, Rdv3Geom.RecH4.H);
 
         string[] tags = RecTags();
-        double[] tw = new double[3];
-        for (int i = 0; i < 3; i++) { tw[i] = Math.Max(27.8, TagW(tags[i])); }
         double tx = panelR - 13.6;
         for (int i = 2; i >= 0; i--)
         {
-            tx -= tw[i];
-            Put("rec.tag" + i.ToString(CultureInfo.InvariantCulture), tx, Rdv3Geom.RecTag0.Y + dy, tw[i], 23.0);
+            if (tags[i].Length == 0) { continue; }
+            double tw = Math.Max(27.8, TagW(tags[i]));
+            tx -= tw;
+            Put("rec.tag" + i.ToString(CultureInfo.InvariantCulture), tx, Rdv3Geom.RecTag0.Y + dy, tw, 23.0);
             tx -= 10.2;
         }
         double hx = Rdv3Geom.RecH4.X + hw + 10.2;
@@ -1386,9 +1433,10 @@ public sealed class Rdv3Form : Form
 
     private string[] RecTags()
     {
+        if (rec == null) { return new string[] { "", "", "" }; }
         return new string[] {
             sRecStatus,
-            (rec == null) ? "—" : (recProc ? Rdv3Text.LabelProcessed : Rdv3Text.LabelUnprocessed),
+            recProc ? Rdv3Text.LabelProcessed : Rdv3Text.LabelUnprocessed,
             Rdv3Text.TagKey2 + " = " + sKey2 };
     }
 
@@ -1435,14 +1483,32 @@ public sealed class Rdv3Form : Form
             Rdv3Text.LabelLedger + " " + sLedger,
             Rdv3Text.LabelMergeMs + " " + sMerge, Rdv3Text.LabelSearchMs + " " + sSearch };
         string[] key = { "status.state", "status.notepad", "status.ledger", "status.merge", "status.search" };
+        // a time that has not been measured yet is not a value: no segment
+        bool[] show = { true, true, true, sMerge != Rdv3Text.NotYet, sSearch != Rdv3Text.NotYet };
+        double[] wid = new double[seg.Length];
+        double need = x;
         for (int i = 0; i < seg.Length; i++)
         {
-            w = (i >= 3)
+            if (!show[i]) { continue; }
+            wid[i] = (i >= 3)
                 ? MW(SegLabel(i) + " ", fStatus) + MW(SegValue(i), fStatusB)
                 : MW(seg[i], (i == 0) ? fStatusB : fStatus);
-            if (x + w > limit) { break; }
-            Put(key[i], x, ty, w, band);
-            x += w + gap;
+            need += wid[i] + gap + ((i < seg.Length - 1) ? (1.0 + gap) : 0.0);
+        }
+        // The one variable-length string in the bar is the notepad's window
+        // TITLE, and it is the least load-bearing: the label stays either way.
+        // So when the bar is tight it gives up its tail rather than letting a
+        // whole segment (the search time) disappear off the end.
+        if (need > limit && wid[1] > 100.0)
+        {
+            wid[1] = Math.Max(100.0, wid[1] - (need - limit));
+        }
+        for (int i = 0; i < seg.Length; i++)
+        {
+            if (!show[i]) { continue; }
+            if (x + wid[i] > limit) { break; }
+            Put(key[i], x, ty, wid[i], band);
+            x += wid[i] + gap;
             if (i < seg.Length - 1)
             {
                 if (x + 1.0 > limit) { break; }
@@ -1511,9 +1577,13 @@ public sealed class Rdv3Form : Form
         Rdv3Skin.DrawIn(g, s, f, c, At(k), true);
     }
 
+    // the notepad segment is deliberately elastic (see LayStatusFlow)
+    private static readonly string[] Elastic = { "status.notepad" };
+
     private void Note(string k, string s, Font f, Rectangle r)
     {
         if (s == null || s.Length == 0) { return; }
+        for (int i = 0; i < Elastic.Length; i++) { if (Elastic[i] == k) { return; } }
         if (Rdv3Skin.Measure(s, f).Width > r.Width && !clipped.Contains(k)) { clipped.Add(k); }
     }
 
@@ -1544,7 +1614,7 @@ public sealed class Rdv3Form : Form
 
     private void PaintNav(Graphics g)
     {
-        TT(g, "nav.brand", Rdv3Text.AppTitle, fBrand, Rdv3Skin.Ink, 0.38);
+        T(g, "nav.brand", Rdv3Text.AppTitle, fBrand, Rdv3Skin.Ink);
         Rdv3Skin.Tag(g, Rdv3Text.Method, fTag, Rdv3Skin.TagAccent, At("nav.tagMethod"), 255);
         Rdv3Skin.Tag(g, Rdv3Text.TagLedger, fTag, Rdv3Skin.TagOutline, At("nav.tagLedger"), 255);
         Rectangle r = At("nav.rule");
@@ -1578,12 +1648,12 @@ public sealed class Rdv3Form : Form
         Rdv3Skin.Blueprint(g, At("sum.panel"));
         Figure(g, "sum.key", Rdv3Text.LabelKeyNow, sKey, sKeySub, Rdv3Skin.Ink, false);
         Div(g, "sum.status.div");
-        Color sc = (sStatus == "—") ? Rdv3Skin.N400 : (sStatusNg ? Rdv3Skin.Ink : Rdv3Skin.Accent700);
+        Color sc = (sStatus.Length == 0) ? Rdv3Skin.N400 : (sStatusNg ? Rdv3Skin.Ink : Rdv3Skin.Accent700);
         Figure(g, "sum.status", Rdv3Text.LabelRepStatus, sStatus, sStatusSub, sc, false);
         Div(g, "sum.rows.div");
         Figure(g, "sum.rows", Rdv3Text.LabelLedgerRows, sRows, SavedSub, Rdv3Skin.Ink, true);
 
-        T(g, "sum.field.label", Rdv3Text.LabelSearchBox, fSub12, Rdv3Skin.N600);
+        T(g, "sum.field.label", Rdv3Text.LabelSearchBox, fSub12, Rdv3Skin.N700);
         Rectangle box = At("sum.input");
         using (SolidBrush b = new SolidBrush(Rdv3Skin.Surface)) { g.FillRectangle(b, box); }
         // .input / .input:hover (text 45%) / .input:focus-visible (accent)
@@ -1594,7 +1664,7 @@ public sealed class Rdv3Form : Form
         Div(g, "sum.ident.div");
         Rdv3Skin.IconPerson(g, At("sum.ident.icon"), Rdv3Skin.Accent700);
         T(g, "sum.ident.name", sUser, fName, Rdv3Skin.Ink);
-        T(g, "sum.ident.host", sHost, fName11, Rdv3Skin.N600);
+        T(g, "sum.ident.host", sHost, fName11, Rdv3Skin.N700);
         Rdv3Skin.Tag(g, sRole, fTag, Rdv3Skin.TagNeutral, At("sum.ident.role"), 255);
     }
 
@@ -1608,7 +1678,7 @@ public sealed class Rdv3Form : Form
     {
         TT(g, k + ".label", label, fLabel10, Rdv3Skin.Accent, LabelTrack);
         TT(g, k + ".value", value, fBig, vc, ValueTrack);
-        if (rows)
+        if (rows && value.Length > 0)
         {
             Rectangle r = At(k + ".value");
             int w = Rdv3Skin.MeasureTracked(value, fBig, ValueTrack);
@@ -1621,7 +1691,7 @@ public sealed class Rdv3Form : Form
                     r.Y + (r.Height + hb) / 2 - hu - PX(3));
             }
         }
-        T(g, k + ".sub", sub, fSub12, Rdv3Skin.N600);
+        T(g, k + ".sub", sub, fSub12, Rdv3Skin.N700);
     }
 
     private void PaintList(Graphics g)
@@ -1645,8 +1715,9 @@ public sealed class Rdv3Form : Form
             (rec != null && recProc) ? Rdv3Skin.TagAccent : Rdv3Skin.TagNeutral, Rdv3Skin.TagAccent };
         for (int i = 0; i < 3; i++)
         {
-            Rdv3Skin.Tag(g, tags[i], fTag, kinds[i],
-                At("rec.tag" + i.ToString(CultureInfo.InvariantCulture)), 255);
+            string tk = "rec.tag" + i.ToString(CultureInfo.InvariantCulture);
+            if (tags[i].Length == 0 || !rc.ContainsKey(tk)) { continue; }
+            Rdv3Skin.Tag(g, tags[i], fTag, kinds[i], At(tk), 255);
         }
         Rectangle rr = At("rec.rule");
         Rdv3Skin.Line(g, Rdv3Skin.Divider, rr.X, rr.Y, rr.Width, Rdv3Skin.Hair());
@@ -1654,19 +1725,20 @@ public sealed class Rdv3Form : Form
         for (int i = 0; i < KvLabels.Length; i++)
         {
             Rectangle row = At("rec.kv" + i.ToString(CultureInfo.InvariantCulture));
-            string v = "—";
+            string v = "";
+            bool none = false;
             if (rec != null)
             {
-                v = (i == 6) ? (Get(rec, 7) + " ・ " + Get(rec, 8)) : Get(rec, KvCols[i]);
-                if (v.Length == 0) { v = "—"; }
+                v = (i == 6) ? (Get(rec, 7) + " \u30fb " + Get(rec, 8)).Trim() : Get(rec, KvCols[i]);
+                if (v.Length == 0 || v == "\u30fb") { v = Rdv3Text.NoValue; none = true; }
             }
             int lw = Rdv3Skin.Measure(KvLabels[i], fKv).Width;
             Note("rec.kv" + i.ToString(CultureInfo.InvariantCulture),
                 KvLabels[i] + v, fKvB, new Rectangle(row.X, row.Y, row.Width - PX(10.2), row.Height));
-            Rdv3Skin.DrawIn(g, KvLabels[i], fKv, Rdv3Skin.N600,
+            Rdv3Skin.DrawIn(g, KvLabels[i], fKv, Rdv3Skin.N700,
                 new Rectangle(row.X, row.Y, Math.Min(lw, row.Width), row.Height), false);
             int vx = row.X + lw + PX(10.2);
-            Rdv3Skin.DrawIn(g, v, fKvB, Rdv3Skin.Ink,
+            Rdv3Skin.DrawIn(g, v, none ? fKv : fKvB, none ? Rdv3Skin.N400 : Rdv3Skin.Ink,
                 new Rectangle(vx, row.Y, Math.Max(0, row.Right - vx), row.Height), true);
             if (i < KvLabels.Length - 1)
             {
@@ -1681,7 +1753,7 @@ public sealed class Rdv3Form : Form
 
     private void BoxFrame(Graphics g, string kLabel, string kBox, string label)
     {
-        T(g, kLabel, label, fBoxLabel, Rdv3Skin.N600);
+        T(g, kLabel, label, fBoxLabel, Rdv3Skin.N700);
         Rectangle box = At(kBox);
         using (SolidBrush b = new SolidBrush(Rdv3Skin.N100)) { g.FillRectangle(b, box); }
         Rdv3Skin.Frame(g, Rdv3Skin.Divider, box);
@@ -1697,6 +1769,12 @@ public sealed class Rdv3Form : Form
     private static string Get(string[] f, int i)
     {
         return (f != null && i >= 0 && i < f.Length && f[i] != null) ? f[i] : "";
+    }
+
+    // a value that IS on screen but empty in the ledger
+    private static string Val(string s)
+    {
+        return (s == null || s.Length == 0) ? Rdv3Text.NoValue : s;
     }
 
     private void PaintError(Graphics g)
@@ -1998,9 +2076,9 @@ public sealed class Rdv3Form : Form
             table.SetRows(rows, -1);
             rec = null;
             recProc = false;
-            sKey2 = "—";
-            sRecStatus = "—";
-            sStatus = "—";
+            sKey2 = "";
+            sRecStatus = "";
+            sStatus = "";
             sStatusNg = false;
             SetBox(txtMemo, Rdv3Text.PickToSee);
             SetBox(txtRemark, Rdv3Text.PickToSee);
@@ -2034,8 +2112,8 @@ public sealed class Rdv3Form : Form
             recProc = processed;
             if (rec != null)
             {
-                sKey2 = Get(rec, 1);
-                sRecStatus = Get(rec, 16);
+                sKey2 = Val(Get(rec, 1));
+                sRecStatus = Val(Get(rec, 16));
                 bool ng = (sRecStatus == "HOLD" || sRecStatus == "VOID");
                 sStatus = ng ? "NG" : "OK";
                 sStatusNg = ng;
@@ -2061,15 +2139,15 @@ public sealed class Rdv3Form : Form
     // before there is a handle to marshal onto)
     private void ResetState()
     {
-        sKey = "—";
+        sKey = "";
         sKeySub = Rdv3Text.SubIdle;
-        sStatus = "—";
+        sStatus = "";
         sStatusSub = "";
         sStatusNg = false;
         sVerdict = "";
         sCandTag = Rdv3Text.CandCount.Replace("{n}", "0");
-        sKey2 = "—";
-        sRecStatus = "—";
+        sKey2 = "";
+        sRecStatus = "";
         rec = null;
         recProc = false;
         table.SetRows(new List<Rdv3CandRow>(), -1);
@@ -2115,6 +2193,7 @@ public sealed class Rdv3Form : Form
                 + " min=" + MinimumSize.Width + "x" + MinimumSize.Height
                 + " work=" + wa.Width + "x" + wa.Height
                 + " logical=" + Math.Round(CX(ClientSize.Width)) + "x" + Math.Round(CX(ClientSize.Height))
+                + " tag=[" + sCandTag + "|" + sKeySub + "]"
                 + " grow=[w " + Math.Round(exW) + " list " + Math.Round(exList)
                 + " rec " + Math.Round(exRec) + "]";
         }

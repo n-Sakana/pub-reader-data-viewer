@@ -98,6 +98,11 @@ public static class Rdv3Text
     public const string ErrBadKey = "番号1 は 8 桁の数字で入力してください";
     public const string ErrNoRecordShown = "処理済みにする統合レコードが表示されていません";
 
+    // Nothing chosen yet is BLANK: the sub-line already says so, and a row of
+    // dashes reads as noise. A field that IS on screen but empty in the ledger
+    // says so in words, the way a spreadsheet does.
+    public const string NoValue = "N/A";
+
     public const string MsUnit = " ms";
     public const string NotYet = "--";
     public const string SavingSuffix = " (保存中...)";

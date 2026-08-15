@@ -109,6 +109,12 @@ $longRow = @{ code = 'A-4471-EXTENDED-CODE'; name = 'とても長い取引先名
   item = 'IT-77120-LONG-ITEM'; maker = 'KYOWA-INDUSTRIAL-LONG';
   memo = ('長い摘要テキスト。' * 12); remark = ('長い備考テキスト。' * 12) }
 
+# a real ledger row whose table A side never matched: every field the record
+# panel shows on the left is empty, which is what N/A is for
+$sparseRow = @{ code = ''; name = ''; grade = ''; date = ''; amount = ''; rate = ''; flag = ''; dept = '';
+  slip = 'SL00016168'; bdate = '20230117'; qty = '597'; status = 'OPEN'; line = '004'; item = 'IT347201';
+  maker = 'MAKER-2758'; memo = ''; remark = '' }
+
 function New-Rows([int] $n, [hashtable] $o, [string] $key1) {
   $list = New-Object 'System.Collections.Generic.List[Rdv3CandRow]'
   for ($i = 0; $i -lt $n; $i++) {
@@ -152,8 +158,9 @@ function Set-Data([string] $kind) {
 }
 
 function Set-State([string] $st, [string] $kind) {
-  $o = if ($kind -eq 'long') { $longRow } else { $refRow }
+  $o = if ($kind -eq 'long') { $longRow } elseif ($kind -eq 'sparse') { $sparseRow } else { $refRow }
   $key1 = if ($kind -eq 'long') { '40218764' } else { '00016168' }
+  if ($kind -eq 'sparse') { $kind = 'ref' }
   $form.SetError('')
   $form.ClearResult()
   Set-Data $kind
@@ -172,6 +179,9 @@ function Set-State([string] $st, [string] $kind) {
                   $form.SelectCandidate(0, $rows[0].Line, $false, 1) }
     'multi'     { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
                   $form.ShowCandidates($key1, (New-Rows 8 $o $key1), 8, 8) }
+    'multi3'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
+                  $form.ShowCandidates($key1, (New-Rows 3 $o $key1), 3, 3)
+                  $form.SetSearchMs(7.33) }
     'picked'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
                   $rows = New-Rows 8 $o $key1
                   $form.ShowCandidates($key1, $rows, 8, 8)
@@ -308,7 +318,7 @@ foreach ($sc in $Scales) {
           foreach ($h in $r.Outside) { Write-Output ("       outside  " + $h) }
           if ($clip.Count -gt 0) { Write-Output ("       clipped  " + ($clip -join ', ')) }
         }
-        if ($st -eq 'multi' -and $kind -eq 'ref' -and $sz -eq '1240x689' -and $sc -eq 1.0) { $baseEl = $d.el }
+        if ($st -eq 'picked' -and $kind -eq 'ref' -and $sz -eq '1240x689' -and $sc -eq 1.0) { $baseEl = $d.el }
       }
     }
   }

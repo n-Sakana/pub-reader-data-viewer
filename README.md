@@ -457,7 +457,9 @@ build\bench_app.ps1            実用版 2 方式の E2E 計測 v2 (全 run 記�
 
 ## ライセンス
 
-MIT License。[LICENSE](LICENSE) を参照してください。
-このリポジトリで書かれたコードにのみ適用されます。ビルド時に取得する第三者の成果物
-(日本郵便のデータ、Excel-DNA — いずれも `benchmarks/` 側でのみ使用) は含まれず、
-それぞれの条件に従います。
+**CC0 1.0 Universal** (パブリックドメイン提供)。`SPDX-License-Identifier: CC0-1.0`
+全文は [LICENSE](LICENSE)。著作権と関連する権利を可能な範囲で放棄しています。
+帰属表示は不要です。
+
+同梱していないもの: 画面が使う書体は Windows 標準搭載のもの (Meiryo UI / Yu Gothic UI /
+MS UI Gothic / Bahnschrift) だけで、フォントファイルの再配布もインストールもしません。
