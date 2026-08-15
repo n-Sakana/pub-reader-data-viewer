@@ -482,7 +482,7 @@ internal static class Rdv3Skin
 //   :focus-visible  2 px accent outline, 2 px outside -- painted by the form,
 //                   since it falls outside these bounds
 // ---------------------------------------------------------------------------
-internal sealed class Rdv3Btn : Button
+public sealed class Rdv3Btn : Button
 {
     public bool Primary;
     public int Icon;                 // 0 none, 1 search, 2 check, 3 refresh
