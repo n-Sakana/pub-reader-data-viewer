@@ -19,6 +19,7 @@ public static class Rdv3Text
     public const string StateReady = "監視中";
     public const string StateWaitingNotepad = "メモ帳を待機中";
     public const string StateBusy = "検索中";
+    public const string StateSavingMark = "処理済みを保存中";
     public const string StateBlocked = "台帳がありません";
 
     public const string NoteNoDiff = "更新はありません (台帳は最新です)";
@@ -38,9 +39,9 @@ public static class Rdv3Text
     public const string LabelMergeMs = "マージ時間";
     public const string LabelSearchMs = "検索時間";
     public const string LabelKey = "現在の番号 (番号1)";
-    public const string LabelSearchBox = "番号1 (8桁) を入力";
+    public const string LabelSearchBox = "番号1（8桁）を入力";
     public const string LabelProcessed = "処理済み";
-    public const string NotepadNone = "未接続 -- メモ帳を開くと自動で接続します";
+    public const string NotepadNone = "未接続 — メモ帳を開くと自動で接続します";
     public const string LedgerRows = "{n} 件";
 
     public const string BtnSearch = "検索";
@@ -73,7 +74,7 @@ public static class Rdv3Text
 
     public const string VerdictOne = "一致 1 件   番号2 = {key2}";
     public const string VerdictPicked = "一致 1 件   番号2 = {key2}   (候補 {n} 件中 {i} 件目)";
-    public const string VerdictMany = "候補 {n} 件 -- 一覧から 1 件選んでください";
+    public const string VerdictMany = "候補 {n} 件 — 一覧から 1 件選んでください";
     public const string VerdictManyCut = "候補 {n} 件中 {m} 件を表示 -- 一覧から 1 件選んでください";
     public const string VerdictNone = "該当なし";
     public const string VerdictErr = "エラー";
@@ -87,9 +88,45 @@ public static class Rdv3Text
     public const string ErrLedgerRead = "台帳を読み込めませんでした: ";
     public const string ErrOracle = "検算 NG: 統合結果が expected.txt と一致しません";
     public const string ErrNotReady = "更新確認が終わるまで操作できません";
+    public const string ErrSaveInFlight = "処理済みを保存中です。確定するまで次の操作はできません";
+    public const string ErrCloseWhileSaving = "処理済みを保存中です。確定するまで終了できません";
+    public const string ErrSaveOverdue = "処理済みの保存が想定より長引いています (確定するまで終了しません)";
+    public const string CloseBlockedTitle = "保存中のため終了できません";
+    public const string CloseBlockedBody = "処理済みの保存がまだ確定していません。\r\n保存が成功または失敗として確定してから、もう一度閉じてください。";
+    public const string NoteSaveDoneCanClose = "処理済みの保存が完了しました。終了できます";
+    public const string NoteSaveFailedCanClose = "処理済みの保存は失敗として確定しました。終了できます";
     public const string ErrBadKey = "番号1 は 8 桁の数字で入力してください";
     public const string ErrNoRecordShown = "処理済みにする統合レコードが表示されていません";
 
     public const string MsUnit = " ms";
     public const string NotYet = "--";
+    public const string SavingSuffix = " (保存中...)";
+
+    // ---- the reference screen (docs\ui-spec.md) ----------------------------
+    public const string TagLedger = "統合台帳";
+    public const string LabelKeyNow = "現在の番号（番号1）";
+    public const string LabelRepStatus = "代表ステータス";
+    public const string LabelLedgerRows = "台帳総件数";
+    public const string LabelLastSaved = "最終更新";
+    public const string UnitRows = "件";
+    public const string LabelUnprocessed = "未処理";
+    public const string RoleNormal = "一般";
+    public const string RoleReadOnly = "読み取り専用";
+
+    public const string PanelCand = "候補一覧";
+    public const string HintCand = "行をクリックすると統合レコードを表示します";
+    public const string PanelRec = "統合レコード";
+    public const string HintRec = "選択中の候補に紐づく 表A（取引先）の情報と 表B/表C の長文項目";
+    public const string CandCount = "候補 {n} 件";
+    public const string TagKey2 = "番号2";
+    public const string LabelMemo = "摘要（表B: b_memo）";
+    public const string LabelRemark = "備考（表C: c_remark）";
+    public const string PickToSee = "候補一覧から行を選択すると表示されます。";
+
+    public const string SubIdle = "未検索";
+    public const string SubNone = "該当なし";
+    public const string SubUnselected = "未選択（候補 {n} 件）";
+    public const string SubOne = "一致 1 件 ・ 番号2 = {key2}";
+    public const string SubPicked = "候補 {i}/{n} ・ 番号2 = {key2}";
+    public const string SubMulti = "複数ヒット（候補 {n} 件）";
 }

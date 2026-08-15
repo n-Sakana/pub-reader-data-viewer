@@ -126,6 +126,17 @@ public sealed class Rdv3App
     private List<int> shownCands;
     private double lastMergeMs = -1;
 
+    // ---- the exit guard around one unfinished "processed" save --------------
+    // A "processed" mark is persisted immediately, one record at a time (there
+    // is no queue and nothing is batched). The one moment its outcome is not
+    // yet decided is while Rdv3Xlsx.Write runs on the worker thread, and a
+    // close in that window would end the process without the operator ever
+    // learning whether the record was saved. So during that window: no second
+    // mark is accepted, and a close request is refused with the reason on
+    // screen. Both flags are touched on the UI thread only.
+    private bool savingMark;
+    private bool closeAskedWhileSaving;
+
     // app construction instant, for the boot->operable startup figure
     private readonly long bootT0 = Rdv3Clock.Now();
     private bool startupLogged;
@@ -150,15 +161,48 @@ public sealed class Rdv3App
         watch.OnConfirmed = Detected;
         watch.OnState = WatchState;
 
+        // the session block of the reference screen: who is signed in, on what
+        // machine, and whether this session may write -- all real, none of it
+        // the sample text from the artifact
+        bool canWrite = true;
+        try
+        {
+            string dir = System.IO.Path.GetDirectoryName(ledgerPath);
+            if (System.IO.File.Exists(ledgerPath))
+            {
+                canWrite = (System.IO.File.GetAttributes(ledgerPath) & System.IO.FileAttributes.ReadOnly) == 0;
+            }
+            else if (dir != null && dir.Length > 0) { canWrite = System.IO.Directory.Exists(dir); }
+        }
+        catch (Exception) { canWrite = true; }
+        form.SetIdentity(Environment.UserName, Environment.MachineName,
+            canWrite ? Rdv3Text.RoleNormal : Rdv3Text.RoleReadOnly,
+            "PID " + pid.ToString(CultureInfo.InvariantCulture),
+            System.IO.Path.GetFileName(logPath));
+
         watchdog.Interval = 1000;
         watchdog.Tick += delegate(object s, EventArgs e) { CheckOverdue(); };
 
         form.Shown += delegate(object s, EventArgs e)
         {
+            log.Write("-", "screen", form.Diag);
             watchdog.Start();
             StartCheck();
         };
-        form.FormClosing += delegate(object s, FormClosingEventArgs e) { Shutdown(); };
+        form.FormClosing += delegate(object s, FormClosingEventArgs e)
+        {
+            // one unfinished save is the only thing that refuses a close
+            if (savingMark)
+            {
+                e.Cancel = true;
+                closeAskedWhileSaving = true;
+                form.SetError(Rdv3Text.ErrCloseWhileSaving);
+                log.Write("-", "exit", "close refused: a processed save is still in flight");
+                form.Tell(Rdv3Text.CloseBlockedTitle, Rdv3Text.CloseBlockedBody);
+                return;
+            }
+            Shutdown();
+        };
     }
 
     public void LogBoot(double compileMs)
@@ -439,6 +483,21 @@ public sealed class Rdv3App
         }
     }
 
+    // the ledger's own last-write time, in the reference's short form
+    private string LedgerStamp()
+    {
+        try
+        {
+            if (System.IO.File.Exists(ledgerPath))
+            {
+                return System.IO.File.GetLastWriteTime(ledgerPath)
+                    .ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
+            }
+        }
+        catch (Exception) { }
+        return Rdv3Text.NotYet;
+    }
+
     // UI thread
     private void EnterReady(string rid, string note)
     {
@@ -453,8 +512,12 @@ public sealed class Rdv3App
         form.HideOverlay();
         form.EnableOps(true);
         form.SetState(watch.Bound ? Rdv3Text.StateReady : Rdv3Text.StateWaitingNotepad, watch.Bound ? 1 : 2);
-        form.SetLedgerInfo(Rdv3Text.LedgerRows.Replace("{n}",
-            ledLines.Length.ToString("N0", CultureInfo.InvariantCulture)) + "   " + note);
+        // status bar: the file and its size; summary block: the same count and
+        // the ledger's own last-write stamp (the reference's "最終更新")
+        string rowsText = ledLines.Length.ToString("N0", CultureInfo.InvariantCulture);
+        form.SetLedgerInfo(System.IO.Path.GetFileName(ledgerPath) + " ・ "
+            + Rdv3Text.LedgerRows.Replace("{n}", rowsText));
+        form.SetLedgerSummary(rowsText, LedgerStamp());
         log.Write(rid, "decision", "ready rows=" + ledLines.Length.ToString(CultureInfo.InvariantCulture)
             + " note=" + note);
         if (!startupLogged)
@@ -548,18 +611,20 @@ public sealed class Rdv3App
         double elapsed;
         if (n == 1)
         {
+            // one hit is still shown IN the list (auto-selected), the way the
+            // reference does it -- the record panel fills from that selection
             int row = hits[0];
-            string[] va, vb, vc;
-            Rdv3Ledger.RecordView(lines[row], out va, out vb, out vc);
-            string k2 = Rdv3Ledger.FieldOf(lines[row], 1);
-            bool p = proc[row];
+            List<Rdv3CandRow> one = new List<Rdv3CandRow>(1);
+            one.Add(CandRow(lines[row], proc[row]));
+            List<int> candRows = new List<int>(1);
+            candRows.Add(row);
             form.RunOnUi(delegate
             {
-                form.ShowRecord(key, Rdv3Text.VerdictOne.Replace("{key2}", k2), 1, va, vb, vc,
-                    Rdv3Text.LabelProcessed + ": " + (p ? Rdv3Ledger.ProcessedTrue : Rdv3Ledger.ProcessedFalse));
+                form.ShowCandidates(key, one, 1, 1);
+                form.SelectCandidate(0, lines[row], proc[row], 1);
                 shownRow = row;
                 shownKey = key;
-                shownCands = null;
+                shownCands = candRows;
             });
             elapsed = Rdv3Clock.MsSince(t0);
             log.Write(sid, "search", "key=" + key + " source=" + source + " hits=1 ms=" + Rdv3Log.F(elapsed));
@@ -568,7 +633,7 @@ public sealed class Rdv3App
         {
             form.RunOnUi(delegate
             {
-                form.ShowRecord(key, Rdv3Text.VerdictNone, 3, null, null, null, "");
+                form.ShowCandidates(key, new List<Rdv3CandRow>(), 0, 0);
                 shownRow = -1;
                 shownKey = key;
                 shownCands = null;
@@ -579,20 +644,16 @@ public sealed class Rdv3App
         else
         {
             int show = (n > CandShowMax) ? CandShowMax : n;
-            string[][] rows = new string[show][];
+            List<Rdv3CandRow> rows = new List<Rdv3CandRow>(show);
             List<int> candRows = new List<int>(show);
             for (int i = 0; i < show; i++)
             {
-                rows[i] = Rdv3Ledger.CandidateColumns(lines[hits[i]]);
+                rows.Add(CandRow(lines[hits[i]], proc[hits[i]]));
                 candRows.Add(hits[i]);
             }
-            string verdict = (show < n)
-                ? Rdv3Text.VerdictManyCut.Replace("{n}", n.ToString(CultureInfo.InvariantCulture))
-                                         .Replace("{m}", show.ToString(CultureInfo.InvariantCulture))
-                : Rdv3Text.VerdictMany.Replace("{n}", n.ToString(CultureInfo.InvariantCulture));
             form.RunOnUi(delegate
             {
-                form.ShowCandidates(key, verdict, rows);
+                form.ShowCandidates(key, rows, n, show);
                 shownRow = -1;
                 shownKey = key;
                 shownCands = candRows;
@@ -606,6 +667,16 @@ public sealed class Rdv3App
         form.SetSearchMs(elapsed);
     }
 
+    // one ledger line as the candidate table needs it
+    private static Rdv3CandRow CandRow(string line, bool processed)
+    {
+        Rdv3CandRow r = new Rdv3CandRow();
+        r.Cols = Rdv3Ledger.CandidateColumns(line);
+        r.Processed = processed;
+        r.Line = line;
+        return r;
+    }
+
     // UI thread. The pick happens after the search clock stopped; its render is
     // the separate "display" figure in the log.
     private void PickCandidate(int i)
@@ -614,14 +685,8 @@ public sealed class Rdv3App
         if (state != StReady || cands == null || i < 0 || i >= cands.Count) { return; }
         long t0 = Rdv3Clock.Now();
         int row = cands[i];
-        string[] va, vb, vc;
-        Rdv3Ledger.RecordView(ledLines[row], out va, out vb, out vc);
         string k2 = Rdv3Ledger.FieldOf(ledLines[row], 1);
-        string verdict = Rdv3Text.VerdictPicked.Replace("{key2}", k2)
-            .Replace("{n}", cands.Count.ToString(CultureInfo.InvariantCulture))
-            .Replace("{i}", (i + 1).ToString(CultureInfo.InvariantCulture));
-        form.ShowRecord(shownKey, verdict, 1, va, vb, vc,
-            Rdv3Text.LabelProcessed + ": " + (ledProcessed[row] ? Rdv3Ledger.ProcessedTrue : Rdv3Ledger.ProcessedFalse));
+        form.SelectCandidate(i, ledLines[row], ledProcessed[row], cands.Count);
         shownRow = row;
         log.Write("S" + searchSeq.ToString(CultureInfo.InvariantCulture), "display",
             "picked=" + (i + 1).ToString(CultureInfo.InvariantCulture)
@@ -632,6 +697,14 @@ public sealed class Rdv3App
     private void DoProcessed()
     {
         if (state != StReady) { form.SetError(Rdv3Text.ErrNotReady); return; }
+        // one save at a time: a second mark while the first is unresolved would
+        // rewrite the same file from under it
+        if (savingMark)
+        {
+            form.SetError(Rdv3Text.ErrSaveInFlight);
+            log.Write("-", "processed", "refused: a processed save is still in flight");
+            return;
+        }
         int row = shownRow;
         if (row < 0)
         {
@@ -648,6 +721,15 @@ public sealed class Rdv3App
         procSeq++;
         string pidTag = "P" + procSeq.ToString(CultureInfo.InvariantCulture);
         long t0 = Rdv3Clock.Now();          // confirm instant: the E2E clock
+
+        // the save starts now and its outcome is undecided until the worker
+        // reports back: say so on screen, refuse a second mark, refuse a close
+        savingMark = true;
+        closeAskedWhileSaving = false;
+        form.EnableProcessed(false);
+        form.SetState(Rdv3Text.StateSavingMark, 2);
+        form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedTrue + Rdv3Text.SavingSuffix);
+        log.Write(pidTag, "processed", "save started key2=" + k2 + " (exit held until it is decided)");
 
         Rdv3Job job = new Rdv3Job();
         job.RunId = pidTag;
@@ -669,7 +751,15 @@ public sealed class Rdv3App
                 // screen and ledger never diverge silently
                 ledProcessed[row] = was;
                 log.Write(pidTag, "error", "stage=persist key2=" + k2 + " msg=" + ex.Message);
-                form.RunOnUi(delegate { form.SetError(Rdv3Text.ErrPersist + ex.Message); });
+                form.RunOnUi(delegate
+                {
+                    form.SetError(Rdv3Text.ErrPersist + ex.Message);
+                    if (shownRow == row)
+                    {
+                        form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedFalse);
+                    }
+                    EndMarkSave(pidTag, false);
+                });
                 return;
             }
             double ms = Rdv3Clock.MsSince(t);
@@ -679,6 +769,7 @@ public sealed class Rdv3App
                 {
                     form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedTrue);
                 }
+                EndMarkSave(pidTag, true);
             });
             // e2e = confirm click -> file persisted AND the screen updated
             log.Write(pidTag, "processed", "key2=" + k2
@@ -687,6 +778,25 @@ public sealed class Rdv3App
                 + " e2e_ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t0)));
         };
         worker.Post(job);
+    }
+
+    // UI thread. The save is decided -- saved or failed, either is a decision --
+    // so operations and the close are released again.
+    private void EndMarkSave(string tag, bool ok)
+    {
+        if (!savingMark) { return; }
+        savingMark = false;
+        form.EnableProcessed(state == StReady);
+        if (state == StReady)
+        {
+            form.SetState(watch.Bound ? Rdv3Text.StateReady : Rdv3Text.StateWaitingNotepad, watch.Bound ? 1 : 2);
+        }
+        log.Write(tag, "exit", "processed save decided (" + (ok ? "saved" : "failed") + "); exit released");
+        if (closeAskedWhileSaving)
+        {
+            closeAskedWhileSaving = false;
+            form.SetError(ok ? Rdv3Text.NoteSaveDoneCanClose : Rdv3Text.NoteSaveFailedCanClose);
+        }
     }
 
     private void DoClear()
@@ -702,15 +812,17 @@ public sealed class Rdv3App
     // ---- watch / timeout / shutdown ---------------------------------------
     private void WatchState(string st, string detail)
     {
+        // while a save is in flight the state line says so; the watch line is
+        // still updated, but it does not overwrite that
         if (st == "WATCHING")
         {
             form.SetNotepad(detail);
-            if (state == StReady) { form.SetState(Rdv3Text.StateReady, 1); }
+            if (state == StReady && !savingMark) { form.SetState(Rdv3Text.StateReady, 1); }
         }
         else if (st == "WAITING")
         {
             form.SetNotepad(Rdv3Text.NotepadNone);
-            if (state == StReady) { form.SetState(Rdv3Text.StateWaitingNotepad, 2); }
+            if (state == StReady && !savingMark) { form.SetState(Rdv3Text.StateWaitingNotepad, 2); }
         }
     }
 
@@ -719,6 +831,14 @@ public sealed class Rdv3App
         Rdv3Job j = worker.TakeOverdue();
         if (j == null) { return; }
         log.Write(j.RunId, "timeout", "kind=" + j.Kind + " after_ms=" + Rdv3Log.F(Rdv3Clock.MsSince(j.StartedAt)));
+        if (string.Equals(j.Kind, "processed", StringComparison.Ordinal))
+        {
+            // a managed job cannot be aborted, and until the write returns
+            // nobody knows whether the record reached the file. Report the
+            // delay; keep holding the exit rather than claim a decision.
+            form.SetError(Rdv3Text.ErrSaveOverdue);
+            return;
+        }
         if (string.Equals(j.RunId, activeRunId, StringComparison.Ordinal))
         {
             // abandon the run: whatever arrives later is stale by ID
@@ -751,6 +871,9 @@ public sealed class Rdv3App
         form.RunOnUi(delegate
         {
             form.SetError(Rdv3Text.ErrCheckFailed + ex.Message);
+            // a mark job that threw anywhere is still a decided save (failed):
+            // the guard must never outlive the job that armed it
+            if (string.Equals(job.Kind, "processed", StringComparison.Ordinal)) { EndMarkSave(job.RunId, false); }
             if (!string.Equals(job.RunId, activeRunId, StringComparison.Ordinal)) { return; }
             activeRunId = "";
             if (ledLines != null)

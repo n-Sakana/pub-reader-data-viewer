@@ -27,7 +27,7 @@ if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Pa
 
 $srcDir = 'src\app\csharp'
 $sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs', 'Rdv3Jobs.cs',
-             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Ui.cs', 'Rdv3App.cs')
+             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3Ui.cs', 'Rdv3App.cs')
 $title = 'Reader Data Viewer -- practical build, C# standard Dictionary'
 $usage = 'ReaderDataViewer.cmd [dataDir] [-ledger <file.xlsx>] [-log <file>]'
 $name = 'ReaderDataViewer.cmd'
