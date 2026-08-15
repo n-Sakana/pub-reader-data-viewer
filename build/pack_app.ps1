@@ -75,11 +75,13 @@ foreach ($ch in $psText.ToCharArray()) {
   if ([int]$ch -gt 127) { throw "the PowerShell bootstrap must stay ASCII (found U+{0:X4})" -f [int]$ch }
 }
 
+$psBegin = '#RDV' + '-PS-BEGIN'
+$csBegin = '#RDV' + '-CS-BEGIN'
+
+# ---- the .cmd: one file, a console window comes with it ---------------------
 $head = [IO.File]::ReadAllText((Join-Path $Root 'src\cmd\header.cmd'), [Text.Encoding]::UTF8)
 $head = $head.Replace('@@TITLE@@', $title).Replace('@@USAGE@@', $usage)
-
-$all = $head + "`r`n" + ('#RDV' + '-PS-BEGIN') + "`r`n" + $psText + "`r`n" +
-       ('#RDV' + '-CS-BEGIN') + "`r`n" + $csText
+$all = $head + "`r`n" + $psBegin + "`r`n" + $psText + "`r`n" + $csBegin + "`r`n" + $csText
 
 if ([string]::IsNullOrEmpty($Out)) {
   $Out = Join-Path $Root "dist\app-csharp\$name"
@@ -90,6 +92,29 @@ if (-not (Test-Path -LiteralPath $dir)) { New-Item -ItemType Directory -Path $di
 # UTF-8 without BOM: cmd.exe reads the head, PowerShell reads the whole file as
 # UTF-8, and nothing in the head is outside ASCII anyway
 [IO.File]::WriteAllText($Out, $all, (New-Object Text.UTF8Encoding($false)))
-
 $kb = [Math]::Round((Get-Item -LiteralPath $Out).Length / 1KB, 1)
 Write-Output ("packed {0}  ({1} sources, {2} KB)" -f $Out, $sources.Count, $kb)
+
+# ---- the .vbs: the same payload, run by a host that owns no console ---------
+# VBScript parses the whole file before running anything, so every payload line
+# is commented out with a leading quote; the bootstrap strips it back off.
+function Rdv-Comment([string] $text) {
+  $sb = New-Object System.Text.StringBuilder
+  foreach ($line in ($text -split "`r?`n")) {
+    [void]$sb.Append("'").Append($line).Append("`r`n")
+  }
+  return $sb.ToString().TrimEnd("`r", "`n")
+}
+
+$vbsHead = [IO.File]::ReadAllText((Join-Path $Root 'src\cmd\header.vbs'), [Text.Encoding]::UTF8)
+$vbsHead = $vbsHead.Replace('@@TITLE@@', $title).Replace('@@USAGE@@', ($usage -replace '\.cmd', '.vbs'))
+foreach ($ch in $vbsHead.ToCharArray()) {
+  if ([int]$ch -gt 127) { throw "the VBScript head must stay ASCII (found U+{0:X4})" -f [int]$ch }
+}
+$vbsAll = $vbsHead + "`r`n" + "'" + $psBegin + "`r`n" + (Rdv-Comment $psText) + "`r`n" +
+          "'" + $csBegin + "`r`n" + (Rdv-Comment $csText) + "`r`n"
+
+$vbsOut = [IO.Path]::ChangeExtension($Out, '.vbs')
+[IO.File]::WriteAllText($vbsOut, $vbsAll, (New-Object Text.UTF8Encoding($false)))
+$kb2 = [Math]::Round((Get-Item -LiteralPath $vbsOut).Length / 1KB, 1)
+Write-Output ("packed {0}  ({1} sources, {2} KB)" -f $vbsOut, $sources.Count, $kb2)

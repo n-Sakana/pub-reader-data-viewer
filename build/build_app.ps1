@@ -80,6 +80,8 @@ if (-not $SkipCSharp) {
   Copy-Data $destC
 
   # the distribution is two files: the .cmd and its settings
+  # the entry point people double click is the .vbs (no console window); the
+  # .cmd is packed next to it for when a console is wanted
   $cfgSrc = Join-Path $Root 'srcpp\config\ReaderDataViewer.json'
   $cfgDst = Join-Path $destC 'ReaderDataViewer.json'
   Copy-Item -LiteralPath $cfgSrc -Destination $cfgDst -Force

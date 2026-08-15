@@ -295,9 +295,13 @@ VBA 版は同じ設定をシートの `C59` (ログ) `C60` (データフォル�
 | 配布ルート | 中身 | 方式 |
 |---|---|---|
 | `dist\app-vba\` | 小さな FE `ReaderDataViewer.xlsm` (~240 KB) + 台帳ブック `ReaderDataViewer-Ledger.xlsx` + sidecar `.state` + `data\` (CSV 3 本) | VBA + 遅延バインド Scripting.Dictionary |
-| `dist\app-csharp\` | `ReaderDataViewer.cmd` + 閲覧用 `ReaderDataViewer-Ledger.xlsx` + `data\` | C# + `Dictionary<string, List<int>>` |
+| `dist\app-csharp\` | **`ReaderDataViewer.vbs`** (入口) + **設定 `ReaderDataViewer.json`** + 閲覧用 `ReaderDataViewer-Ledger.xlsx` + `data\` (`.cmd` も同梱・診断用) | C# + `Dictionary<string, List<int>>` |
 
-- **C# 版の配布は 2 枚**: プログラム (`.cmd`) と設定 (`.json`)。監視するアプリのウィンドウと
+- **C# 版の配布は 2 枚**: プログラム (`.vbs`) と設定 (`.json`)。`.vbs` を実行するのは
+  `wscript.exe` で、これは GUI サブシステムの実行体なので**コンソール窓が出ません**
+  (`.cmd` は `cmd.exe` = コンソール実行体なので、構造上かならず窓が出ます)。中身も compile も
+  アプリも両者まったく同じで、違うのは入口だけです。コンソールを見たいとき用に `.cmd` も
+  同梱しています。監視するアプリのウィンドウと
   その中の欄 (UI Automation の AutomationId 等で指定・**複数可**)、番号の桁数、監視間隔、
   台帳やログの場所などは設定ファイル側にあります。画面右上の「設定」から GUI で編集でき、
   「画面を調べる」で対象アプリの UIA ツリーを見ながら欄を選べます →
