@@ -52,11 +52,18 @@ Private Const REQ_POLL_S As Double = 0.12
 Private Const LIVE_POLL_S As Double = 1#
 Private Const HEARTBEAT_S As Double = 3#
 
+' How long the picker keeps sampling. It is ONE number: the deadline, the
+' message the operator reads and the log line all derive from it. Writing the
+' figure a second time is how the message came to say 15 while the deadline
+' was 60.
+Private Const INSPECT_S As Double = 60#
+
 Private g_sid As String
 Private g_dataDir As String
 Private g_ledgerPath As String
 Private g_sidecarPath As String
 Private g_logPath As String
+Private g_configPath As String
 Private g_active As Boolean
 Private g_state As String                          ' CHECKING/AWAIT/READY/BLOCKED
 Private g_ver As Long
@@ -81,6 +88,8 @@ Private m_qSearch As Long
 Private m_qPick As Long
 Private m_qMark As Long
 Private m_qWatch As Long
+Private m_qInspect As Long
+Private m_qConfig As Long
 
 ' watch state
 Private w_on As Boolean
@@ -91,6 +100,12 @@ Private w_lastFired As String
 Private w_sawEmpty As Boolean
 Private w_bound As Boolean
 Private w_saidWaiting As Boolean
+Private w_lastBind As Double
+' the element picker: until when we are sampling the focus
+Private w_inspectUntil As Double
+Private w_inspectOn As Boolean
+Private w_inspectReq As String
+Private w_inspectLast As String
 
 Private m_expRows As Long
 Private m_expChk As Double
@@ -152,13 +167,24 @@ End Function
 ' bootstrap (called by the FE via Application.Run; returns immediately)
 '------------------------------------------------------------------------------
 Public Sub Rdv3BeBootstrap(ByVal sid As String, ByVal dataDir As String, _
-                           ByVal ledgerPath As String, ByVal logPath As String)
+                           ByVal ledgerPath As String, ByVal logPath As String, _
+                           ByVal configPath As String)
     On Error GoTo Failed
     g_sid = sid
     g_dataDir = dataDir
     g_ledgerPath = ledgerPath
     g_sidecarPath = Rdv3SidecarPath(ledgerPath)
     g_logPath = logPath
+    ' This process reads the SAME ReaderDataViewer.json the FE read. It is not
+    ' told the values: the file is the one authority, and a BE that took them
+    ' second-hand would be one more place for the two to disagree. The key rule
+    ' is settled here, before the CSVs are read.
+    g_configPath = configPath
+    Rdv3CfgLoad configPath
+    Rdv3SpecApply Rdv3CfgKeyLength(), Rdv3CfgKeyDigitsOnly(), _
+                  Rdv3CfgCandidateRows(), Rdv3CfgPollMs(), Rdv3CfgStableMs(), _
+                  Rdv3CfgRebindMs()
+    Rdv3UiaConfigure CfgTargetList()
     ' how a "processed" mark reaches the file. book unless a "<ledger>.savemethod"
     ' file next to the ledger names another one -- and no distribution ships
     ' that file, so what ships is unchanged (modRdv3Save).
@@ -182,6 +208,21 @@ Public Sub Rdv3BeBootstrap(ByVal sid As String, ByVal dataDir As String, _
     ' can never read "no lease" and conclude the BE died before it started
     If Not Rdv3ChBeLeaseOpen(sid) Then
         Rdv3ChWriteFlag Rdv3ChBeDonePath(sid), "reason=be_lease_failed"
+        Application.DisplayAlerts = False
+        Application.Quit
+        Exit Sub
+    End If
+
+    ' ONE WRITER PER LEDGER FILE. The settings file can aim this build at any
+    ' ledger, so two copies of the FE can be pointed at the same xlsx -- and two
+    ' processes saving the same workbook is how a record that was reported saved
+    ' goes missing. The lock is taken before anything is read or written, and the
+    ' second instance is refused with the reason rather than allowed to race.
+    If Not Rdv3ChLedgerLockTake(ledgerPath) Then
+        BeLog "ledger already in use by another instance: " & ledgerPath
+        PublishErr "ledger", "この統合台帳は別の Reader Data Viewer が使用中です: " & ledgerPath
+        Rdv3ChWriteFlag Rdv3ChBeDonePath(sid), "reason=ledger_in_use"
+        g_active = False
         Application.DisplayAlerts = False
         Application.Quit
         Exit Sub
@@ -227,6 +268,7 @@ Public Sub Rdv3BeMain()
     Dim lastReq As Double, lastLive As Double, lastHb As Double, nowT As Double
     lastReq = Timer: lastLive = Timer: lastHb = Timer
     Do While g_active
+        If w_inspectOn Then PollInspect
         If w_on And g_state = "READY" Then PollWatch
         nowT = Timer
         If nowT < lastReq Then lastReq = nowT     ' midnight wrap
@@ -244,7 +286,7 @@ Public Sub Rdv3BeMain()
             lastHb = nowT
             Heartbeat
         End If
-        If Not Rdv3WaitMs(RDV3_POLL_MS) Then
+        If Not Rdv3WaitMs(Rdv3PollMs()) Then
             g_exitReason = "wait_unavailable"
             PublishErr "wait", "待機処理が機能しなくなりました (空回りを避けるため停止します)"
             Exit Do
@@ -280,6 +322,8 @@ Private Function Alive() As Boolean
 End Function
 
 Private Sub SelfQuit()
+    ' let the next instance have the ledger the moment this one ends
+    Rdv3ChLedgerLockRelease
     On Error Resume Next
     If Not m_lb Is Nothing Then
         m_lb.Close False                     ' every change was saved when made
@@ -1056,6 +1100,40 @@ Private Sub PollRequests()
         End If
     End If
 
+    If Rdv3ChReadReq(g_sid, RDV3_RQ_CONFIG, ver, args) Then
+        If ver > m_qConfig Then
+            m_qConfig = ver
+            ReloadConfig
+        End If
+    End If
+
+    If Rdv3ChReadReq(g_sid, RDV3_RQ_INSPECT, ver, args) Then
+        If ver > m_qInspect Then
+            m_qInspect = ver
+            ' the operator now has this long to click the field they mean. The
+            ' sampling is the ordinary poll cadence, not a spin.
+            If args = "0" Then
+                ' the picker was closed: stop sampling, report nothing
+                w_inspectOn = False
+                w_inspectLast = ""
+                Publish RDV3_K_INSPECT, "res=closed;req=" & w_inspectReq, Empty
+                BeLog "inspect closed"
+                Exit Sub
+            End If
+            w_inspectOn = True
+            w_inspectReq = args
+            w_inspectLast = ""
+            w_inspectUntil = Rdv3Ticks() + INSPECT_S
+            BeLog "req inspect (" & CStr(CLng(INSPECT_S)) & " s) req=" & args
+            ' every answer names the request it belongs to, so a result from an
+            ' earlier press cannot be taken for the answer to this one
+            Publish RDV3_K_INSPECT, "res=waiting;req=" & args & ";msg=" & _
+                Replace("対象アプリの欄をクリックすると、その欄をプレビューします。" & _
+                        "「この要素を使う」を押すまで何も変わりません (" & _
+                        CStr(CLng(INSPECT_S)) & " 秒)", ";", ","), Empty
+        End If
+    End If
+
     If Rdv3ChReadReq(g_sid, RDV3_RQ_WATCH, ver, args) Then
         If ver > m_qWatch Then
             m_qWatch = ver
@@ -1065,7 +1143,14 @@ Private Sub PollRequests()
                 PublishState "watch_off", ""
             Else
                 w_saidWaiting = False
-                Rdv3UiaReset
+                Rdv3UiaResetAll
+                ' A MANUAL reconnect is the operator saying "try now". Leaving
+                ' w_lastBind alone made the next attempt wait out the rest of
+                ' rebindMs (up to a minute at the top of its range), and
+                ' leaving w_bound set made the heartbeat claim a binding that
+                ' ResetAll had just thrown away.
+                w_lastBind = 0
+                w_bound = False
             End If
         End If
     End If
@@ -1105,8 +1190,8 @@ Private Sub DoSearch(ByVal key As String, ByVal t0s As String, ByVal source As S
         Publish RDV3_K_RESULT, meta, Empty
     Else
         show = n
-        If show > RDV3_MAXSHOW Then show = RDV3_MAXSHOW
-        ReDim vals(1 To show, 1 To 9)
+        If show > Rdv3MaxShow() Then show = Rdv3MaxShow()
+        ReDim vals(1 To show, 1 To 10)
         For i = 1 To show
             row = hits.Item(i)
             FillCandRow vals, i, row
@@ -1202,6 +1287,7 @@ Private Sub DoMark(ByVal row As Long, ByVal newVal As Boolean, ByVal t0s As Stri
 
     Publish RDV3_K_MARK, "res=marked;row=" & CStr(row) & ";k2=" & k2 & _
         ";proc=" & IIf(newVal, "1", "0") & ";save_ms=" & Format$(saveMs, "0.00") & _
+        ";mtime=" & Replace(FileTimeStr(g_ledgerPath), ";", ",") & _
         ";req=" & CStr(reqVer) & ";t0=" & t0s, Empty
     BeLog "mark row=" & row & " k2=" & k2 & " value=" & IIf(newVal, "TRUE", "FALSE") & _
         " save_ms=" & Format$(saveMs, "0.0")
@@ -1212,61 +1298,63 @@ FailMsg:
     On Error Resume Next
     m_proc(row) = oldVal
     m_marks = oldMarks
+    ' The book method writes the LEDGER cell and the META cells into the open
+    ' workbook and only then saves it. If that save did not happen, those edits
+    ' are still sitting in this process's copy of the book, and EnsureLedgerBook
+    ' hands the same copy to the next mark -- whose Save would carry them out to
+    ' disk alongside its own. A record the operator was told had FAILED would
+    ' appear as saved. So let the copy go: the next operation opens the file on
+    ' disk, which is the one that is true. No retry and nothing queued.
+    If Not m_lb Is Nothing Then
+        m_lb.Close False
+        Set m_lb = Nothing
+        Rdv3SaveReset
+    End If
+    ' proc is what the record went BACK to. A failed re-mark of a row that was
+    ' already TRUE must not leave the screen saying the opposite of the ledger.
     Publish RDV3_K_MARK, "res=markerr;row=" & CStr(row) & ";k2=" & k2 & _
+        ";proc=" & IIf(oldVal, "1", "0") & _
         ";req=" & CStr(reqVer) & ";t0=" & t0s & ";msg=" & Replace(errMsg, ";", ","), Empty
-    BeLog "mark FAILED row=" & row & ": " & errMsg
+    BeLog "mark FAILED row=" & row & " (ledger book dropped; reopened from disk next time): " & errMsg
 End Sub
 
 ' the 30-field record block: 10 rows x 3 columns (A value, B value, C value)
+' The record block is the row's 28 content columns, unchanged. The screen -- not
+' this process -- decides which of them it shows (ui-spec 4.2: the merged record
+' carries only what the candidate table does not already show). Sending the row
+' rather than a pre-arranged 10x3 grid means a change to the screen is a change
+' to the screen, and the channel payload stays what it says it is.
 Private Function RecordBlock(ByVal row As Long) As Variant
     Dim f(0 To RDV3_CONTENT_COLS - 1) As String
-    Dim vals(1 To 10, 1 To 3) As Variant
+    Dim vals(1 To RDV3_CONTENT_COLS, 1 To 1) As Variant
     Dim i As Long
-    Dim hasA As Boolean, hasC As Boolean
     SplitLine m_lines(row), f
-    hasA = False
-    For i = 2 To 10
-        If Len(f(i)) > 0 Then
-            hasA = True
-            Exit For
-        End If
-    Next i
-    hasC = False
-    For i = 19 To 27
-        If Len(f(i)) > 0 Then
-            hasC = True
-            Exit For
-        End If
-    Next i
-    If hasA Then vals(1, 1) = f(0) Else vals(1, 1) = ""
-    For i = 1 To 9
-        vals(1 + i, 1) = f(1 + i)
-    Next i
-    vals(1, 2) = f(0)
-    vals(2, 2) = f(1)
-    For i = 2 To 9
-        vals(1 + i, 2) = f(9 + i)
-    Next i
-    If hasC Then vals(1, 3) = f(1) Else vals(1, 3) = ""
-    For i = 1 To 9
-        vals(1 + i, 3) = f(18 + i)
+    For i = 0 To RDV3_CONTENT_COLS - 1
+        vals(i + 1, 1) = f(i)
     Next i
     RecordBlock = vals
 End Function
 
 ' candidate slot: the eight identification columns + the ledger row (col 9)
+' One candidate row, in the order the screen shows it (ui-spec 4). The processed
+' flag is column 9: without it the operator cannot tell a done row from an open
+' one while looking at the list, which is the moment they need to.
 Private Sub FillCandRow(ByRef vals As Variant, ByVal i As Long, ByVal row As Long)
     Dim f(0 To RDV3_CONTENT_COLS - 1) As String
     SplitLine m_lines(row), f
     vals(i, 1) = f(1)      ' key2
-    vals(i, 2) = f(18)     ' b_line
+    ' b_line is field 17. It was reading 18, which is b_memo -- the 行番号
+    ' column has been showing the memo text. Rdv3Ledger.CandCols in the C#
+    ' build is the canonical list: 1, 17, 11, 12, 13, 16, 19, 20.
+    vals(i, 2) = f(17)     ' b_line
     vals(i, 3) = f(11)     ' b_slip
     vals(i, 4) = f(12)     ' b_date
     vals(i, 5) = f(13)     ' b_qty
     vals(i, 6) = f(16)     ' b_status
     vals(i, 7) = f(19)     ' c_item
     vals(i, 8) = f(20)     ' c_maker
-    vals(i, 9) = row
+    vals(i, 9) = IIf(m_proc(row), "済", "未")
+    vals(i, 10) = row
 End Sub
 
 Private Sub SplitLine(ByRef line As String, ByRef out() As String)
@@ -1285,69 +1373,149 @@ End Sub
 '------------------------------------------------------------------------------
 ' the Notepad watch (same rules as every build before this one), 40 ms cadence
 '------------------------------------------------------------------------------
-Private Sub PollWatch()
-    Dim raw As Variant
-    Dim cand As String
-    Dim held As Double
-    Dim t0 As Double
+' The watch, over EVERY configured target at once. The per-target pending and
+' last-fired state lives in modRdv3Uia now, because it is per target: two
+' applications showing the same number are two readings, and one going away must
+' not disturb the others.
+' bound / wanted / why on every state record, heartbeats included. A heartbeat
+' that dropped them turned "1 of 2 connected, the other needs a click" back into
+' a bare "waiting" a second later, which is the opposite of traceable.
+Private Function WatchCounts() As String
+    WatchCounts = ";bound=" & CStr(Rdv3UiaBoundCount()) & _
+                  ";want=" & CStr(Rdv3UiaWantedCount()) & _
+                  ";why=" & Replace(Rdv3UiaWhy(), ";", ",")
+End Function
 
-    If Not Rdv3UiaBound() Then
-        If Rdv3UiaBind() Then
-            w_bound = True
-            w_saidWaiting = False
-            w_pending = ""
-            w_pendPolls = 0
-            PublishState "bound", "hwnd=" & CStr(Rdv3UiaHwnd()) & ";title=" & Replace(Rdv3UiaTitle(), ";", ",")
-            BeLog "watch bound hwnd=" & CStr(Rdv3UiaHwnd())
-        Else
-            If Not w_saidWaiting Then
-                w_saidWaiting = True
-                w_bound = False
-                PublishState "waiting", "why=" & Replace(Rdv3UiaWhy(), ";", ",")
-            End If
-            Rdv3WaitMs 360     ' bind retry backoff on top of the loop's 40 ms
+' the element picker, sampled from the resident loop.
+' It reads whatever has the
+' keyboard focus; while Excel itself has it there is nothing to report, so the
+' operator has time to go and click the field they mean.
+' The picker, sampled from the resident loop. It PREVIEWS and nothing else: the
+' answer says what the focused element is, and the settings screen shows it
+' beside what the row holds now. Nothing is adopted here -- that is the operator
+' pressing 「この要素を使う」, and it is the only thing that changes a setting.
+'
+' It keeps sampling so the preview follows the operator from field to field, the
+' way the C# picker follows the cursor. Only a CHANGE is published; the same
+' element re-read every 40 ms would be a pointless rewrite of the channel.
+Private Sub PollInspect()
+    Dim r As String
+    If Rdv3Ticks() > w_inspectUntil Then
+        w_inspectOn = False
+        Publish RDV3_K_INSPECT, "res=timeout;req=" & w_inspectReq & ";msg=" & _
+            Replace("時間切れです。もう一度「画面から選ぶ」を押してください", ";", ","), Empty
+        BeLog "inspect timed out"
+        Exit Sub
+    End If
+    r = Rdv3UiaPickFocused(w_inspectReq)
+    If Len(r) = 0 Then Exit Sub
+    If Left$(r, 4) = "err=" Then Exit Sub          ' still on Excel: keep waiting
+    If r = w_inspectLast Then Exit Sub             ' the same element as last time
+    w_inspectLast = r
+    Publish RDV3_K_INSPECT, "res=preview;" & r, Empty
+    BeLog "inspect preview " & r
+End Sub
+
+' The settings screen saved the file; this process re-reads it and adopts what
+' may be adopted without a restart. The BE is a SEPARATE process, so nothing the
+' FE changed in its own memory reached here -- the file is the only thing both
+' of them see, and re-reading it is how they agree again.
+'
+' The key LENGTH and the paths are NOT adopted: the CSVs were read and the index
+' was built with the ones this session started on. The answer says which took
+' effect, so the screen can say it too rather than implying everything did.
+Private Sub ReloadConfig()
+    Dim before As Long
+    On Error GoTo Failed
+    before = Rdv3UiaBoundCount()
+    If Not Rdv3CfgLoad(g_configPath) Then
+        If Len(Rdv3CfgError()) > 0 Then
+            Publish RDV3_K_CONFIG, "res=err;msg=" & Replace(Rdv3CfgError(), ";", ","), Empty
+            BeLog "config reload failed: " & Rdv3CfgError()
             Exit Sub
         End If
     End If
+    Rdv3SpecApplyLive Rdv3CfgKeyDigitsOnly(), Rdv3CfgCandidateRows(), _
+                      Rdv3CfgPollMs(), Rdv3CfgStableMs(), Rdv3CfgRebindMs()
+    ' the watch list changed, so every binding is re-made from the new targets
+    Rdv3UiaConfigure CfgTargetList()
+    w_saidWaiting = False
+    w_bound = False
+    ' and it is re-made NOW: the save is the operator asking for these targets,
+    ' not a request to start counting rebindMs again from the last attempt
+    w_lastBind = 0
+    Publish RDV3_K_CONFIG, "res=ok;targets=" & CStr(Rdv3CfgTargetCount()) & _
+        ";watched=" & CStr(Rdv3CfgWatchableCount()) & _
+        ";poll=" & CStr(Rdv3PollMs()) & ";stable=" & CStr(Rdv3StableMs()) & _
+        ";rebind=" & CStr(Rdv3RebindMs()) & _
+        ";cand=" & CStr(Rdv3MaxShow()) & _
+        ";digits=" & IIf(Rdv3KeyDigits(), "1", "0") & _
+        ";keylen=" & CStr(Rdv3KeyLen()), Empty
+    BeLog "config reloaded: " & Rdv3CfgDescribe() & " (was bound " & CStr(before) & ")"
+    Exit Sub
+Failed:
+    Publish RDV3_K_CONFIG, "res=err;msg=" & _
+        Replace("設定の再読み込みに失敗 " & Err.Number & ": " & Err.Description, ";", ","), Empty
+End Sub
 
-    raw = Rdv3UiaRead()
-    If IsNull(raw) Then
-        Rdv3UiaReset
-        If w_bound Then
-            w_bound = False
+' the configured targets, as one collection for the watcher
+Private Function CfgTargetList() As Collection
+    Dim c As Collection
+    Dim i As Long
+    Set c = New Collection
+    For i = 1 To Rdv3CfgTargetCount()
+        c.Add Rdv3CfgTarget(i)
+    Next i
+    Set CfgTargetList = c
+End Function
+
+Private Sub PollWatch()
+    Dim key As String
+    Dim fromName As String
+    Dim detectMs As Double
+    Dim polls As Long
+    Dim t0 As Double
+    Dim nowBound As Long
+
+    nowBound = Rdv3UiaBoundCount()
+    If nowBound < Rdv3UiaWantedCount() Then
+        ' rebindMs, not the poll cadence. Binding walks the focused element's
+        ' ancestors and may ask WMI for a process name; at 40 ms that is 25 of
+        ' them a second for as long as ONE target is still unbound, which is the
+        ' ordinary state while the operator has only visited some of their
+        ' windows. The setting exists to say how often; this obeys it.
+        If w_lastBind = 0 Or Rdv3MsSince(w_lastBind) >= Rdv3RebindMs() Then
+            w_lastBind = Rdv3Ticks()
+            If Rdv3UiaBind() Then
+            nowBound = Rdv3UiaBoundCount()
+            w_bound = (nowBound > 0)
             w_saidWaiting = False
+            PublishState "bound", "hwnd=" & CStr(Rdv3UiaHwnd()) & ";title=" & _
+                    Replace(Rdv3UiaTitle(), ";", ",") & WatchCounts()
+                BeLog "watch bound " & CStr(nowBound) & "/" & CStr(Rdv3UiaWantedCount()) & _
+                    " hwnd=" & CStr(Rdv3UiaHwnd())
+            ElseIf nowBound = 0 Then
+                If Not w_saidWaiting Then
+                    w_saidWaiting = True
+                    w_bound = False
+                    PublishState "waiting", "why=" & Replace(Rdv3UiaWhy(), ";", ",") & WatchCounts()
+                End If
+            End If
         End If
-        Exit Sub
+        If Rdv3UiaBoundCount() = 0 Then Exit Sub
     End If
 
-    cand = Rdv3Candidate(CStr(raw))
-    If Len(cand) = 0 Then
-        w_sawEmpty = True
-        w_pending = ""
-        w_pendPolls = 0
-    ElseIf Not Rdv3IsKey(cand) Then
-        w_pending = ""
-        w_pendPolls = 0
-    ElseIf cand = w_lastFired And Not w_sawEmpty Then
-        w_pending = ""
-        w_pendPolls = 0
-    ElseIf cand <> w_pending Then
-        w_pending = cand
-        w_pendSince = Rdv3Ticks()
-        w_pendPolls = 1
-    Else
-        w_pendPolls = w_pendPolls + 1
-        held = Rdv3MsSince(w_pendSince)
-        If held >= RDV3_STABLE_MS Then
-            t0 = Rdv3Ticks()
-            w_lastFired = cand
-            w_sawEmpty = False
-            w_pending = ""
-            BeLog "detect key=" & cand & " latency_ms=" & Format$(held, "0.0") & _
-                " polls=" & CStr(w_pendPolls)
-            DoSearch cand, Trim$(Str$(CDbl(t0))), "detect"
-            w_pendPolls = 0
-        End If
+    If Rdv3UiaTick(key, fromName, detectMs, polls) Then
+        t0 = Rdv3Ticks()
+        BeLog "detect key=" & key & " target=" & fromName & _
+            " latency_ms=" & Format$(detectMs, "0.0") & " polls=" & CStr(polls)
+        DoSearch key, Trim$(Str$(CDbl(t0))), "detect:" & fromName
+    End If
+
+    ' a binding that went away is noticed by the tick; say so once
+    If Rdv3UiaBoundCount() = 0 And w_bound Then
+        w_bound = False
+        w_saidWaiting = False
     End If
 End Sub
 
@@ -1364,7 +1532,8 @@ Private Sub Heartbeat()
     Else
         st = LCase$(g_state)
     End If
-    PublishState "hb_" & st, IIf(w_bound, "hwnd=" & CStr(Rdv3UiaHwnd()) & ";title=" & Replace(Rdv3UiaTitle(), ";", ","), "")
+    PublishState "hb_" & st, IIf(w_bound, "hwnd=" & CStr(Rdv3UiaHwnd()) & ";title=" & _
+        Replace(Rdv3UiaTitle(), ";", ","), "") & WatchCounts()
 End Sub
 
 '------------------------------------------------------------------------------
@@ -1389,7 +1558,10 @@ Private Sub PublishState(ByVal st As String, ByVal extra As String)
 End Sub
 
 Private Sub PublishReady(ByVal rows As Long, ByVal idxMs As Double, ByVal note As String)
-    Publish RDV3_K_READY, "rows=" & CStr(rows) & ";idx=" & Format$(idxMs, "0.00") & ";note=" & note, Empty
+    ' the ledger's own last-saved time travels with the row count, so the summary
+    ' can say "100,000 件 / 最終更新 MM-DD HH:mm" the way the reference does
+    Publish RDV3_K_READY, "rows=" & CStr(rows) & ";idx=" & Format$(idxMs, "0.00") & _
+        ";mtime=" & Replace(FileTimeStr(g_ledgerPath), ";", ",") & ";note=" & note, Empty
 End Sub
 
 Private Sub PublishErr(ByVal stage As String, ByVal msg As String)

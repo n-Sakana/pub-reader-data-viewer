@@ -24,7 +24,9 @@
     "log": "ReaderDataViewer.log"
   },
 
-  // the number the watcher is looking for
+  // The number the watcher is looking for. "length" is also the width of the key
+  // column in the CSVs, so it takes effect at the NEXT start, together with the
+  // data it describes; "digitsOnly" applies as soon as it is saved.
   "key": { "length": 8, "digitsOnly": true },
 
   "search": { "candidateRowsShown": 10 },

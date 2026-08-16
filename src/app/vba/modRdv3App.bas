@@ -65,6 +65,7 @@ Private m_sid As String
 Private m_dataDir As String
 Private m_ledgerPath As String
 Private m_logPath As String
+Private m_configPath As String
 Private m_beLogPath As String
 Private m_readOnly As Boolean
 Private m_logBroken As Boolean
@@ -78,15 +79,20 @@ Private m_verMark As Long
 Private m_verState As Long
 Private m_verApply As Long
 Private m_verErr As Long
+Private m_verInspect As Long
+Private m_verConfig As Long
+Private m_inspectSeq As Long
 Private m_reqVer As Long
 
 ' current display state
 Private m_shownRow As Long
+Private m_watchWant As Long               ' targets the BE says it wants to watch
 Private m_shownKey As String
 Private m_shownKey2 As String
 Private m_candRows(0 To 15) As Long
 Private m_candCount As Long
 Private m_candTotal As Long
+Private m_selSlot As Long                 ' the candidate row on screen, or -1
 Private m_watchOn As Boolean
 Private m_lastMergeMs As Double
 
@@ -103,6 +109,7 @@ Private m_tickWorkCount As Long
 
 Private m_readyNote As String
 Private m_readyRows As Long
+Private m_ledgerMtime As String
 
 Private m_searchSeq As Long
 Private m_procSeq As Long
@@ -155,6 +162,26 @@ Fail:
     End If
 End Sub
 
+' the file name on its own, for the status bar
+Private Function Rdv3BaseName(ByVal p As String) As String
+    Dim i As Long
+    i = InStrRev(p, "\")
+    If i > 0 Then
+        Rdv3BaseName = Mid$(p, i + 1)
+    Else
+        Rdv3BaseName = p
+    End If
+End Function
+
+' "yyyy-mm-dd hh:nn:ss" -> "MM-DD HH:mm", the short form the reference uses
+Private Function ShortStamp(ByVal s As String) As String
+    If Len(s) < 16 Then
+        ShortStamp = s
+        Exit Function
+    End If
+    ShortStamp = Mid$(s, 6, 5) & " " & Mid$(s, 12, 5)
+End Function
+
 Private Function FmtF(ByVal v As Double) As String
     FmtF = Format$(v, "0.00")
 End Function
@@ -193,25 +220,33 @@ Public Sub Rdv3AppStart()
     m_sid = Format$(Now, "yyyymmddhhnnss") & Format$(CLng(Timer * 1000!) Mod 100000, "00000")
     m_readOnly = ThisWorkbook.ReadOnly
     ResolvePaths
+    LogSettings
+    Rdv3UiIdentity Environ$("USERNAME"), Environ$("COMPUTERNAME"), _
+        IIf(m_readOnly, "読み取り専用", "一般"), Rdv3SelfId(), Rdv3BaseName(m_logPath)
     AppLog "-", "boot", "fe=" & Rdv3SelfId() & " method=vba-dict sid=" & m_sid & _
         " book=" & ThisWorkbook.FullName & " data=" & m_dataDir & _
-        " ledger=" & m_ledgerPath & " readonly=" & CStr(m_readOnly)
+        " ledger=" & m_ledgerPath & " readonly=" & CStr(m_readOnly) & _
+        " key=" & CStr(Rdv3KeyLen()) & IIf(Rdv3KeyDigits(), "digits", "any")
 
     n = Rdv3ChSweepStale()
     If n > 0 Then AppLog "-", "worker", "stale_files_cleaned=" & n
 
+    ' the workbook becomes the application's window: Excel's own chrome hidden
+    ' and the sheet zoomed until the whole card is in front of the operator,
+    ' the way the C# window shows everything at once
+    Rdv3UiFitWindow
     Rdv3UiClearResult
     Rdv3UiMergeMs -1
     Rdv3UiSearchMs -1
     Rdv3UiError ""
     Rdv3UiNotepad "未接続 -- メモ帳の入力欄をクリックすると接続します"
-    Rdv3UiWatchButton True
     m_watchOn = True
     If m_readOnly Then
         Rdv3UiError "読み取り専用で開かれています (既に開いていませんか)。更新の承認と処理済み登録はできません"
     End If
 
     m_state = ST_CHECKING
+    Rdv3UiEnableOps False
     m_phaseStart = Timer
     m_spawnDone = False
     Rdv3UiState "更新を確認中"
@@ -230,24 +265,51 @@ Public Sub Rdv3AppStart()
     PumpSchedule True
 End Sub
 
+' Where everything is, in the order the C# build uses: the META override the
+' builder may have written, then ReaderDataViewer.json, then the built-in
+' default. The settings file is the same one the C# build reads and the same one
+' the BE will read for itself -- it is the one authority, and the key rule that
+' comes out of it is settled here, before a single CSV is opened.
 Private Sub ResolvePaths()
     Dim meta As Object
     Dim v As String
+    Dim baseDir As String
+
+    baseDir = ThisWorkbook.Path
+    m_configPath = baseDir & "\ReaderDataViewer.json"
+    Rdv3CfgLoad m_configPath
+    Rdv3SpecApply Rdv3CfgKeyLength(), Rdv3CfgKeyDigitsOnly(), _
+                  Rdv3CfgCandidateRows(), Rdv3CfgPollMs(), Rdv3CfgStableMs(), _
+                  Rdv3CfgRebindMs()
+
     Set meta = ThisWorkbook.Worksheets(RDV3_SHEET_META)
     v = Trim$(CStr(meta.Range(RDV3_M_DATADIR).Value2))
     If Len(v) > 0 And Dir$(v & "\tableA.csv") <> "" Then
         m_dataDir = v
     Else
-        m_dataDir = ThisWorkbook.Path & "\data"
+        m_dataDir = Rdv3CfgResolve(Rdv3CfgDataDir(), baseDir, baseDir & "\data")
     End If
     v = Trim$(CStr(meta.Range(RDV3_M_LOGPATH).Value2))
     If Len(v) > 0 Then
         m_logPath = v
     Else
-        m_logPath = ThisWorkbook.Path & "\ReaderDataViewer.log"
+        m_logPath = Rdv3CfgResolve(Rdv3CfgLog(), baseDir, baseDir & "\ReaderDataViewer.log")
     End If
     m_beLogPath = m_logPath & ".worker.log"
-    m_ledgerPath = ThisWorkbook.Path & "\ReaderDataViewer-Ledger.xlsx"
+    m_ledgerPath = Rdv3CfgResolve(Rdv3CfgLedger(), baseDir, baseDir & "\ReaderDataViewer-Ledger.xlsx")
+End Sub
+
+' what was read, and every value that had to fall back, so a support question
+' starts from the file rather than from a guess
+Private Sub LogSettings()
+    Dim i As Long
+    AppLog "-", "settings", Rdv3CfgDescribe()
+    If Len(Rdv3CfgError()) > 0 Then
+        AppLog "-", "settings", "読み込みエラー (既定値で動作します): " & Rdv3CfgError()
+    End If
+    For i = 1 To Rdv3CfgNoteCount()
+        AppLog "-", "settings", Rdv3CfgNote(i)
+    Next i
 End Sub
 
 '------------------------------------------------------------------------------
@@ -314,6 +376,9 @@ Public Sub Rdv3PumpTick()
     If m_inTick Then Exit Sub
     m_inTick = True
     m_pumpArmed = False
+    ' if another workbook has joined this Excel, the ribbon and the formula bar
+    ' stop being only this app's business -- hand them back within the tick
+    Rdv3UiShellRecheck
     ' a close was intercepted because this very tick could not be canceled:
     ' now that it has fired the book can close for real, right after this call
     If m_closePending Then
@@ -388,7 +453,7 @@ End Sub
 Private Function SpawnBe() As Boolean
     Dim errMsg As String
     Dim spawnMs As Double
-    If Not Rdv3HostSpawn(m_sid, m_dataDir, m_ledgerPath, m_beLogPath, errMsg, spawnMs) Then
+    If Not Rdv3HostSpawn(m_sid, m_dataDir, m_ledgerPath, m_beLogPath, m_configPath, errMsg, spawnMs) Then
         AppLog "R1", "error", "stage=spawn msg=" & errMsg & " spawn_ms=" & FmtF(spawnMs)
         EnterDead "更新確認を開始できませんでした: " & errMsg
         Exit Function
@@ -464,6 +529,23 @@ Private Function DispatchChannel() As Boolean
                 If CLng(rec(1)) > m_verMark Then
                     m_verMark = CLng(rec(1))
                     HandleMark CStr(rec(2))
+                    worked = True
+                End If
+            ' the element picker's answer, on its own slot for the same reason
+            ' MARK has one: the settings screen asked for it and it must arrive
+            ' the BE's answer to a settings save: which of the new values the
+            ' RUNNING session actually took. Its own slot, because the settings
+            ' screen asked and must be told.
+            Case RDV3_K_CONFIG
+                If CLng(rec(1)) > m_verConfig Then
+                    m_verConfig = CLng(rec(1))
+                    Rdv3SetConfigResult CStr(rec(2))
+                    worked = True
+                End If
+            Case RDV3_K_INSPECT
+                If CLng(rec(1)) > m_verInspect Then
+                    m_verInspect = CLng(rec(1))
+                    Rdv3SetInspectResult CStr(rec(2))
                     worked = True
                 End If
             Case RDV3_K_STATE
@@ -573,6 +655,9 @@ Private Sub HandleReady(ByVal metaString As String)
     Set d = Rdv3ChMeta(metaString)
     m_readyNote = CStr(d("note"))
     m_readyRows = CLng(Val(CStr(d("rows"))))
+    m_ledgerMtime = CStr(d("mtime"))
+    ' 台帳総件数 and 最終更新, the third block of the summary
+    Rdv3UiRows m_readyRows, ShortStamp(m_ledgerMtime)
     AppLog "R1", "index", "table=LEDGER rows=" & CStr(d("rows")) & " ms=" & CStr(d("idx")) & " (BE)"
 
     If m_readyNote = "blocked" Then
@@ -594,6 +679,7 @@ End Function
 
 Private Sub EnterReadyUi()
     m_state = ST_READY
+    Rdv3UiEnableOps True
     Rdv3UiLedgerInfo Format$(m_readyRows, "#,##0") & " 件   " & ReadyNoteText()
     Rdv3UiState IIf(m_watchOn, "監視中", "停止中 (監視再開で戻ります)")
     AppLog "R1", "decision", "ready rows=" & m_readyRows & " note=" & m_readyNote
@@ -610,6 +696,7 @@ End Sub
 ' because PumpSchedule refuses these states.
 Private Sub EnterBlocked()
     m_state = ST_BLOCKED
+    Rdv3UiEnableOps False
     Rdv3UiState "台帳がありません"
     Rdv3UiLedgerInfo "なし -- 検索できません"
     AppLog "R1", "decision", "blocked (no ledger)"
@@ -617,42 +704,77 @@ End Sub
 
 Private Sub EnterDead(ByVal msg As String)
     m_state = ST_DEAD
+    Rdv3UiEnableOps False
     Rdv3UiError msg
     Rdv3UiState "worker 停止"
     AppLog "-", "decision", "dead: " & msg
 End Sub
 
+' What the status line says about watching: how many of the configured targets
+' are connected, which one is answering, and -- when something is not connected
+' -- why. The counts ride on every state record, heartbeats included, so this
+' does not decay into a bare "waiting" a second after it was informative.
+Private Function WatchLine(ByVal d As Object) As String
+    Dim b As Long
+    Dim w As Long
+    Dim s As String
+    b = CLng(Val(CStr(d("bound"))))
+    w = CLng(Val(CStr(d("want"))))
+    If w = 0 Then
+        WatchLine = "監視対象がありません (設定で追加してください)"
+        Exit Function
+    End If
+    s = CStr(b) & "/" & CStr(w) & " 接続"
+    If b > 0 And Len(CStr(d("title"))) > 0 Then
+        s = s & " -- " & CStr(d("title"))
+        If Len(CStr(d("hwnd"))) > 0 Then s = s & " (hwnd " & CStr(d("hwnd")) & ")"
+    End If
+    If b < w And Len(CStr(d("why"))) > 0 Then s = s & " -- " & CStr(d("why"))
+    WatchLine = s
+End Function
+
+' WHAT THE STATE LINE SAYS when nothing else is going on. One definition: the
+' end of a processed save used to build its own and answered 監視中 for a
+' configuration that watches nothing at all.
+Private Function WatchStateText() As String
+    If Not m_watchOn Then
+        WatchStateText = "停止中 (監視再開で戻ります)"
+    ElseIf m_watchWant = 0 Then
+        WatchStateText = "監視対象なし"
+    ElseIf m_lastWatchSt = "bound" Then
+        WatchStateText = "監視中"
+    Else
+        WatchStateText = "メモ帳を待機中"
+    End If
+End Function
+
 Private Sub HandleState(ByVal metaString As String)
     Dim d As Object
     Dim st As String
+    Dim prev As String
+
     Set d = Rdv3ChMeta(metaString)
     st = CStr(d("st"))
     If Left$(st, 3) = "hb_" Then st = Mid$(st, 4)
+    If st <> "bound" And st <> "waiting" And st <> "watch_off" Then Exit Sub
+    ' what the watcher wants and what it is doing, so the state line -- and the
+    ' one the end of a processed save paints -- can be built from the same facts
+    prev = m_lastWatchSt
+    m_watchWant = CLng(Val(CStr(d("want"))))
+    m_lastWatchSt = st
+    m_watchOn = (st <> "watch_off")
+    If st <> "watch_off" Then Rdv3UiNotepad WatchLine(d)
+    ' a heartbeat must not paint over "処理済みを保存中"
+    If m_state = ST_READY And Not m_markPending Then Rdv3UiState WatchStateText()
+    If prev = st Then Exit Sub
     Select Case st
         Case "bound"
-            m_watchOn = True
-            Rdv3UiWatchButton True
-            Rdv3UiNotepad CStr(d("title")) & "  (hwnd " & CStr(d("hwnd")) & ")"
-            ' a heartbeat must not paint over "処理済みを保存中"
-            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "監視中"
-            If m_lastWatchSt <> "bound" Then
-                AppLog "-", "watch", "bound hwnd=" & CStr(d("hwnd")) & " title=" & CStr(d("title"))
-            End If
+            AppLog "-", "watch", "bound hwnd=" & CStr(d("hwnd")) & " title=" & CStr(d("title"))
         Case "waiting"
-            m_watchOn = True
-            Rdv3UiWatchButton True
-            Rdv3UiNotepad "未接続 -- " & CStr(d("why"))
-            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "メモ帳を待機中"
-            If m_lastWatchSt <> "waiting" Then
-                AppLog "-", "watch", "waiting why=" & CStr(d("why"))
-            End If
+            AppLog "-", "watch", "waiting why=" & CStr(d("why"))
         Case "watch_off"
-            m_watchOn = False
-            Rdv3UiWatchButton False
-            If m_state = ST_READY And Not m_markPending Then Rdv3UiState "停止中 (監視再開で戻ります)"
-            If m_lastWatchSt <> "watch_off" Then AppLog "-", "watch", "off"
+            AppLog "-", "watch", "off"
     End Select
-    If st = "bound" Or st = "waiting" Or st = "watch_off" Then m_lastWatchSt = st
 End Sub
 
 Private Sub HandleBeErr(ByVal metaString As String)
@@ -665,15 +787,24 @@ End Sub
 '------------------------------------------------------------------------------
 ' RESULT rendering (the end of the search-time boundary)
 '------------------------------------------------------------------------------
+' The BE's answer to a search or a pick.
+'
+' The candidate list is the CONTEXT, so it stays on screen: one hit is shown as
+' one row and selected for you, and choosing a different row from a longer list
+' re-draws the record without emptying the list you were choosing from. That is
+' what the C# build does (Rdv3App.cs: ShowCandidates then SelectCandidate, even
+' for n = 1) and what the reference shows in ref-02 / ref-03.
 Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
     Dim d As Object
     Dim res As String
     Dim sid As String
     Dim elapsed As Double
-    Dim vA(0 To 9) As String, vB(0 To 9) As String, vC(0 To 9) As String
+    Dim f(0 To RDV3_CONTENT_COLS - 1) As String
     Dim i As Long, c As Long
     Dim rows() As Variant
     Dim n As Long, show As Long
+    Dim slot As Long
+    Dim procText As String
 
     Set d = Rdv3ChMeta(metaString)
     res = CStr(d("res"))
@@ -688,24 +819,48 @@ Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
 
     Select Case res
         Case "single", "picked"
-            For i = 0 To 9
-                vA(i) = SafeCell(values, i + 1, 1)
-                vB(i) = SafeCell(values, i + 1, 2)
-                vC(i) = SafeCell(values, i + 1, 3)
+            For i = 0 To RDV3_CONTENT_COLS - 1
+                f(i) = SafeCell(values, i + 1, 1)
             Next i
             m_shownRow = CLng(Val(CStr(d("row"))))
             m_shownKey2 = CStr(d("k2"))
             If res = "single" Then m_shownKey = CStr(d("key"))
-            m_candCount = 0
-            Dim verdict As String
-            If res = "picked" Then
-                verdict = "一致 1 件   番号2 = " & m_shownKey2 & "   (候補 " & CStr(d("total")) & _
-                          " 件中 " & CStr(d("slot")) & " 件目)"
+            procText = IIf(CStr(d("proc")) = "1", "済", "未")
+
+            If res = "single" Then
+                ' one hit is still a list of one, auto-selected
+                m_candCount = 1
+                m_candTotal = 1
+                m_candRows(0) = m_shownRow
+                ReDim rows(1 To 1, 1 To RDV3_UI_CAND_COLS)
+                rows(1, 1) = 1
+                rows(1, 2) = f(1)      ' key2
+                rows(1, 3) = f(17)     ' b_line
+                rows(1, 4) = f(11)     ' b_slip
+                rows(1, 5) = f(12)     ' b_date
+                rows(1, 6) = f(13)     ' b_qty
+                rows(1, 7) = f(16)     ' b_status
+                rows(1, 8) = f(19)     ' c_item
+                rows(1, 9) = f(20)     ' c_maker
+                rows(1, 10) = procText
+                Rdv3UiShowCandidates rows, 1
+                Rdv3UiVerdict "一致 1 件   番号2 = " & m_shownKey2, "候補 1 件"
+                Rdv3UiKey m_shownKey, "一致 1 件 ・ 番号2 = " & m_shownKey2
+                slot = 0
             Else
-                verdict = "一致 1 件   番号2 = " & m_shownKey2
+                slot = CLng(Val(CStr(d("slot")))) - 1
+                Rdv3UiVerdict "一致 1 件   番号2 = " & m_shownKey2 & "   (候補 " & _
+                    CStr(d("total")) & " 件中 " & CStr(d("slot")) & " 件目)", _
+                    "候補 " & CStr(d("total")) & " 件"
+                Rdv3UiKey m_shownKey, "候補 " & CStr(d("slot")) & "/" & CStr(d("total")) & _
+                    " ・ 番号2 = " & m_shownKey2
             End If
-            Rdv3UiShowRecord m_shownKey, verdict, vA, vB, vC, _
-                "処理済み: " & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE")
+            m_selSlot = slot
+            Rdv3UiSelectRow slot
+            Rdv3UiShowRecord f, procText, m_shownKey2
+            Rdv3UiStatusBlock Rdv3UiVerdictOf(f(16)), _
+                f(16) & " ・ " & IIf(CStr(d("proc")) = "1", "処理済み", "未処理")
+
             elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
             If res = "picked" Then
                 AppLog sid, "display", "picked=" & CStr(d("slot")) & " key2=" & m_shownKey2 & _
@@ -715,15 +870,23 @@ Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
                 AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
                     " hits=1 ms=" & FmtF(elapsed)
             End If
+
         Case "none"
             m_shownRow = -1
             m_shownKey = CStr(d("key"))
             m_candCount = 0
-            Rdv3UiShowEmpty m_shownKey, "該当なし"
+            m_candTotal = 0
+            m_selSlot = -1
+            Rdv3UiClearCandidates
+            Rdv3UiClearRecord
+            Rdv3UiKey m_shownKey, "該当なし"
+            Rdv3UiStatusBlock "", "該当なし"
+            Rdv3UiVerdict "該当なし", "候補 0 件"
             elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
             Rdv3UiSearchMs elapsed
             AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
                 " hits=0 ms=" & FmtF(elapsed)
+
         Case "multi"
             n = CLng(Val(CStr(d("hits"))))
             show = CLng(Val(CStr(d("shown"))))
@@ -731,20 +894,26 @@ Private Sub HandleResult(ByVal metaString As String, ByVal values As Variant)
             m_shownKey = CStr(d("key"))
             m_candCount = show
             m_candTotal = n
-            ReDim rows(1 To show, 1 To 8)
+            m_selSlot = -1
+            ReDim rows(1 To show, 1 To RDV3_UI_CAND_COLS)
             For i = 1 To show
-                For c = 1 To 8
-                    rows(i, c) = SafeCell(values, i, c)
+                rows(i, 1) = i
+                For c = 1 To 9
+                    rows(i, c + 1) = SafeCell(values, i, c)
                 Next c
-                m_candRows(i - 1) = CLng(Val(SafeCell(values, i, 9)))
+                m_candRows(i - 1) = CLng(Val(SafeCell(values, i, 10)))
             Next i
-            Dim note As String
+            Rdv3UiShowCandidates rows, show
+            Rdv3UiClearRecord
+            Rdv3UiKey m_shownKey, "未選択 (候補 " & CStr(n) & " 件)"
+            Rdv3UiStatusBlock "", "複数ヒット (候補 " & CStr(n) & " 件)"
             If show < n Then
-                note = "候補 " & n & " 件中 " & show & " 件を表示"
+                Rdv3UiVerdict "候補 " & CStr(n) & " 件 ― 一覧から 1 件選んでください (" & _
+                    CStr(show) & " 件を表示)", "候補 " & CStr(n) & " 件"
             Else
-                note = ""
+                Rdv3UiVerdict "候補 " & CStr(n) & " 件 ― 一覧から 1 件選んでください", _
+                    "候補 " & CStr(n) & " 件"
             End If
-            Rdv3UiShowCandidates m_shownKey, "候補 " & n & " 件 -- 行頭の「選択」で表示", rows, show, note
             elapsed = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
             Rdv3UiSearchMs elapsed
             AppLog sid, "search", "key=" & m_shownKey & " source=" & CStr(d("src")) & _
@@ -790,15 +959,39 @@ Private Sub HandleMark(ByVal metaString As String)
     HandleMarkResult res, d
 End Sub
 
+' Which candidate slot that ledger row occupies RIGHT NOW, or -1. Asked when the
+' save is decided rather than remembered from when it started: by then the list
+' may have been re-searched, and the row that was saved is the one that has to be
+' told the truth.
+Private Function CandSlotOf(ByVal ledgerRow As Long) As Long
+    Dim i As Long
+    CandSlotOf = -1
+    For i = 0 To m_candCount - 1
+        If m_candRows(i) = ledgerRow Then
+            CandSlotOf = i
+            Exit Function
+        End If
+    Next i
+End Function
+
 Private Sub HandleMarkResult(ByVal res As String, ByVal d As Object)
     Dim tag As String
     Dim e2e As Double
     m_procSeq = m_procSeq + 1
     tag = "P" & CStr(m_procSeq)
     If res = "marked" Then
+        ' the LIST row belongs to the record that was saved, whether or not it is
+        ' still the one selected: the operator may have picked another candidate
+        ' while the save was in flight
+        Rdv3UiSetCandProcessed CandSlotOf(CLng(Val(CStr(d("row"))))), _
+                               IIf(CStr(d("proc")) = "1", "済", "未")
         If CLng(Val(CStr(d("row")))) = m_shownRow Then
-            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = _
-                "処理済み: " & IIf(CStr(d("proc")) = "1", "TRUE", "FALSE")
+            ' the record's own tag, which describes what is on show
+            Rdv3UiProcState IIf(CStr(d("proc")) = "1", "済", "未")
+        End If
+        If Len(CStr(d("mtime"))) > 0 Then
+            m_ledgerMtime = CStr(d("mtime"))
+            Rdv3UiRows m_readyRows, ShortStamp(m_ledgerMtime)
         End If
         e2e = Rdv3MsBetween(CCur(Val(CStr(d("t0")))), Rdv3Ticks())
         AppLog tag, "processed", "key2=" & CStr(d("k2")) & " row=" & (CLng(Val(CStr(d("row")))) + 1) & _
@@ -806,8 +999,14 @@ Private Sub HandleMarkResult(ByVal res As String, ByVal d As Object)
             " save_ms=" & CStr(d("save_ms")) & " e2e_ms=" & FmtF(e2e)
         EndMarkSave tag, True, ""
     Else
+        ' the value the BE rolled back to, which is what the record held before
+        ' the click -- not FALSE. Marking a row that was already TRUE and failing
+        ' to save must not leave the screen and the ledger disagreeing about what
+        ' is on disk, and the row to correct is the SAVED one.
+        Rdv3UiSetCandProcessed CandSlotOf(CLng(Val(CStr(d("row"))))), _
+                               IIf(CStr(d("proc")) = "1", "済", "未")
         If CLng(Val(CStr(d("row")))) = m_shownRow Then
-            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: FALSE"
+            Rdv3UiProcState IIf(CStr(d("proc")) = "1", "済", "未")
         End If
         Rdv3UiError "処理済みを保存できませんでした: " & CStr(d("msg"))
         AppLog tag, "error", "stage=processed msg=" & CStr(d("msg"))
@@ -821,8 +1020,9 @@ Private Sub EndMarkSave(ByVal tag As String, ByVal ok As Boolean, ByVal why As S
     If Not m_markPending Then Exit Sub
     m_markPending = False
     m_markKey2 = ""
+    Rdv3UiEnableProcessed (m_state = ST_READY)
     If m_state = ST_READY Then
-        Rdv3UiState IIf(m_watchOn, "監視中", "停止中 (監視再開で戻ります)")
+        Rdv3UiState WatchStateText()
     End If
     AppLog tag, "exit", "processed save decided (" & IIf(ok, "saved", "failed") & _
         IIf(Len(why) > 0, ": " & why, "") & "); exit released"
@@ -847,7 +1047,7 @@ Private Sub CheckMarkPending()
     If el < 0 Then el = el + 86400
     If Rdv3HostStarted() Then
         If Not Rdv3HostBeAlive() Then
-            ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: 不明 (保存未確定)"
+            Rdv3UiProcState "不明"
             Rdv3UiError "処理済みの保存を確認できませんでした: worker プロセスが終了しました。台帳を開いて確認してください"
             AppLog "-", "error", "stage=processed msg=BE died while the save was undecided key2=" & m_markKey2
             EndMarkSave "-", False, "worker died"
@@ -855,7 +1055,7 @@ Private Sub CheckMarkPending()
         End If
     End If
     If el > MARK_TIMEOUT_S Then
-        ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: 不明 (保存未確定)"
+        Rdv3UiProcState "不明"
         Rdv3UiError "処理済みの保存が " & Format$(el, "0") & " 秒たっても確定しません。台帳を開いて確認してください"
         AppLog "-", "timeout", "stage=processed after_s=" & FmtF(el) & " key2=" & m_markKey2
         EndMarkSave "-", False, "timeout"
@@ -886,29 +1086,39 @@ Private Sub SendReq(ByVal kind As String, ByVal args As String)
     End If
 End Sub
 
+' Which button was clicked is answered by the builder's names, not by an address
+' this module would have to keep in step with the layout by hand.
 Public Sub Rdv3HandleClick(ByVal addr As String)
-    Dim row As Long
+    Dim i As Long
     On Error GoTo Done
-    Select Case addr
-        Case RDV3_BTN_SEARCH
-            DoManualSearch
-        Case RDV3_BTN_CLEAR
-            DoClear
-        Case RDV3_BTN_PROCESSED
-            DoProcessed
-        Case RDV3_BTN_WATCH
-            DoWatchToggle
-        Case Else
-            If Left$(addr, 1) = "B" And IsNumeric(Mid$(addr, 2)) Then
-                row = CLng(Mid$(addr, 2))
-                If row >= RDV3_CAND_TOP And row < RDV3_CAND_TOP + RDV3_MAXSHOW Then
-                    DoPick row - RDV3_CAND_TOP
-                End If
+    If HitsName(addr, "rdvBtnSearch") Then
+        DoManualSearch
+    ElseIf HitsName(addr, "rdvBtnClear") Then
+        DoClear
+    ElseIf HitsName(addr, "rdvBtnProcessed") Then
+        DoProcessed
+    ElseIf HitsName(addr, "rdvBtnRebind") Then
+        DoRebind
+    ElseIf HitsName(addr, "rdvBtnSettings") Then
+        DoSettings
+    Else
+        For i = 0 To RDV3_UI_CAND_ROWS - 1
+            If HitsName(addr, "rdvCand_" & CStr(i) & "_0") Then
+                DoPick i
+                Exit For
             End If
-    End Select
+        Next i
+    End If
 Done:
     Rdv3PumpEnsureArmed
 End Sub
+
+Private Function HitsName(ByVal addr As String, ByVal nm As String) As Boolean
+    Dim r As Object
+    Set r = Rdv3UiRangeOf(nm)
+    If r Is Nothing Then Exit Function
+    HitsName = (r.Cells(1, 1).Address(0, 0) = addr)
+End Function
 
 Private Sub DoManualSearch()
     Dim key As String
@@ -921,10 +1131,17 @@ Private Sub DoManualSearch()
     End If
     key = Rdv3UiInputKey()
     If Not Rdv3IsKey(key) Then
-        Rdv3UiError "番号1 は 8 桁の数字で入力してください"
+        ' answered UNDER THE INPUT BOX, not on the system error row: it belongs to
+        ' the thing the operator just typed (ui-spec 11). And it states the rule
+        ' this session is enforcing rather than a fixed "8 digits" -- the length
+        ' and whether letters are allowed both come from the settings.
+        Rdv3UiInputError IIf(Rdv3KeyDigits(), _
+            "番号1 は " & CStr(Rdv3KeyLen()) & " 桁の数字で入力してください", _
+            "番号1 は " & CStr(Rdv3KeyLen()) & " 文字で入力してください")
         AppLog "-", "search", "ignored key=" & key & " reason=bad-key source=manual"
         Exit Sub
     End If
+    Rdv3UiInputError ""
     Rdv3UiError ""
     SendReq RDV3_RQ_SEARCH, key & "|" & Trim$(Str$(CDbl(t0))) & "|manual"
     AppLog "-", "search", "dispatched key=" & key & " source=manual"
@@ -974,10 +1191,11 @@ Private Sub DoProcessed()
     End If
     Rdv3UiError ""
     t0 = Rdv3Ticks()
-    ThisWorkbook.Worksheets(RDV3_SHEET_UI).Range(RDV3_C_PROCSTATE).Value2 = "処理済み: TRUE (保存中...)"
+    Rdv3UiProcState "保存中"
     ' the save is now running in the BE and its outcome is undecided: hold the
     ' exit and the next mark until MARK marked / markerr says which it was
     m_markPending = True
+    Rdv3UiEnableProcessed False
     m_markSince = Timer
     m_markKey2 = m_shownKey2
     m_closeAskedWhileSaving = False
@@ -990,19 +1208,53 @@ Private Sub DoProcessed()
         " req=" & CStr(m_markReqVer) & " (exit held until it is decided)"
 End Sub
 
-Private Sub DoWatchToggle()
+' The same thing the C# build's 「メモ帳を再検出」 does: ask the watcher to bind
+' again. It never turns watching OFF -- a button whose meaning depends on what it
+' did last time is the thing the C# screen does not have. Switching a target off
+' for good is a settings decision, and it lives there.
+Private Sub DoRebind()
     If m_state <> ST_READY Then
         Rdv3UiError "更新確認が終わるまで操作できません"
         Exit Sub
     End If
-    If m_watchOn Then
-        SendReq RDV3_RQ_WATCH, "0"
-        AppLog "-", "watch", "stop requested"
-    Else
-        SendReq RDV3_RQ_WATCH, "1"
-        AppLog "-", "watch", "restart requested"
-    End If
+    SendReq RDV3_RQ_WATCH, "1"
+    AppLog "-", "watch", "rebind requested"
     m_fastFollow = 3
+End Sub
+
+' The settings screen (modRdv3Set). It is a sheet in this book, so opening it is
+' activating it; there is no second window and nothing modal.
+' the settings screen asks the BE to sample the focus (modRdv3Set has no access
+' to the request channel; the FE owns it)
+' the settings screen tells the BE the file changed (modRdv3Set has no access to
+' the request channel; the FE owns it)
+Public Sub Rdv3AppRequestConfig()
+    SendReq RDV3_RQ_CONFIG, "1"
+    m_fastFollow = 4
+End Sub
+
+' each press gets its own id, echoed by every answer, so a result the operator
+' has already moved on from cannot land somewhere it was not meant to
+' closing the picker: the BE stops sampling and nothing is adopted
+Public Sub Rdv3AppRequestInspectStop()
+    SendReq RDV3_RQ_INSPECT, "0"
+    m_fastFollow = 2
+End Sub
+
+Public Sub Rdv3AppRequestInspect()
+    m_inspectSeq = m_inspectSeq + 1
+    Rdv3SetInspectExpect CStr(m_inspectSeq)
+    SendReq RDV3_RQ_INSPECT, CStr(m_inspectSeq)
+    m_fastFollow = 5
+End Sub
+
+Private Sub DoSettings()
+    Dim why As String
+    why = Rdv3SetOpen()
+    If Len(why) > 0 Then
+        Rdv3UiError why
+        AppLog "-", "settings", "open failed: " & why
+    End If
 End Sub
 
 Private Sub DoPick(ByVal slot As Long)
@@ -1013,7 +1265,10 @@ Private Sub DoPick(ByVal slot As Long)
     SendReq RDV3_RQ_PICK, CStr(m_candRows(slot)) & "|" & CStr(slot + 1) & "|" & _
         CStr(m_candTotal) & "|" & Trim$(Str$(CDbl(t0)))
     AppLog "-", "display", "pick dispatched slot=" & CStr(slot + 1)
-    m_candCount = 0        ' the picked record replaces the list when it arrives
+    ' The count is NOT cleared. It used to be, because picking replaced the list
+    ' with the record; the list stays now (that is the point of it), so clearing
+    ' the count would silently refuse every later click on another row.
+    m_selSlot = slot
     m_fastFollow = 6
 End Sub
 
@@ -1037,6 +1292,10 @@ Public Function Rdv3AppPrepareClose() As Boolean
     m_state = ST_DEAD          ' a tick that still fires does nothing and ends the chain
     If Not m_closePrepared Then
         m_closePrepared = True
+        ' Excel goes back the way it was found. This workbook borrowed the
+        ' ribbon and the formula bar to be an application window; an Excel
+        ' that outlives it must not be left without them.
+        Rdv3UiRestoreShell
         If m_started Then StopBeNow
         Rdv3ChReleaseLease
         Rdv3ChDeleteSession m_sid

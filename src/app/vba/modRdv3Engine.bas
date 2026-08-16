@@ -101,7 +101,10 @@ Private Function ReadOne(ByVal path As String, ByRef b() As Byte, ByRef s As Str
     Dim L As Long, pos As Long, nl As Long, e As Long, cnt As Long, capRows As Long
     Dim ts() As Long, te() As Long
     Dim i As Long, p As Long, ke As Long
+    Dim kl As Long
 
+    ' the session key length, read once: this loop runs per row of a 100k file
+    kl = Rdv3KeyLen()
     On Error GoTo Fail
 
     f = FreeFile
@@ -163,14 +166,14 @@ Private Function ReadOne(ByVal path As String, ByRef b() As Byte, ByRef s As Str
         st(i) = ts(i + 1)
         en(i) = te(i + 1)
         p = st(i)
-        ke = p + RDV3_KEYLEN
+        ke = p + kl
         If ke > en(i) Then
-            ReadOne = "キー長が " & RDV3_KEYLEN & " ではありません: " & path & " 行 " & (i + 1)
+            ReadOne = "キー長が " & kl & " ではありません: " & path & " 行 " & (i + 1)
             Exit Function
         End If
         If ke < en(i) Then
             If b(ke) <> RDV3_COMMA Then
-                ReadOne = "キー長が " & RDV3_KEYLEN & " ではありません: " & path & " 行 " & (i + 1)
+                ReadOne = "キー長が " & kl & " ではありません: " & path & " 行 " & (i + 1)
                 Exit Function
             End If
         End If
@@ -190,11 +193,13 @@ Private Function BuildIndex(ByRef s As String, ByRef st() As Long, ByVal nrows A
     Dim i As Long
     Dim k As String
     Dim col As Collection
+    Dim kl As Long
 
+    kl = Rdv3KeyLen()
     Set d = CreateObject("Scripting.Dictionary")
     d.CompareMode = 0
     For i = 0 To nrows - 1
-        k = Mid$(s, st(i) + 1, RDV3_KEYLEN)
+        k = Mid$(s, st(i) + 1, kl)
         If d.Exists(k) Then
             d.Item(k).Add i
         Else
@@ -240,7 +245,9 @@ Public Function Rdv3EngMerge(ByVal dataDir As String) As Boolean
     Dim i As Long, p As Long, e As Long
     Dim k As String
     Dim chk As Double
+    Dim kl As Long
 
+    kl = Rdv3KeyLen()
     m_errText = ""
     m_checksum = 0
     m_matchAB = 0
@@ -299,7 +306,7 @@ Public Function Rdv3EngMerge(ByVal dataDir As String) As Boolean
     ' nothing here assumes it: the index answers with a set either way.
     t = Rdv3Ticks()
     For i = 0 To m_rowsB - 1
-        k = Mid$(m_sB, m_stB(i) + 1, RDV3_KEYLEN)
+        k = Mid$(m_sB, m_stB(i) + 1, kl)
         If dA.Exists(k) Then
             ab(i) = dA.Item(k).Item(1)
             m_matchAB = m_matchAB + 1
@@ -322,8 +329,8 @@ Public Function Rdv3EngMerge(ByVal dataDir As String) As Boolean
         Loop
         p = p + 1
         bc(i) = -1
-        If p + RDV3_KEYLEN <= e Then
-            k = Mid$(m_sB, p + 1, RDV3_KEYLEN)
+        If p + kl <= e Then
+            k = Mid$(m_sB, p + 1, kl)
             If dC.Exists(k) Then
                 bc(i) = dC.Item(k).Item(1)
                 m_matchBC = m_matchBC + 1

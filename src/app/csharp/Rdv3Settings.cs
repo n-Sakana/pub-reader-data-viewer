@@ -1857,6 +1857,23 @@ public sealed class Rdv3PickerForm : Rdv3Dialog
             }
             if (t.ReadMode == Rdv3Uia.ReadValue) { t.Field.RequireValuePattern = true; }
 
+            // WHICH of the fields that match. Without an automationId the same
+            // container commonly holds several identical Edits, and the resolver
+            // takes Field.Index from the same anchor with the same matcher --
+            // so the ordinal is measured here exactly the way it will be read
+            // back. Left at 0, picking the second box saved a target that reads
+            // the first.
+            AutomationElement anchor = win;
+            for (int i = 1; i < chain.Count; i++)
+            {
+                if (chain[i].Current.AutomationId.Length > 0) { anchor = chain[i]; }
+            }
+            List<AutomationElement> same = Rdv3Uia.FindAll(anchor, t.Field, t.Field.Descendants);
+            for (int i = 0; i < same.Count; i++)
+            {
+                if (Rdv3Uia.Same(same[i], e)) { t.Field.Index = i; break; }
+            }
+
             result = t;
             DialogResult = DialogResult.OK;
             Close();

@@ -25,7 +25,20 @@ using System.Text;
 public static class Rdv3Spec
 {
     // the built-in default; the running rule comes from ReaderDataViewer.json
-    // (key.length / key.digitsOnly) and is set once at start-up
+    // and is set at start-up.
+    //
+    // KeyLength is ONE length for the whole program: the width of the key column
+    // in the CSVs, the width the indexes are built on, and the width the screen
+    // and the watcher accept. They cannot differ, or the operator types a number
+    // the ledger index can never answer. So it is settled once, before the CSVs
+    // are read, and not touched again while the session runs -- the dialog writes
+    // the new value to the file and it takes effect at the next start, together
+    // with the data it describes (docs\settings.md).
+    //
+    // KeyDigitsOnly is not like that. It only says which CHARACTERS count as a
+    // key, it never reaches the CSV reader or the index, and nothing built at
+    // start-up depends on it -- so the dialog applies it at once, as it always
+    // has.
     public const int KeyLen = 8;
     public static int KeyLength = KeyLen;
     public static bool KeyDigitsOnly = true;
@@ -146,11 +159,11 @@ public sealed class Rdv3Table
             t.Start[i] = st[i + 1];
             t.End[i] = en[i + 1];
             t.KeyAt[i] = st[i + 1];
-            int ke = t.KeyAt[i] + Rdv3Spec.KeyLen;
+            int ke = t.KeyAt[i] + Rdv3Spec.KeyLength;
             if (ke > t.End[i] || (ke < t.End[i] && b[ke] != (byte)','))
             {
                 throw new InvalidDataException(name + " row " + (i + 1).ToString(CultureInfo.InvariantCulture)
-                    + ": key must be " + Rdv3Spec.KeyLen.ToString(CultureInfo.InvariantCulture) + " bytes");
+                    + ": key must be " + Rdv3Spec.KeyLength.ToString(CultureInfo.InvariantCulture) + " bytes");
             }
         }
         return t;

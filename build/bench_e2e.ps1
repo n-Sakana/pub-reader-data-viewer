@@ -66,6 +66,7 @@ param(
   [switch] $KeepScratch
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'excel_own.ps1')   # exact Excel ownership, never a pid diff
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
@@ -587,9 +588,12 @@ function New-Session([string] $method, [string] $variant, [string] $tag) {
 
   $w = New-Object -TypeName RdvChan -ArgumentList $chanDir
   $w.Start()
-  $before = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
   $t0 = $w.Now
-  $xl = New-Object -ComObject Excel.Application
+  # identity is settled before anything is done to it (excel_own.ps1): the pid
+  # used to be taken only after the workbook was open, so a reused instance had
+  # already been driven by the time anyone asked whose it was
+  $rdvOwn = New-OwnedExcel
+  $xl = $rdvOwn.App
   $xlMs = $w.Now - $t0
   $xl.Visible = $true
   $xl.DisplayAlerts = $false
@@ -606,25 +610,116 @@ function New-Session([string] $method, [string] $variant, [string] $tag) {
   $win = $xl.ActiveWindow
   $dpi = [RdvE2EWin]::GetDpiForWindow($hwnd)
   if ($dpi -eq 0) { $dpi = 96 }
-  $after = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
   return [pscustomobject]@{
     Dir = $dir; Log = $log; Ledger = (Join-Path $dir 'ReaderDataViewer-Ledger.xlsx')
     Snap = (Join-Path $dir 'snap.xlsx'); Before1 = (Join-Path $dir 'before.xlsx')
     W = $w; Xl = $xl; Wb = $wb; Ws = $ws; Hwnd = $hwnd; XlMs = $xlMs; LaunchMs = $launchMs
     X0 = $win.PointsToScreenPixelsX(0); Y0 = $win.PointsToScreenPixelsY(0); Scale = ($dpi / 72.0)
-    Before = $before; Mine = @($after | Where-Object { $before -notcontains $_ })
+    Mine = [System.Collections.ArrayList]@($rdvOwn.Pid)
+    BeSeen = [System.Collections.ArrayList]@()
+  }
+}
+
+# the key goes into the input the way a person's typing does: the top-left cell
+# of the merged block the builder named rdvInput, which is where modRdv3Ui reads
+# it back from (a merged Range answers .Value2 with an array, not a string).
+function Set-Key($s, [string] $key) {
+  $s.Ws.Range('rdvInput').Cells(1, 1).Value2 = $key
+}
+
+# WHERE THE POINTER ACTUALLY IS before pressing the button.
+#
+# Range.Left/Top are measured from A1; PointsToScreenPixelsX(0) is the left edge
+# of the VISIBLE area, so the two only agree while the sheet is scrolled to A1 --
+# and the screen was redrawn onto a pseudo-pixel grid, which moved every control
+# far from the origin. A click that misses now hits an empty grid cell and the
+# run simply proves nothing, which is exactly how a whole E2E passed while
+# testing nothing. Ask Excel what is under the point and refuse to click if it
+# is not the control that was asked for.
+function Point-Of($s, [string] $addr) {
+  $r = $s.Ws.Range($addr)
+  return [pscustomobject]@{
+    R = $r
+    X = [int]($s.X0 + ($r.Left + $r.Width / 2) * $s.Scale)
+    Y = [int]($s.Y0 + ($r.Top + $r.Height / 2) * $s.Scale)
+  }
+}
+
+function Assert-OnTarget($s, [string] $addr, [int] $x, [int] $y) {
+  $hit = $null
+  try { $hit = $s.Xl.ActiveWindow.RangeFromPoint($x, $y) } catch { }
+  if ($null -eq $hit) {
+    throw ("click target '{0}' is not on screen: ({1},{2}) is over nothing" -f $addr, $x, $y)
+  }
+  $hitAddr = ''
+  try { $hitAddr = $hit.Address(0, 0) } catch { $hitAddr = '<not a range>' }
+  # by row/column bounds, not Application.Intersect: Intersect answers Nothing
+  # through COM in a way PowerShell cannot tell from an error, and it called a
+  # cell that WAS inside the button a miss
+  $t = $s.Ws.Range($addr)
+  $r1 = [int]$t.Row; $c1 = [int]$t.Column
+  $r2 = $r1 + [int]$t.Rows.Count - 1; $c2 = $c1 + [int]$t.Columns.Count - 1
+  $inside = $false
+  try {
+    $inside = ([int]$hit.Row -ge $r1 -and [int]$hit.Row -le $r2 -and
+               [int]$hit.Column -ge $c1 -and [int]$hit.Column -le $c2)
+  } catch { $inside = $false }
+  if (-not $inside) {
+    throw ("click target '{0}' ({1}) is not under ({2},{3}) -- {4} is" -f
+           $addr, $s.Ws.Range($addr).Address(0, 0), $x, $y, $hitAddr)
   }
 }
 
 function Click-Cell($s, [string] $addr) {
-  $r = $s.Ws.Range($addr)
-  $x = [int]($s.X0 + ($r.Left + $r.Width / 2) * $s.Scale)
-  $y = [int]($s.Y0 + ($r.Top + $r.Height / 2) * $s.Scale)
+  $p = Point-Of $s $addr
+  $x = $p.X; $y = $p.Y
+  Assert-OnTarget $s $addr $x $y
   [void][RdvE2EWin]::SetCursorPos($x, $y)
   Start-Sleep -Milliseconds 120
   [RdvE2EWin]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
   Start-Sleep -Milliseconds 50
   [RdvE2EWin]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+}
+
+# WHICH processes this session owns, still running.
+#
+# The FE is the instance this script created and it was asked for its own pid.
+# The BE is a SECOND Excel that the FE starts for itself, so this script never
+# saw it created -- but the FE writes its window into its own log
+# ("spawn ok be=hwnd:<n>"), and that window names its process the same way. A
+# pid this cannot identify is left alone; it is not ours to end.
+# A WINDOW HANDLE ONLY NAMES A PROCESS WHILE THE PROCESS IS ALIVE. This used to
+# be called only from Live-Owned, which runs at teardown -- by then the BE has
+# quit itself, FromHandle fails on a dead handle every time, and the run ends
+# with no record of which process the BE was. It is called at READY instead,
+# while the BE is demonstrably up, and what it resolves is kept.
+function Add-BePid($s) {
+  if (-not (Test-Path -LiteralPath $s.Log)) { return }
+  $txt = [IO.File]::ReadAllText($s.Log, [Text.Encoding]::GetEncoding(932))
+  foreach ($m in [regex]::Matches($txt, 'be=hwnd:(\d+)')) {
+    $h = [long]$m.Groups[1].Value
+    if ($s.BeSeen -contains $h) { continue }        # resolved once already
+    $bp = Get-PidFromHwnd $h
+    if ($bp -gt 0) {
+      [void]$s.BeSeen.Add($h)
+      if ($s.Mine -notcontains $bp) { [void]$s.Mine.Add($bp) }
+    }
+  }
+}
+
+# what this session owns and can say so about, for the record
+function Owned-Note($s) {
+  return ('owned excel: ' + (@($s.Mine) -join ',') +
+          $(if (@($s.BeSeen).Count -eq 0) { ' (BE not resolved)' } else { '' }))
+}
+
+function Live-Owned($s) {
+  # a late attempt costs nothing and is silent when the handle is already gone
+  Add-BePid $s | Out-Null
+  return @($s.Mine | Where-Object {
+    $q = Get-Process -Id $_ -ErrorAction SilentlyContinue
+    $null -ne $q -and $q.ProcessName -eq 'EXCEL'
+  })
 }
 
 function Close-Session($s) {
@@ -670,7 +765,7 @@ function Close-Session($s) {
     for ($i = 0; $i -lt 8; $i++) {
       try { $s.Xl.Quit() } catch { }
       Start-Sleep -Milliseconds 1500
-      $live = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Where-Object { $s.Before -notcontains $_ })
+      $live = @(Live-Owned $s)
       if ($live.Count -eq 0) { break }
     }
     try { [void][Runtime.InteropServices.Marshal]::ReleaseComObject($s.Xl) } catch { }
@@ -682,11 +777,11 @@ function Close-Session($s) {
   # own close takes longer than the app's 12 s stop-wait (measured: one BE
   # needed more than 21 s), so the grace here is 42 s.
   for ($i = 0; $i -lt 60; $i++) {
-    $live = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Where-Object { $s.Before -notcontains $_ })
+    $live = @(Live-Owned $s)
     if ($live.Count -eq 0) { break }
     Start-Sleep -Milliseconds 700
   }
-  $live = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id | Where-Object { $s.Before -notcontains $_ })
+  $live = @(Live-Owned $s)
   foreach ($p in $live) {
     $q = Get-Process -Id $p -ErrorAction SilentlyContinue
     if ($null -eq $q) { continue }
@@ -705,19 +800,23 @@ function Close-Session($s) {
 # search for one key through the real screen, and wait until the FE has
 # actually rendered the record (the processed button needs it on screen)
 function Do-Search($s, [string] $key, [int] $sec) {
-  $s.Ws.Range('C9').Value2 = $key
+  Set-Key $s $key
   Start-Sleep -Milliseconds 150
   $from = (Read-Log $s.Log).Count
   $t0 = $s.W.Now
-  Click-Cell $s 'E9'
+  Click-Cell $s 'rdvBtnSearch'
   $req = Wait-Ev $s.W ('\|req\|search\|') $t0 30
   $res = $null
   if ($null -ne $req) { $res = Wait-Ev $s.W ('\|agg\|RESULT\|.*res=single') (EvMs $req) $sec }
   if ($null -eq $res) {
-    Say '    the search did not answer; clicking once more'
+    # Write-Host, not Say: Say writes to the OUTPUT stream, and anything a
+    # function writes there becomes part of its return value. The retry note
+    # made a failed search come back non-null, so the caller believed it had a
+    # record on screen and blamed the missing confirm dialog instead.
+    Write-Host '    the search did not answer; clicking once more'
     $from = (Read-Log $s.Log).Count
     $t0 = $s.W.Now
-    Click-Cell $s 'E9'
+    Click-Cell $s 'rdvBtnSearch'
     $req = Wait-Ev $s.W ('\|req\|search\|') $t0 30
     if ($null -ne $req) { $res = Wait-Ev $s.W ('\|agg\|RESULT\|.*res=single') (EvMs $req) $sec }
     if ($null -eq $res) { return $null }
@@ -731,7 +830,7 @@ function Do-Search($s, [string] $key, [int] $sec) {
 function Do-Mark($s, [int] $sec) {
   $from = (Read-Log $s.Log).Count
   $t0 = $s.W.Now
-  Click-Cell $s 'G9'
+  Click-Cell $s 'rdvBtnProcessed'
   if (-not (Answer-Dialog '処理済みの確認' 'はい' 30)) {
     return [pscustomobject]@{ Ok = $false; Note = 'the confirm dialog never appeared' }
   }
@@ -814,6 +913,10 @@ function Run-Cold([string] $method, [string] $variant, [int] $i) {
       if ($null -eq $dec) { $h.note = 'no decision request'; return }
       $rdy = Wait-Ev $s.W ('\|agg\|READY\|') (EvMs $dec) $ReadyTimeoutSec
       if ($null -eq $rdy) { $h.note = 'no READY after the rebuild'; return }
+      # the BE is up now (it just answered READY); name its process while a
+      # window handle still resolves to one, and say what this session owns
+      Add-BePid $s
+      Say ('    ' + (Owned-Note $s))
       $h.apply_ms = '{0:F1}' -f ((EvMs $rdy) - (EvMs $dec))
       $h.a_ready_ms = '{0:F1}' -f ((EvMs $rdy) - $t0)
     }
@@ -821,6 +924,10 @@ function Run-Cold([string] $method, [string] $variant, [int] $i) {
       if ($chk -notmatch 'res=same') { $h.note = "unexpected check result: $chk" }
       $rdy = Wait-Ev $s.W ('\|agg\|READY\|') $t0 $ReadyTimeoutSec
       if ($null -eq $rdy) { $h.note = 'no READY'; return }
+      # the BE is up now (it just answered READY); name its process while a
+      # window handle still resolves to one, and say what this session owns
+      Add-BePid $s
+      Say ('    ' + (Owned-Note $s))
       $h.a_ready_ms = '{0:F1}' -f ((EvMs $rdy) - $t0)
     }
     Start-Sleep -Milliseconds 700
@@ -871,6 +978,10 @@ function Run-Cont([string] $method) {
     $t0 = EvMs $lease
     $rdy = Wait-Ev $s.W ('\|agg\|READY\|') $t0 $ReadyTimeoutSec
     if ($null -eq $rdy) { Say '    never reached READY'; return }
+    # the BE is up now (it just answered READY); name its process while a
+    # window handle still resolves to one, and say what this session owns
+    Add-BePid $s
+    Say ('    ' + (Owned-Note $s))
     Start-Sleep -Milliseconds 700
     for ($i = 0; $i -lt $Rounds; $i++) {
       $t = $targets[$i % 10]
@@ -915,14 +1026,14 @@ function Run-Cont([string] $method) {
     $h = @{ method = $method; variant = 'cont-busy'; trial = 0; ledger_row = $victim.Row; sheet_row = $victim.SheetRow; key1 = $victim.Key1 }
     $from = (Read-Log $s.Log).Count
     $tm0 = $s.W.Now
-    Click-Cell $s 'G9'
+    Click-Cell $s 'rdvBtnProcessed'
     if (-not (Answer-Dialog '処理済みの確認' 'はい' 30)) { Say '    concurrency: no confirm dialog'; return }
     $req = Wait-Ev $s.W ('\|req\|mark\|') $tm0 30
     if ($null -eq $req) { Say '    concurrency: no save request'; return }
     Start-Sleep -Milliseconds 200
-    $s.Ws.Range('C9').Value2 = $searchKey
+    Set-Key $s $searchKey
     $ts0 = $s.W.Now
-    Click-Cell $s 'E9'
+    Click-Cell $s 'rdvBtnSearch'
     $sreq = Wait-Ev $s.W ('\|req\|search\|') $ts0 30
     $mres = Wait-Ev $s.W ('\|agg\|(RESULT|MARK)\|.*res=marked') (EvMs $req) $SaveTimeoutSec
     $sres = $null
@@ -992,9 +1103,9 @@ function RaceRec([hashtable] $h) {
 # ordering only exists if the second click lands before the FE's fast follow-up
 # ticks have rendered the first answer
 function Click-CellFast($s, [string] $addr) {
-  $r = $s.Ws.Range($addr)
-  $x = [int]($s.X0 + ($r.Left + $r.Width / 2) * $s.Scale)
-  $y = [int]($s.Y0 + ($r.Top + $r.Height / 2) * $s.Scale)
+  $p = Point-Of $s $addr
+  $x = $p.X; $y = $p.Y
+  Assert-OnTarget $s $addr $x $y
   [void][RdvE2EWin]::SetCursorPos($x, $y)
   Start-Sleep -Milliseconds 25
   [RdvE2EWin]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
@@ -1003,8 +1114,8 @@ function Click-CellFast($s, [string] $addr) {
 }
 # issue a search and DO NOT wait for it
 function Issue-Search($s, [string] $key) {
-  $s.Ws.Range('C9').Value2 = $key
-  Click-CellFast $s 'E9'
+  Set-Key $s $key
+  Click-CellFast $s 'rdvBtnSearch'
 }
 # [処理済み], and make sure the click actually landed: a real mouse click goes
 # wherever the foreground is, so one lost click must not be read as a product
@@ -1012,11 +1123,11 @@ function Issue-Search($s, [string] $key) {
 function Click-Processed($s, [bool] $fast) {
   for ($try = 0; $try -lt 2; $try++) {
     if ($try -gt 0) {
-      Say '    the confirm dialog did not appear; clicking [処理済み] once more'
+      Write-Host '    the confirm dialog did not appear; clicking [処理済み] once more'
       [void][RdvE2EWin]::SetForegroundWindow($s.Hwnd)
       Start-Sleep -Milliseconds 300
     }
-    if ($fast) { Click-CellFast $s 'G9' } else { Click-Cell $s 'G9' }
+    if ($fast) { Click-CellFast $s 'rdvBtnProcessed' } else { Click-Cell $s 'rdvBtnProcessed' }
     for ($i = 0; $i -lt 60; $i++) {
       if ([RdvE2EWin]::FindWindowW('#32770', '処理済みの確認') -ne [IntPtr]::Zero) { return $true }
       Start-Sleep -Milliseconds 100
@@ -1035,6 +1146,10 @@ function Run-Race([string] $variant, [int] $session, [int] $rounds) {
     if ($null -eq $lease) { RaceRec @{ variant = $variant; session = $session; round = -1; note = 'the FE never asked the BE for anything' }; return }
     $rdy = Wait-Ev $s.W ('\|agg\|READY\|') (EvMs $lease) $ReadyTimeoutSec
     if ($null -eq $rdy) { RaceRec @{ variant = $variant; session = $session; round = -1; note = 'never reached READY' }; return }
+    # the BE is up now (it just answered READY); name its process while a
+    # window handle still resolves to one, and say what this session owns
+    Add-BePid $s
+    Say ('    ' + (Owned-Note $s))
     Start-Sleep -Milliseconds 700
 
     for ($r = 0; $r -lt $rounds; $r++) {

@@ -250,7 +250,7 @@ function Touch-Handles($c) {
 }
 
 # ---- run -------------------------------------------------------------------
-$cases = 0; $failed = 0
+$cases = 0; $failed = 0; $skipped = 0
 $basePage = @{}
 $sw = [Diagnostics.Stopwatch]::StartNew()
 foreach ($kind in $Data) {
@@ -263,6 +263,22 @@ foreach ($kind in $Data) {
     $dlg.Visible = $false
     Touch-Handles $dlg
     $dlg.SetDesignScale([single]$sc)
+    # The PRODUCT fits the dialog to the desktop: Rdv3SettingsForm's constructor
+    # takes its scale from FitScale, which never asks for a window the screen
+    # cannot host. This harness deliberately forces a design scale instead, so
+    # that the numbers do not depend on the machine -- but a forced scale CAN
+    # exceed what the window manager will grant. Windows then clamps the window,
+    # and every rectangle past the clamp reads as "outside the client area":
+    # a property of this desktop, not a defect in the dialog. Say which cases
+    # that costs; a check that quietly drops coverage is worse than a red one.
+    $mt = [System.Windows.Forms.SystemInformation]::MaxWindowTrackSize
+    if ($dlg.Width -ge $mt.Width -or $dlg.Height -ge $mt.Height) {
+      Write-Output ('  skip {0}-{1:N2}: the window manager caps windows at {2}x{3} and this scale needs more; 3 pages not checked (the product would use FitScale here)' -f
+        $kind, $sc, $mt.Width, $mt.Height)
+      $skipped += 3
+      $dlg.Dispose()
+      continue
+    }
     for ($p = 0; $p -lt 3; $p++) {
       $dlg.GoToPage($p)
       [System.Windows.Forms.Application]::DoEvents()
@@ -346,8 +362,11 @@ foreach ($sc in $Scales) {
 }
 
 Write-Output ''
-Write-Output ('integrity : {0} modal + {1} picker cases, {2} failing   ({3:F0} s)' -f
-  $cases, $pkCases, ($failed + $pkFailed), $sw.Elapsed.TotalSeconds)
+Write-Output ('integrity : {0} modal + {1} picker cases, {2} failing, {3} skipped   ({4:F0} s)' -f
+  $cases, $pkCases, ($failed + $pkFailed), $skipped, $sw.Elapsed.TotalSeconds)
+if ($skipped -gt 0) {
+  Write-Output ('            the skipped cases need a desktop larger than this one; run them where the window fits')
+}
 
 # ---- fidelity at the design size ------------------------------------------
 $fidBad = 0

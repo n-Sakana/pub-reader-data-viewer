@@ -105,6 +105,26 @@ Private m_evDead As Boolean
 Private m_evShort As Long
 Private m_evRebuilt As Boolean
 
+' ---- the rule this SESSION is running on ------------------------------------
+' The constants above are the built-in defaults -- the values the shipped
+' ReaderDataViewer.json carries. What is actually in force comes out of that file
+' at start-up (modRdv3Cfg) and is settled ONCE, here, in both processes.
+'
+' The key length in particular is one length for the whole program: the width of
+' the key column in the CSVs, the width the index is built on, and the width the
+' screen accepts. They cannot differ, or the operator types a number the index
+' can never answer -- which is why it is settled before the CSVs are read and
+' never changed under a running session. key.digitsOnly is not like that: it only
+' says which CHARACTERS count, nothing built at start-up depends on it, and the
+' settings screen applies it at once.
+Private m_keyLen As Long
+Private m_keyDigits As Boolean
+Private m_maxShow As Long
+Private m_pollMs As Long
+Private m_stableMs As Long
+Private m_rebindMs As Long
+Private m_specSet As Boolean
+
 '------------------------------------------------------------------------------
 ' clock: VBA Timer, in Double, wrap-corrected. See the module header for what
 ' this costs against the QueryPerformanceCounter it replaces.
@@ -214,13 +234,114 @@ Public Function Rdv3WaitReady(ByRef why As String) As Boolean
     Rdv3WaitReady = True
 End Function
 
+'------------------------------------------------------------------------------
+' the session rule
+'------------------------------------------------------------------------------
+Private Sub SpecDefaults()
+    m_keyLen = RDV3_KEYLEN
+    m_keyDigits = True
+    m_maxShow = RDV3_MAXSHOW
+    m_pollMs = RDV3_POLL_MS
+    m_stableMs = RDV3_STABLE_MS
+    m_rebindMs = 400
+    m_specSet = True
+End Sub
+
+' Called once per process, right after the settings file is read, before the
+' CSVs are touched. candidateRowsShown is capped at the number of candidate rows
+' the sheet actually has: the setting may ask for more, and painting rows that do
+' not exist would be a silent lie about how many were shown.
+Public Sub Rdv3SpecApply(ByVal keyLen As Long, ByVal digitsOnly As Boolean, _
+                         ByVal candidateRows As Long, ByVal pollMs As Long, _
+                         ByVal stableMs As Long, ByVal rebindMs As Long)
+    SpecDefaults
+    If keyLen >= 1 And keyLen <= 64 Then m_keyLen = keyLen
+    m_keyDigits = digitsOnly
+    If candidateRows >= 1 Then
+        If candidateRows > RDV3_MAXSHOW Then
+            m_maxShow = RDV3_MAXSHOW
+        Else
+            m_maxShow = candidateRows
+        End If
+    End If
+    If pollMs >= 5 And pollMs <= 5000 Then m_pollMs = pollMs
+    If stableMs >= 0 And stableMs <= 60000 Then m_stableMs = stableMs
+    If rebindMs >= 50 And rebindMs <= 60000 Then m_rebindMs = rebindMs
+End Sub
+
+' What a running session may adopt from a re-read settings file. The key LENGTH
+' is deliberately absent: the CSVs were read and the index was built with the one
+' this session started on, and a shorter key would leave the screen asking for
+' numbers that index can never answer.
+Public Sub Rdv3SpecApplyLive(ByVal digitsOnly As Boolean, ByVal candidateRows As Long, _
+                             ByVal pollMs As Long, ByVal stableMs As Long, _
+                             ByVal rebindMs As Long)
+    If Not m_specSet Then SpecDefaults
+    m_keyDigits = digitsOnly
+    If candidateRows >= 1 Then
+        If candidateRows > RDV3_MAXSHOW Then
+            m_maxShow = RDV3_MAXSHOW
+        Else
+            m_maxShow = candidateRows
+        End If
+    End If
+    If pollMs >= 5 And pollMs <= 5000 Then m_pollMs = pollMs
+    If stableMs >= 0 And stableMs <= 60000 Then m_stableMs = stableMs
+    If rebindMs >= 50 And rebindMs <= 60000 Then m_rebindMs = rebindMs
+End Sub
+
+' digitsOnly on its own, so the settings screen can apply it without a restart
+Public Sub Rdv3SpecSetDigitsOnly(ByVal digitsOnly As Boolean)
+    If Not m_specSet Then SpecDefaults
+    m_keyDigits = digitsOnly
+End Sub
+
+Public Function Rdv3KeyLen() As Long
+    If Not m_specSet Then SpecDefaults
+    Rdv3KeyLen = m_keyLen
+End Function
+
+Public Function Rdv3KeyDigits() As Boolean
+    If Not m_specSet Then SpecDefaults
+    Rdv3KeyDigits = m_keyDigits
+End Function
+
+Public Function Rdv3MaxShow() As Long
+    If Not m_specSet Then SpecDefaults
+    Rdv3MaxShow = m_maxShow
+End Function
+
+Public Function Rdv3PollMs() As Long
+    If Not m_specSet Then SpecDefaults
+    Rdv3PollMs = m_pollMs
+End Function
+
+Public Function Rdv3StableMs() As Long
+    If Not m_specSet Then SpecDefaults
+    Rdv3StableMs = m_stableMs
+End Function
+
+' how often an UNBOUND target is looked for again. Binding walks the focused
+' element's ancestors and may ask WMI for a process name, so doing it at the poll
+' cadence would be 25 of those a second for as long as one target is unbound.
+Public Function Rdv3RebindMs() As Long
+    If Not m_specSet Then SpecDefaults
+    Rdv3RebindMs = m_rebindMs
+End Function
+
 Public Function Rdv3IsKey(ByVal s As String) As Boolean
     Dim i As Long, c As Long
-    If Len(s) <> RDV3_KEYLEN Then
+    Dim n As Long
+    n = Rdv3KeyLen()
+    If Len(s) <> n Then
         Rdv3IsKey = False
         Exit Function
     End If
-    For i = 1 To RDV3_KEYLEN
+    If Not Rdv3KeyDigits() Then
+        Rdv3IsKey = True
+        Exit Function
+    End If
+    For i = 1 To n
         c = AscW(Mid$(s, i, 1))
         If c < 48 Or c > 57 Then
             Rdv3IsKey = False

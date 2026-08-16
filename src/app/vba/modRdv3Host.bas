@@ -63,6 +63,7 @@ End Function
 ' happens in the BE's own process. spawnMs reports the FE occupancy.
 Public Function Rdv3HostSpawn(ByVal sid As String, ByVal dataDir As String, _
                               ByVal ledgerPath As String, ByVal beLogPath As String, _
+                              ByVal configPath As String, _
                               ByRef errMsg As String, ByRef spawnMs As Double) As Boolean
     Dim copyPath As String
     Dim beApp As Object
@@ -109,7 +110,7 @@ Public Function Rdv3HostSpawn(ByVal sid As String, ByVal dataDir As String, _
 
     ' arms the BE's OnTime and returns; the loop runs in that process
     beApp.Run "'" & Replace(beBook.Name, "'", "''") & "'!Rdv3BeBootstrap", _
-        sid, dataDir, ledgerPath, beLogPath
+        sid, dataDir, ledgerPath, beLogPath, configPath
 
     ' hand the instance over to itself (UserControl was set by the bootstrap)
     Set beBook = Nothing

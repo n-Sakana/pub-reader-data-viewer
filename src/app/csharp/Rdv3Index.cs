@@ -21,14 +21,16 @@ public sealed class Rdv3Index
 
     public int Keys { get { return map.Count; } }
 
-    // index a CSV table by its 8-byte key column (field 0)
+    // index a CSV table by its key column (field 0), whose width is the one key
+    // length the whole program uses (Rdv3Spec.KeyLength, settled before the CSVs
+    // were read)
     public Rdv3Index(Rdv3Table t)
     {
         map = new Dictionary<string, List<int>>(t.Rows, StringComparer.Ordinal);
         byte[] b = t.Buf;
         for (int i = 0; i < t.Rows; i++)
         {
-            string k = Encoding.ASCII.GetString(b, t.KeyAt[i], Rdv3Spec.KeyLen);
+            string k = Encoding.ASCII.GetString(b, t.KeyAt[i], Rdv3Spec.KeyLength);
             List<int> rows;
             if (!map.TryGetValue(k, out rows))
             {
@@ -64,7 +66,7 @@ public sealed class Rdv3Index
 
     public int FindBytes(byte[] buf, int off, out List<int> rows)
     {
-        string k = Encoding.ASCII.GetString(buf, off, Rdv3Spec.KeyLen);
+        string k = Encoding.ASCII.GetString(buf, off, Rdv3Spec.KeyLength);
         if (!map.TryGetValue(k, out rows)) { return 0; }
         return rows.Count;
     }

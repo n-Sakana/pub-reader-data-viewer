@@ -192,12 +192,14 @@ function Set-State([string] $st, [string] $kind) {
                   $rows = New-Rows 8 $o $key1
                   $form.ShowCandidates($key1, $rows, 8, 8)
                   $form.SelectCandidate(2, $rows[2].Line, $true, 8)
-                  $form.ShowProcessedState('TRUE') }
+                  $form.ShowProcessedState('TRUE')
+                  $form.SetCandidateProcessed(2, $true) }
     'saving'    { $form.SetState([Rdv3Text]::StateSavingMark, 0); $form.SetKeyText($key1)
                   $rows = New-Rows 8 $o $key1
                   $form.ShowCandidates($key1, $rows, 8, 8)
                   $form.SelectCandidate(2, $rows[2].Line, $false, 8)
-                  $form.ShowProcessedState('TRUE' + [Rdv3Text]::SavingSuffix) }
+                  $form.ShowProcessedState('TRUE' + [Rdv3Text]::SavingSuffix)
+                  $form.SetCandidateProcessed(2, $true) }
     'error'     { $form.SetState([Rdv3Text]::StateReady, 0)
                   $rows = New-Rows 8 $o $key1
                   $form.ShowCandidates($key1, $rows, 8, 8)
@@ -285,7 +287,7 @@ function Test-Fidelity($el) {
 }
 
 # ---- run -------------------------------------------------------------------
-$cases = 0; $failed = 0
+$cases = 0; $failed = 0; $gaveWay = 0
 $baseEl = $null
 $sw = [Diagnostics.Stopwatch]::StartNew()
 foreach ($sc in $Scales) {
@@ -314,6 +316,20 @@ foreach ($sc in $Scales) {
         $d = $json | ConvertFrom-Json
         $r = Test-Integrity $d.el $d.client[0] $d.client[1]
         $clip = @($d.clipped)
+        # The summary row's declared give-way (Rdv3Ui.LaySummary): when even a
+        # window as wide as the desktop cannot hold the row, the SUB-lines
+        # shorten and the figures never do. That is the design, not a fault, so
+        # it is counted and printed rather than failed -- and only the three
+        # sub-lines, and only while the row provably does not fit.
+        $gave = @()
+        if ([double]$d.needW -gt [double]$d.client[0]) {
+          $gave = @($clip | Where-Object { $_ -in @('sum.key.sub', 'sum.status.sub', 'sum.rows.sub') })
+          $clip = @($clip | Where-Object { $_ -notin $gave })
+          if ($gave.Count -gt 0) {
+            $gaveWay++
+            Write-Output ('  give-way {0,-34} row needs {1:N0} css px, client is {2:N0}: {3}' -f $tag, [double]$d.needW, [double]$d.client[0], ($gave -join ', '))
+          }
+        }
         $cases++
         if ($r.Overlap.Count -gt 0 -or $r.Outside.Count -gt 0 -or $clip.Count -gt 0) {
           $failed++
@@ -330,7 +346,8 @@ foreach ($sc in $Scales) {
 $form.Dispose()
 
 Write-Output ''
-Write-Output ('integrity : {0} cases, {1} failing   ({2:F0} s)' -f $cases, $failed, $sw.Elapsed.TotalSeconds)
+Write-Output ('integrity : {0} cases, {1} failing, {2} on the declared give-way   ({3:F0} s)' -f
+  $cases, $failed, $gaveWay, $sw.Elapsed.TotalSeconds)
 
 $fidBad = 0
 if ($null -ne $baseEl) {

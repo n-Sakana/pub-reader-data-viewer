@@ -22,6 +22,7 @@ param(
   [int] $SaveTimeoutSec = 180
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'excel_own.ps1')   # exact Excel ownership, never a pid diff
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
@@ -338,18 +339,19 @@ function Test-Vba {
   $enc = [Text.Encoding]::GetEncoding(932)
   if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 
-  $before = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
   $xl = $null
   $wb = $null
   $mine = @()
   $xlHwnd = [IntPtr]::Zero
   try {
     Say 'VBA: starting Excel'
-    $xl = New-Object -ComObject Excel.Application
+    # identity is settled before anything is done to it (excel_own.ps1):
+    # a reused or unidentifiable instance throws here and is never driven
+    $rdvOwn = New-OwnedExcel
+    $xl = $rdvOwn.App
+    $mine = @($rdvOwn.Pid)
     $xl.Visible = $true
     $xl.DisplayAlerts = $false
-    $after = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-    $mine = @($after | Where-Object { $before -notcontains $_ })
     for ($i = 0; $i -lt 10; $i++) { try { $xl.AutomationSecurity = 1; break } catch { Start-Sleep -Milliseconds 600 } }
     $wb = $xl.Workbooks.Open((Join-Path $dir 'ReaderDataViewer.xlsm'))
     $xlHwnd = [IntPtr]$xl.Hwnd

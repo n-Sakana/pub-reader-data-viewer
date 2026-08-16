@@ -567,30 +567,37 @@ public sealed class Rdv3App
         }
         if (!Rdv3Spec.IsKey(key))
         {
-            form.SetInputError((cfg.KeyDigitsOnly ? Rdv3Text.ErrBadKey : Rdv3Text.ErrBadKeyAny)
-                .Replace("{n}", cfg.KeyLength.ToString(CultureInfo.InvariantCulture)));
+            // the rule this session is actually enforcing -- the same one IsKey
+            // just applied, and the one the data was read with. cfg holds what
+            // the FILE says, which may already be the next start's rule.
+            form.SetInputError((Rdv3Spec.KeyDigitsOnly ? Rdv3Text.ErrBadKey : Rdv3Text.ErrBadKeyAny)
+                .Replace("{n}", Rdv3Spec.KeyLength.ToString(CultureInfo.InvariantCulture)));
             log.Write("-", "search", "ignored key=" + key + " reason=bad-key");
             return;
         }
         form.SetError("");
-        Search(key, "manual", 0, t0);
+        Search(key, "manual", "", 0, t0);
     }
 
-    // watch thread
-    private void Detected(string key, double detectMs, int polls, long t0)
+    // watch thread. "target" is the name of the watched screen the number came
+    // off: with several watched at once, a reading in the log is only traceable
+    // back to the work it belongs to if it says which one delivered it.
+    private void Detected(string key, double detectMs, int polls, long t0, string target)
     {
-        log.Write("-", "detect", "key=" + key + " latency_ms=" + Rdv3Log.F(detectMs)
+        log.Write("-", "detect", "key=" + key + " target=" + target
+            + " latency_ms=" + Rdv3Log.F(detectMs)
             + " polls=" + polls.ToString(CultureInfo.InvariantCulture));
         if (state != StReady)
         {
-            log.Write("-", "search", "ignored key=" + key + " reason=not-ready (detected)");
+            log.Write("-", "search", "ignored key=" + key + " target=" + target
+                + " reason=not-ready (detected)");
             return;
         }
-        Search(key, "detect", detectMs, t0);
+        Search(key, "detect", target, detectMs, t0);
     }
 
     // any thread. t0 is the confirm instant: the search clock is already running.
-    private void Search(string key, string source, double detectMs, long t0)
+    private void Search(string key, string source, string target, double detectMs, long t0)
     {
         searchSeq++;
         string sid = "S" + searchSeq.ToString(CultureInfo.InvariantCulture);
@@ -600,18 +607,20 @@ public sealed class Rdv3App
         job.RunId = sid;
         job.Kind = "search";
         job.TimeoutMs = cfg.SearchTimeoutMs;
-        job.Work = delegate { SearchJob(sid, key, source, t0); };
+        job.Work = delegate { SearchJob(sid, key, source, target, t0); };
         worker.Post(job);
     }
 
     // worker thread
-    private void SearchJob(string sid, string key, string source, long t0)
+    private void SearchJob(string sid, string key, string source, string target, long t0)
     {
         if (!string.Equals(sid, activeSearchId, StringComparison.Ordinal))
         {
             log.Write(sid, "stale", "search superseded before start key=" + key);
             return;
         }
+        // where this search came from, in the one form every line below uses
+        string from = "source=" + source + ((target.Length > 0) ? (" target=" + target) : "");
         string[] lines = ledLines;
         Rdv3Index ix = ledIndex;
         bool[] proc = ledProcessed;
@@ -637,7 +646,7 @@ public sealed class Rdv3App
                 shownCands = candRows;
             });
             elapsed = Rdv3Clock.MsSince(t0);
-            log.Write(sid, "search", "key=" + key + " source=" + source + " hits=1 ms=" + Rdv3Log.F(elapsed));
+            log.Write(sid, "search", "key=" + key + " " + from + " hits=1 ms=" + Rdv3Log.F(elapsed));
         }
         else if (n == 0)
         {
@@ -649,7 +658,7 @@ public sealed class Rdv3App
                 shownCands = null;
             });
             elapsed = Rdv3Clock.MsSince(t0);
-            log.Write(sid, "search", "key=" + key + " source=" + source + " hits=0 ms=" + Rdv3Log.F(elapsed));
+            log.Write(sid, "search", "key=" + key + " " + from + " hits=0 ms=" + Rdv3Log.F(elapsed));
         }
         else
         {
@@ -669,7 +678,7 @@ public sealed class Rdv3App
                 shownCands = candRows;
             });
             elapsed = Rdv3Clock.MsSince(t0);
-            log.Write(sid, "search", "key=" + key + " source=" + source
+            log.Write(sid, "search", "key=" + key + " " + from
                 + " hits=" + n.ToString(CultureInfo.InvariantCulture) + " ms=" + Rdv3Log.F(elapsed));
             log.Write(sid, "candidate", "count=" + n.ToString(CultureInfo.InvariantCulture)
                 + " shown=" + show.ToString(CultureInfo.InvariantCulture));
@@ -701,6 +710,18 @@ public sealed class Rdv3App
         log.Write("S" + searchSeq.ToString(CultureInfo.InvariantCulture), "display",
             "picked=" + (i + 1).ToString(CultureInfo.InvariantCulture)
             + " key2=" + k2 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t0)));
+    }
+
+    // Which visible candidate that ledger row is RIGHT NOW, or -1. Asked again
+    // when the save is decided rather than remembered from when it started: by
+    // then the operator may have picked another candidate or searched again,
+    // and the row that was saved is the one that has to be told the truth.
+    private int CandOf(int ledgerRow)
+    {
+        List<int> c = shownCands;
+        if (c == null) { return -1; }
+        for (int i = 0; i < c.Count; i++) { if (c[i] == ledgerRow) { return i; } }
+        return -1;
     }
 
     // ---- processed ---------------------------------------------------------
@@ -739,6 +760,7 @@ public sealed class Rdv3App
         form.EnableProcessed(false);
         form.SetState(Rdv3Text.StateSavingMark, 2);
         form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedTrue + Rdv3Text.SavingSuffix);
+        form.SetCandidateProcessed(CandOf(row), true);
         log.Write(pidTag, "processed", "save started key2=" + k2 + " (exit held until it is decided)");
 
         Rdv3Job job = new Rdv3Job();
@@ -764,9 +786,18 @@ public sealed class Rdv3App
                 form.RunOnUi(delegate
                 {
                     form.SetError(Rdv3Text.ErrPersist + ex.Message);
+                    // the LIST row belongs to the record that was saved, whether
+                    // or not it is still the one selected: put it back to what
+                    // the ledger actually holds
+                    form.SetCandidateProcessed(CandOf(row), was);
                     if (shownRow == row)
                     {
-                        form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedFalse);
+                        // what the record went back to, which is what it was
+                        // before the click -- not FALSE. Marking a row that was
+                        // already TRUE and failing to save must not leave the
+                        // screen claiming the opposite of the ledger.
+                        form.ShowProcessedState(Rdv3Text.LabelProcessed + ": "
+                            + (was ? Rdv3Ledger.ProcessedTrue : Rdv3Ledger.ProcessedFalse));
                     }
                     EndMarkSave(pidTag, false);
                 });
@@ -775,6 +806,7 @@ public sealed class Rdv3App
             double ms = Rdv3Clock.MsSince(t);
             form.RunOnUi(delegate
             {
+                form.SetCandidateProcessed(CandOf(row), true);
                 if (shownRow == row)
                 {
                     form.ShowProcessedState(Rdv3Text.LabelProcessed + ": " + Rdv3Ledger.ProcessedTrue);
@@ -799,8 +831,9 @@ public sealed class Rdv3App
         form.EnableProcessed(state == StReady);
         if (state == StReady)
         {
-            form.SetState(watch.Bound ? Rdv3Text.StateReady
-            : Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName()), watch.Bound ? 1 : 2);
+            int tone;
+            string t = WatchStateText(out tone);
+            form.SetState(t, tone);
         }
         log.Write(tag, "exit", "processed save decided (" + (ok ? "saved" : "failed") + "); exit released");
         if (closeAskedWhileSaving)
@@ -834,23 +867,79 @@ public sealed class Rdv3App
             log.Write("-", "settings", "save failed: " + err);
             return;
         }
+        // the file is written, so cfg carries all of it now: the members that
+        // take effect at once, and the ones that wait for the next start but
+        // still have to survive into the next time this dialog opens
         cfg.AdoptRuntimeFrom(edited);
-        Rdv3Spec.KeyLength = cfg.KeyLength;
+        cfg.AdoptSavedFrom(edited);
+        // digitsOnly only decides which characters make a key -- nothing read at
+        // start-up depends on it, so it applies now, as it always has. The key
+        // LENGTH is the one that has to wait (Rdv3Spec.KeyLength is the width the
+        // CSVs were read and the index was built with), which is also why
+        // SetKeyRule is not called here.
         Rdv3Spec.KeyDigitsOnly = cfg.KeyDigitsOnly;
-        form.SetKeyRule(cfg.KeyLength);
         form.SetWatchLabel(WatchName());
         form.SetInputError("");
         watch.Rebind();
         log.Write("-", "settings", "saved: " + cfg.Describe());
+        // the key length in force is still the one this session started on; say
+        // so rather than let the log imply the file took over
+        if (cfg.KeyLength != Rdv3Spec.KeyLength)
+        {
+            log.Write("-", "settings", "key.length "
+                + cfg.KeyLength.ToString(CultureInfo.InvariantCulture)
+                + " applies at the next start; this session keeps "
+                + Rdv3Spec.KeyLength.ToString(CultureInfo.InvariantCulture));
+        }
+        for (int i = 0; i < cfg.Targets.Count; i++)
+        {
+            string why = cfg.Targets[i].WhyNotWatchable();
+            if (why.Length > 0)
+            {
+                log.Write("-", "settings", "target [" + cfg.Targets[i].Name + "] is not watched: " + why);
+            }
+        }
         form.SetError(Rdv3Text.NoteSettingsApplied);
     }
 
-    // what the screen calls the thing being watched
+    // What the screen calls the thing being watched -- counted over the targets
+    // that are actually watched, not over every target in the file. cfg.Targets
+    // also holds the ones the operator switched off (the dialog lists them and
+    // the file keeps them); naming the general word because ONE of two targets is
+    // off would drop the name the operator recognises from the status line.
     private string WatchName()
     {
-        if (cfg.Targets.Count == 1) { return cfg.Targets[0].Name; }
-        if (cfg.Targets.Count == 0) { return Rdv3Text.LabelNotepad; }
+        Rdv3Target only = null;
+        int n = 0;
+        for (int i = 0; i < cfg.Targets.Count; i++)
+        {
+            if (!cfg.Targets[i].IsWatchable) { continue; }
+            n++;
+            if (n == 1) { only = cfg.Targets[i]; }
+        }
+        if (n == 1) { return only.Name; }
+        if (n == 0) { return Rdv3Text.LabelNotepad; }
         return Rdv3Text.LabelWatch;
+    }
+
+    // how many targets this configuration actually asks to be watched
+    private int WatchableCount()
+    {
+        int n = 0;
+        for (int i = 0; i < cfg.Targets.Count; i++) { if (cfg.Targets[i].IsWatchable) { n++; } }
+        return n;
+    }
+
+    // WHAT THE STATE LINE SAYS when nothing else is going on. One definition,
+    // because there are two callers -- the watcher's own notifications and the
+    // end of a processed save -- and the second one used to build its own and
+    // got "nothing is configured to be watched" wrong, calling it メモ帳待機.
+    private string WatchStateText(out int tone)
+    {
+        if (WatchableCount() == 0) { tone = 2; return Rdv3Text.StateNoTarget; }
+        if (watch != null && watch.Bound) { tone = 1; return Rdv3Text.StateReady; }
+        tone = 2;
+        return Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName());
     }
 
     private void WatchState(string st, string detail)
@@ -860,15 +949,20 @@ public sealed class Rdv3App
         if (st == "WATCHING")
         {
             form.SetNotepad(detail);
-            if (state == StReady && !savingMark) { form.SetState(Rdv3Text.StateReady, 1); }
         }
         else if (st == "WAITING")
         {
-            form.SetNotepad(Rdv3Text.WatchNoneFmt.Replace("{name}", WatchName()));
-            if (state == StReady && !savingMark)
-            {
-                form.SetState(Rdv3Text.StateWaitingFmt.Replace("{name}", WatchName()), 2);
-            }
+            // nothing to watch is a decision the file made, not a window that
+            // has not opened yet: say which of the two this is
+            form.SetNotepad(WatchableCount() == 0
+                ? Rdv3Text.WatchNoTarget
+                : Rdv3Text.WatchNoneFmt.Replace("{name}", WatchName()));
+        }
+        if ((st == "WATCHING" || st == "WAITING") && state == StReady && !savingMark)
+        {
+            int tone;
+            string t = WatchStateText(out tone);
+            form.SetState(t, tone);
         }
     }
 
@@ -980,8 +1074,20 @@ public static class Rdv3Program
             }
         }
 
-        // one writer per ledger file: a second instance must not fight the
-        // first over the xlsx, so it says so and leaves
+        // One writer per ledger FILE -- so the guard has to be the file, not the
+        // spelling. "x\led.xlsx", "x\.\led.xlsx" and a relative path all name the
+        // same xlsx and used to hash three different ways, which let two
+        // processes each believe it was the only one and write over each other.
+        // Everything downstream uses this same canonical path.
+        try { ledgerPath = Path.GetFullPath(ledgerPath); }
+        catch (Exception ex)
+        {
+            MessageBox.Show(Rdv3Text.ErrBadLedgerPath + ledgerPath + "\r\n" + ex.Message,
+                Rdv3Text.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Error);
+            return 5;
+        }
+        // a second instance must not fight the first over the xlsx, so it says
+        // so and leaves
         string mutexName = "RdvApp-" + ledgerPath.ToLowerInvariant().GetHashCode().ToString("x8", CultureInfo.InvariantCulture);
         bool createdNew;
         using (Mutex mx = new Mutex(true, mutexName, out createdNew))

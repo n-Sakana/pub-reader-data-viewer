@@ -49,7 +49,9 @@ if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv'))) {
 Head 'preflight: ps1 encoding'
 foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_workbook_app.ps1', 'build\bench_app.ps1',
                   'build\bench_save.ps1', 'build\bench_e2e.ps1', 'build\test_exit_guard.ps1',
-                  'build\test_ui_geometry.ps1',
+                  'build\test_ui_geometry.ps1', 'build\test_settings_geometry.ps1',
+                  'build\test_settings_contract.ps1', 'build\test_vba_screen.ps1',
+                  'build\ui_grid_app.ps1', 'build\excel_own.ps1',
                   'src\app\cmd\boot-app.ps1')) {
   $p = Join-Path $Root $ps
   if (-not (Test-Path -LiteralPath $p)) { continue }
@@ -82,7 +84,7 @@ if (-not $SkipCSharp) {
   # the distribution is two files: the .cmd and its settings
   # the entry point people double click is the .vbs (no console window); the
   # .cmd is packed next to it for when a console is wanted
-  $cfgSrc = Join-Path $Root 'srcpp\config\ReaderDataViewer.json'
+  $cfgSrc = Join-Path $Root 'src\app\config\ReaderDataViewer.json'
   $cfgDst = Join-Path $destC 'ReaderDataViewer.json'
   Copy-Item -LiteralPath $cfgSrc -Destination $cfgDst -Force
   Write-Output ('  settings: ' + $cfgDst)
@@ -137,6 +139,11 @@ if (-not $SkipVba) {
   $destV = Join-Path $Root 'dist\app-vba'
   if (-not (Test-Path -LiteralPath $destV)) { New-Item -ItemType Directory -Path $destV | Out-Null }
   Copy-Data $destV
+  # the SAME settings file the C# build ships, because it is the same file: one
+  # format, one document (docs\settings.md), read here by modRdv3Cfg
+  Copy-Item -LiteralPath (Join-Path $Root 'src\app\config\ReaderDataViewer.json') `
+            -Destination (Join-Path $destV 'ReaderDataViewer.json') -Force
+  Write-Output ('  settings: ' + (Join-Path $destV 'ReaderDataViewer.json'))
   & (Join-Path $Root 'build\build_workbook_app.ps1') -Root $Root
 }
 

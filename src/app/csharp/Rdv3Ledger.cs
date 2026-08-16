@@ -127,7 +127,7 @@ public static class Rdv3Ledger
             int len;
             int p = tb.FieldAt(i, 1, out len);
             int rc = -1;
-            if (p >= 0 && len == Rdv3Spec.KeyLen)
+            if (p >= 0 && len == Rdv3Spec.KeyLength)
             {
                 int c = ic.FindBytes(tb.Buf, p, out found);
                 if (c > 0) { rc = found[0]; matched++; }

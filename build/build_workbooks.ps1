@@ -36,6 +36,7 @@
 [CmdletBinding()]
 param([string] $Root = "")
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'excel_own.ps1')   # exact Excel ownership, never a pid diff
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
 $xlWBATWorksheet = -4167
@@ -304,14 +305,15 @@ function Paint-View($ws, [string] $method, [bool] $withButtons) {
 }
 
 # --- Excel ------------------------------------------------------------------
-$before = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-$xl = New-Object -ComObject Excel.Application
+# identity is settled before anything is done to it (excel_own.ps1):
+# a reused or unidentifiable instance throws here and is never driven
+$rdvOwn = New-OwnedExcel
+$xl = $rdvOwn.App
+$mine = @($rdvOwn.Pid)
 $xl.Visible = $false
 $xl.DisplayAlerts = $false
 $xl.AskToUpdateLinks = $false
 $xl.AlertBeforeOverwriting = $false
-$after = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-$mine = @($after | Where-Object { $before -notcontains $_ })
 Step ("started Excel (new pid: {0})" -f $(if ($mine.Count) { $mine -join ',' } else { 'reused' }))
 
 $dist = Join-Path $Root 'dist'

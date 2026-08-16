@@ -721,9 +721,13 @@ internal sealed class Rdv3CandTable : Panel
         Invalidate();
     }
 
-    public void MarkProcessed(int i)
+    // A SETTER, not a one-way mark. The list shows the row optimistically while
+    // the save is in flight, so a failed save has to be able to put it back --
+    // and "mark only" left the list claiming 済 for a record the ledger never
+    // accepted.
+    public void SetRowProcessed(int i, bool v)
     {
-        if (i >= 0 && i < rows.Count) { rows[i].Processed = true; Invalidate(); }
+        if (i >= 0 && i < rows.Count) { rows[i].Processed = v; Invalidate(); }
     }
 
     public Rdv3CandRow Row(int i) { return (i >= 0 && i < rows.Count) ? rows[i] : null; }
@@ -1264,6 +1268,12 @@ public sealed class Rdv3Form : Form
     // design, never past the work area) and the window grows with it once.
     private bool sizing;
     private double needW = Rdv3Geom.CardW;
+    // What was last ASKED of MinimumSize. The property does not always read back
+    // what was assigned: at the edge of the working area WinForms clamps it
+    // (measured at 150% on a 1920 desktop -- asked 1920, read 1918), so
+    // comparing `want` with MinimumSize.Width never became true and this grew
+    // the window forever. The request is ours; remember it ourselves.
+    private int askedW;
 
     private void EnsureRoom()
     {
@@ -1271,15 +1281,19 @@ public sealed class Rdv3Form : Form
         Rectangle wa = Screen.FromControl(this).WorkingArea;
         int frame = Math.Max(0, Width - ClientSize.Width);
         int want = Math.Min(PX(Math.Max(Rdv3Geom.CardW, needW)) + frame, Math.Max(400, wa.Width));
-        if (want <= MinimumSize.Width) { return; }
+        if (want <= Math.Max(askedW, MinimumSize.Width)) { return; }
         sizing = true;
         try
         {
+            askedW = want;
             MinimumSize = new Size(want, MinimumSize.Height);
             if (Width < want) { Width = want; }
+            // ONCE, and inside the guard. The new width needs one more layout
+            // pass; that pass must not be able to ask for room again, or the
+            // pair is a recursion whose depth is decided by the window manager.
+            Layout1();
         }
         finally { sizing = false; }
-        Layout1();
     }
 
     protected override void OnResize(EventArgs e) { base.OnResize(e); Layout1(); }
@@ -1962,6 +1976,11 @@ public sealed class Rdv3Form : Form
         keys.Sort(StringComparer.Ordinal);
         System.Text.StringBuilder sb = new System.Text.StringBuilder();
         sb.Append("{\"scale\":").Append(Rdv3Skin.Scale.ToString("0.###", CultureInfo.InvariantCulture));
+        // what the summary row ASKED for. When it is wider than the client the
+        // window is already as wide as the desktop allows, and LaySummary has
+        // taken its documented give-way (sub-lines shorten, figures never). A
+        // check cannot tell that apart from a layout fault without this number.
+        sb.Append(",\"needW\":").Append(needW.ToString("0.##", CultureInfo.InvariantCulture));
         sb.Append(",\"client\":[").Append(CssStr(ClientSize.Width)).Append(",")
           .Append(CssStr(ClientSize.Height)).Append("],\"el\":{");
         for (int i = 0; i < keys.Count; i++)
@@ -2040,6 +2059,7 @@ public sealed class Rdv3Form : Form
         int minW = Math.Min(PX(Rdv3Geom.CardW) + nc.Width, Math.Max(400, wa.Width));
         int minH = Math.Min(PX(Rdv3Geom.CardH) + nc.Height, Math.Max(300, wa.Height));
         MinimumSize = new Size(minW, minH);
+        askedW = minW;                 // a new scale re-establishes the minimum
         if (Width < minW || Height < minH) { Size = new Size(Math.Max(Width, minW), Math.Max(Height, minH)); }
         Layout1();
     }
@@ -2201,6 +2221,15 @@ public sealed class Rdv3Form : Form
         Ui(delegate { btnProcessed.Enabled = on; });
     }
 
+    // The 済/未 of ONE candidate row, named by the caller. A save decides the
+    // fate of the record it started on, which is not necessarily the one
+    // selected when the answer comes back; -1 means that record is not in the
+    // list any more and there is nothing on screen to correct.
+    public void SetCandidateProcessed(int index, bool processed)
+    {
+        Ui(delegate { table.SetRowProcessed(index, processed); });
+    }
+
     // ---- results -----------------------------------------------------------
     public void ShowCandidates(string key, List<Rdv3CandRow> rows, int totalHits, int shown)
     {
@@ -2306,7 +2335,10 @@ public sealed class Rdv3Form : Form
             if (processedText != null && processedText.Length > 0)
             {
                 recProc = processedText.Contains(Rdv3Ledger.ProcessedTrue);
-                if (recProc && table.Selected >= 0) { table.MarkProcessed(table.Selected); }
+                // the LIST is not touched here. This call describes the record
+                // on show, and by the time a save is decided the operator may
+                // be looking at a different one; the list row belongs to the
+                // record that was saved, so the caller names it (SetCandidateProcessed).
                 if (rec != null)
                 {
                     sStatusSub = sRecStatus + " ・ " + (recProc ? Rdv3Text.LabelProcessed : Rdv3Text.LabelUnprocessed) + procSuffix;

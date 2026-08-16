@@ -47,6 +47,11 @@ public static class Rdv3Text
     public const string WatchNoneFmt = "未接続 — {name} を開くと自動で接続します";
     public const string StateWaitingFmt = "{name} を待機中";
     public const string LabelWatch = "監視";
+    // "no targets" is a SETTING, not a window that has yet to appear. Saying
+    // "waiting for Notepad" for a config that deliberately watches nothing sent
+    // the operator looking for an application the file never asked for.
+    public const string WatchNoTarget = "監視対象がありません (設定で追加してください)";
+    public const string StateNoTarget = "監視対象なし";
     public const string LedgerRows = "{n} 件";
 
     public const string BtnSearch = "検索";
@@ -86,6 +91,7 @@ public static class Rdv3Text
 
     public const string ErrNo64 = "64 ビットのプロセスが必要です。";
     public const string ErrNoData = "CSV が見つかりません: ";
+    public const string ErrBadLedgerPath = "統合台帳のパスが不正です: ";
     public const string ErrNoLedger = "統合台帳がありません。検索できません。";
     public const string ErrCheckFailed = "更新確認に失敗しました: ";
     public const string ErrCheckTimeout = "更新確認がタイムアウトしました (保存済み台帳のまま続行します)";

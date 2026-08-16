@@ -45,6 +45,7 @@ param(
   [int] $SearchTimeoutSec = 30
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'excel_own.ps1')   # exact Excel ownership, never a pid diff
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
@@ -226,10 +227,13 @@ function Answer-Dialog([string] $title, [string] $buttonPrefix, [int] $sec) {
       }
       if ($btn -ne [IntPtr]::Zero) {
         [void][RdvBenchWin]::PostMessage($btn, 0x00F5, [IntPtr]0, [IntPtr]0)  # BM_CLICK
-        Write-Output ("  dialog '" + $title + "' answered (button click)")
+        # Write-Host, not Write-Output: this function RETURNS $true/$false and
+        # anything written to the output stream joins that return value, so the
+        # caller's "if (-not (Answer-Dialog ...))" would be testing an array
+        Write-Host ("  dialog '" + $title + "' answered (button click)")
       } else {
         [void][RdvBenchWin]::PostMessage($dlg, 0x0111, [IntPtr]$cmdId, [IntPtr]0)  # WM_COMMAND
-        Write-Output ("  dialog '" + $title + "' answered (WM_COMMAND id=" + $cmdId + ")")
+        Write-Host ("  dialog '" + $title + "' answered (WM_COMMAND id=" + $cmdId + ")")
       }
       return $true
     }
@@ -281,7 +285,6 @@ function Rec([int] $launch, [string] $phase, [string] $status, [string] $metric,
   [void]$rows.Add([pscustomobject]@{ Launch = $launch; Phase = $phase; Status = $status; Metric = $metric; Value = $value; Extra = $extra })
 }
 
-$excelBefore = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
 
 # --- one launch: start, measure, operate, close -----------------------------
 function Close-App([object] $ctx) {
@@ -369,11 +372,13 @@ function Run-LaunchBody([int] $launch, [string] $phase, [bool] $doApply, [object
   # ---- start (the full-E2E clock runs across the whole process start) ----
   $tStart = $Clock.Elapsed.TotalMilliseconds
   if ($isVba) {
-    $ctx.Xl = New-Object -ComObject Excel.Application
+    # identity is settled before anything is done to it (excel_own.ps1):
+    # a reused or unidentifiable instance throws here and is never driven
+    $rdvOwn = New-OwnedExcel
+    $ctx.Xl = $rdvOwn.App
+    $ctx.MyExcel = @($rdvOwn.Pid)
     $ctx.Xl.Visible = $false                # invisible: my notepad stays foreground
     $ctx.Xl.DisplayAlerts = $false
-    $afterX = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-    $ctx.MyExcel = @($afterX | Where-Object { $excelBefore -notcontains $_ })
     Clear-OurDisabledItems
     # a just-started Excel can be briefly busy (0x800AC472); retry the property
     for ($ri = 0; $ri -lt 10; $ri++) {

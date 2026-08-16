@@ -80,6 +80,51 @@ function Rdv-Refs() {
   )
 }
 
+# The settings file is JSONC, and the app's reader (Rdv3Json.SkipWhite) takes
+# // to the end of the line and /* ... */ anywhere outside a string. This
+# bootstrap reads the SAME file, so it has to accept the same syntax: a file the
+# app parses happily but this does not would silently resolve paths.* to the
+# defaults here, and the program would open CSVs, a ledger and a log nobody
+# asked for while the settings screen showed the ones that were configured.
+# Comments are removed, nothing else: what is left still has to be valid JSON.
+function Rdv-StripJsonComments([string] $text) {
+  if ([string]::IsNullOrEmpty($text)) { return $text }
+  $sb = New-Object System.Text.StringBuilder
+  $n = $text.Length
+  $i = 0
+  $inStr = $false
+  while ($i -lt $n) {
+    $c = $text[$i]
+    if ($inStr) {
+      [void]$sb.Append($c)
+      if ($c -eq '\') {
+        if (($i + 1) -lt $n) { [void]$sb.Append($text[$i + 1]); $i += 2 } else { $i++ }
+        continue
+      }
+      if ($c -eq '"') { $inStr = $false }
+      $i++
+      continue
+    }
+    if ($c -eq '"') { $inStr = $true; [void]$sb.Append($c); $i++; continue }
+    if ($c -eq '/' -and ($i + 1) -lt $n -and $text[$i + 1] -eq '/') {
+      while ($i -lt $n -and $text[$i] -ne "`n") { $i++ }
+      continue
+    }
+    if ($c -eq '/' -and ($i + 1) -lt $n -and $text[$i + 1] -eq '*') {
+      $i += 2
+      while (($i + 1) -lt $n -and -not ($text[$i] -eq '*' -and $text[$i + 1] -eq '/')) {
+        if ($text[$i] -eq "`n") { [void]$sb.Append("`n") }
+        $i++
+      }
+      $i = [Math]::Min($n, $i + 2)
+      continue
+    }
+    [void]$sb.Append($c)
+    $i++
+  }
+  return $sb.ToString()
+}
+
 $RdvHere = Split-Path -Parent $env:RDV_SELF
 $RdvTokens = Rdv-Tokens $env:RDV_ARGS
 
@@ -93,8 +138,7 @@ $RdvJson = $null
 if (Test-Path -LiteralPath $RdvConfig) {
   try {
     $RdvRaw = [IO.File]::ReadAllText($RdvConfig, [Text.Encoding]::UTF8)
-    $RdvRaw = [regex]::Replace($RdvRaw, '(?m)^\s*//.*$', '')
-    $RdvJson = $RdvRaw | ConvertFrom-Json
+    $RdvJson = (Rdv-StripJsonComments $RdvRaw) | ConvertFrom-Json
   } catch { $RdvJson = $null }
 }
 function Rdv-Path([string] $fromJson, [string] $fallback) {

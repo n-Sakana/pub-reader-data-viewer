@@ -59,8 +59,11 @@ public sealed class Rdv3Watch
     private string activeName = "";
     private string activeDetail = "";
 
-    // key, detection latency in ms, poll count, the confirm timestamp
-    public Action<string, double, int, long> OnConfirmed;
+    // key, detection latency in ms, poll count, the confirm timestamp, and the
+    // name of the target it came from: several targets are watched at once, so a
+    // number recorded without its source cannot be traced back to the screen it
+    // was read off
+    public Action<string, double, int, long, string> OnConfirmed;
     public Action<string, string> OnState;      // state, detail
     public Action<string> OnRaw;                // current field text, every poll
     public Action<string> OnLabel;              // which target the status line names
@@ -135,8 +138,13 @@ public sealed class Rdv3Watch
 
         for (int i = 0; i < Cfg.Targets.Count; i++)
         {
+            // IsWatchable, not Enabled: the settings dialog hands over targets it
+            // built in memory, which never went through Rdv3Target.Read, so one
+            // added and saved with nothing filled in arrives still calling itself
+            // enabled -- and an empty matcher accepts any window, which would
+            // attach the reader to whatever happened to be in front.
             Rdv3Target t = Cfg.Targets[i];
-            if (!t.Enabled) { continue; }
+            if (!t.IsWatchable) { continue; }
             lock (gate) { if (AlreadyBound(t)) { continue; } }
 
             List<AutomationElement> wins = Rdv3Uia.FindAll(root, t.Window, false);
@@ -150,7 +158,16 @@ public sealed class Rdv3Watch
                     if (Rdv3Uia.Same(wins[k], focused)) { pick = wins[k]; break; }
                 }
             }
-            if (pick == null) { pick = wins[Math.Min(t.Window.Index, wins.Count - 1)]; }
+            // "which one of the several that match", not "the last one there
+            // happens to be". If the window they numbered is not open, the target
+            // simply is not bound yet and the status line keeps saying so; sliding
+            // to a different window would read a number off somebody else's work.
+            // Rdv3Uia.FindOne answers the same way for the path steps and the field.
+            if (pick == null)
+            {
+                if (t.Window.Index >= wins.Count) { continue; }
+                pick = wins[t.Window.Index];
+            }
 
             AutomationElement field = Resolve(t, pick);
             if (field == null) { continue; }
@@ -211,7 +228,7 @@ public sealed class Rdv3Watch
             }
 
             bool haveAll;
-            lock (gate) { haveAll = (live.Count >= EnabledCount()); }
+            lock (gate) { haveAll = (live.Count >= WatchableCount()); }
             if (!haveAll && (lastBindTry == 0 || Rdv3Clock.MsSince(lastBindTry) >= Cfg.RebindMs))
             {
                 lastBindTry = Rdv3Clock.Now();
@@ -283,7 +300,8 @@ public sealed class Rdv3Watch
                     long confirmAt = Rdv3Clock.Now();
                     if (OnConfirmed != null)
                     {
-                        OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls, confirmAt);
+                        OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls,
+                            confirmAt, s.T.Name);
                     }
                     break;                     // one reading per tick
                 }
@@ -293,10 +311,13 @@ public sealed class Rdv3Watch
         }
     }
 
-    private int EnabledCount()
+    // the same question BindMissing asks, so the two cannot disagree and leave
+    // the loop searching the whole desktop every rebindMs for a target it will
+    // never take
+    private int WatchableCount()
     {
         int n = 0;
-        for (int i = 0; i < Cfg.Targets.Count; i++) { if (Cfg.Targets[i].Enabled) { n++; } }
+        for (int i = 0; i < Cfg.Targets.Count; i++) { if (Cfg.Targets[i].IsWatchable) { n++; } }
         return n;
     }
 

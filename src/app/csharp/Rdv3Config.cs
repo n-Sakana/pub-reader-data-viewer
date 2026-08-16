@@ -44,13 +44,33 @@ public sealed class Rdv3Match
     public int Index;                     // which match to take when several fit
     public bool Descendants = true;       // "scope": "children" looks one level only
 
+    // Nothing effective in it -- and an empty matcher matches ANYTHING, so this
+    // is the question "would this matcher accept any window on the desktop".
     public bool IsEmpty
     {
         get
         {
             return AutomationId.Length == 0 && ClassName.Length == 0 && Name.Length == 0
-                && NameLike.Length == 0 && ProcessName.Length == 0 && ControlTypes.Length == 0
+                && NameLike.Length == 0 && ProcessName.Length == 0 && KnownControlTypes == 0
                 && !RequireValuePattern;
+        }
+    }
+
+    // How many of the listed control types UI Automation actually knows. A name
+    // it does not know is dropped from the search condition (Rdv3Uia.ToCondition
+    // keeps only the ones it can resolve), so counting it as a constraint here
+    // would let a single typo -- "Edti" for "Edit" -- pass for a narrowed matcher
+    // and leave one that in fact accepts every window there is.
+    public int KnownControlTypes
+    {
+        get
+        {
+            int n = 0;
+            for (int i = 0; i < ControlTypes.Length; i++)
+            {
+                if (Rdv3Uia.ControlTypeByName(ControlTypes[i]) != null) { n++; }
+            }
+            return n;
         }
     }
 
@@ -170,6 +190,29 @@ public sealed class Rdv3Target
     public Rdv3Match Field = new Rdv3Match();
     public int ReadMode = Rdv3Uia.ReadValue;
 
+    // Why this target cannot be watched, or "" when it can. A matcher with
+    // nothing effective in it matches any window at all, so a target that names
+    // neither a window nor a field would bind to whatever happened to be in
+    // front and read a number off a screen nobody pointed it at. Asked here,
+    // where the file is read, and again at the watcher -- the settings dialog
+    // builds targets in memory and never comes through Read().
+    public string WhyNotWatchable()
+    {
+        if (Window.IsEmpty) { return "window matches nothing in particular"; }
+        if (Field.IsEmpty) { return "field matches nothing in particular"; }
+        return "";
+    }
+
+    // Turned on AND able to work: the set that is actually being watched. It is
+    // smaller than cfg.Targets, which also holds the ones the operator switched
+    // off -- those stay in the file and in the dialog, but the status line is not
+    // waiting for them and the watcher does not bind them. One property, so the
+    // screen and the watcher cannot come to different answers.
+    public bool IsWatchable
+    {
+        get { return Enabled && WhyNotWatchable().Length == 0; }
+    }
+
     public Rdv3Target Clone()
     {
         Rdv3Target t = new Rdv3Target();
@@ -185,7 +228,7 @@ public sealed class Rdv3Target
     {
         Rdv3Target t = new Rdv3Target();
         string where = "watch.targets[" + i.ToString(CultureInfo.InvariantCulture) + "]";
-        if (o == null || !o.IsObject) { notes.Add(where + " is not an object; ignored"); t.Enabled = false; return t; }
+        if (o == null || !o.IsObject) { notes.Add(where + " is not an object; ignored"); return t; }
         t.Enabled = o.GetBool("enabled", true);
         t.Name = o.GetString("name", "");
         t.Window = Rdv3Match.Read(o.Member("window"), notes, where + ".window");
@@ -208,16 +251,10 @@ public sealed class Rdv3Target
         }
         t.Field = Rdv3Match.Read(o.Member("field"), notes, where + ".field");
         t.ReadMode = Rdv3Uia.ReadModeByName(o.GetString("read", "value"));
-        if (t.Window.IsEmpty)
-        {
-            notes.Add(where + ".window matches nothing in particular; the target is ignored");
-            t.Enabled = false;
-        }
-        if (t.Field.IsEmpty)
-        {
-            notes.Add(where + ".field matches nothing in particular; the target is ignored");
-            t.Enabled = false;
-        }
+        // "unusable" is not "turned off": Enabled stays exactly as the operator
+        // wrote it, and Load decides what to do with a target that cannot work
+        string why = t.WhyNotWatchable();
+        if (why.Length > 0) { notes.Add(where + ": " + why + "; the target is ignored"); }
         if (t.Name.Length == 0)
         {
             t.Name = (t.Window.ProcessName.Length > 0) ? t.Window.ProcessName : t.Window.ClassName;
@@ -286,6 +323,10 @@ public sealed class Rdv3Config
         catch (Exception ex) { c.Error = ex.Message; return c; }
         if (root == null || !root.IsObject) { c.Error = "the top level is not an object"; return c; }
 
+        // the built-in default of every member, kept aside: a value that is out
+        // of range falls back to its own default, not to the nearest limit
+        Rdv3Config d = Defaults();
+
         int schema = root.GetInt("schema", Schema);
         if (schema != Schema)
         {
@@ -305,62 +346,72 @@ public sealed class Rdv3Config
         Rdv3Json k = root.Member("key");
         if (k != null && k.IsObject)
         {
-            c.KeyLength = Clamp(k.GetInt("length", c.KeyLength), 1, 64, "key.length", c);
+            c.KeyLength = Ranged(k.GetInt("length", c.KeyLength), 1, 64, d.KeyLength, "key.length", c);
             c.KeyDigitsOnly = k.GetBool("digitsOnly", c.KeyDigitsOnly);
         }
 
         Rdv3Json w = root.Member("watch");
         if (w != null && w.IsObject)
         {
-            c.PollMs = Clamp(w.GetInt("pollMs", c.PollMs), 5, 5000, "watch.pollMs", c);
-            c.StableMs = Clamp(w.GetInt("stableMs", c.StableMs), 0, 60000, "watch.stableMs", c);
-            c.RebindMs = Clamp(w.GetInt("rebindMs", c.RebindMs), 50, 60000, "watch.rebindMs", c);
+            c.PollMs = Ranged(w.GetInt("pollMs", c.PollMs), 5, 5000, d.PollMs, "watch.pollMs", c);
+            c.StableMs = Ranged(w.GetInt("stableMs", c.StableMs), 0, 60000, d.StableMs, "watch.stableMs", c);
+            c.RebindMs = Ranged(w.GetInt("rebindMs", c.RebindMs), 50, 60000, d.RebindMs, "watch.rebindMs", c);
             c.PreferFocusedWindow = w.GetBool("preferFocusedWindow", c.PreferFocusedWindow);
             Rdv3Json ts = w.Member("targets");
             if (ts != null && ts.IsArray)
             {
+                // The file answered the question, so the file decides -- down to
+                // "watch nothing". A target the operator turned OFF is kept: it
+                // is still theirs, the dialog still lists it, and the next save
+                // still writes it. Only one that cannot work at all is dropped.
+                // The built-in target belongs to a file that is missing or does
+                // not say, never to one that does.
                 List<Rdv3Target> list = new List<Rdv3Target>();
                 for (int i = 0; i < ts.Count; i++)
                 {
                     Rdv3Target t = Rdv3Target.Read(ts.At(i), i, c.Notes);
-                    if (t.Enabled) { list.Add(t); }
+                    if (t.WhyNotWatchable().Length == 0) { list.Add(t); }
                 }
-                if (list.Count == 0) { c.Notes.Add("watch.targets has nothing usable; the built-in target is kept"); }
-                else { c.Targets = list; }
+                if (list.Count == 0) { c.Notes.Add("watch.targets names nothing that can be watched; nothing is watched"); }
+                c.Targets = list;
             }
         }
 
         Rdv3Json s = root.Member("search");
         if (s != null && s.IsObject)
         {
-            c.CandidateRowsShown = Clamp(s.GetInt("candidateRowsShown", c.CandidateRowsShown),
-                1, 1000, "search.candidateRowsShown", c);
+            c.CandidateRowsShown = Ranged(s.GetInt("candidateRowsShown", c.CandidateRowsShown),
+                1, 1000, d.CandidateRowsShown, "search.candidateRowsShown", c);
         }
 
         Rdv3Json j = root.Member("jobs");
         if (j != null && j.IsObject)
         {
-            c.CheckTimeoutMs = Clamp(j.GetInt("checkTimeoutMs", c.CheckTimeoutMs), 1000, 3600000, "jobs.checkTimeoutMs", c);
-            c.SearchTimeoutMs = Clamp(j.GetInt("searchTimeoutMs", c.SearchTimeoutMs), 1000, 3600000, "jobs.searchTimeoutMs", c);
-            c.SaveTimeoutMs = Clamp(j.GetInt("saveTimeoutMs", c.SaveTimeoutMs), 1000, 3600000, "jobs.saveTimeoutMs", c);
-            c.MarkOverdueMs = Clamp(j.GetInt("markOverdueMs", c.MarkOverdueMs), 1000, 3600000, "jobs.markOverdueMs", c);
-            c.PumpMs = Clamp(j.GetInt("pumpMs", c.PumpMs), 100, 60000, "jobs.pumpMs", c);
+            c.CheckTimeoutMs = Ranged(j.GetInt("checkTimeoutMs", c.CheckTimeoutMs), 1000, 3600000, d.CheckTimeoutMs, "jobs.checkTimeoutMs", c);
+            c.SearchTimeoutMs = Ranged(j.GetInt("searchTimeoutMs", c.SearchTimeoutMs), 1000, 3600000, d.SearchTimeoutMs, "jobs.searchTimeoutMs", c);
+            c.SaveTimeoutMs = Ranged(j.GetInt("saveTimeoutMs", c.SaveTimeoutMs), 1000, 3600000, d.SaveTimeoutMs, "jobs.saveTimeoutMs", c);
+            c.MarkOverdueMs = Ranged(j.GetInt("markOverdueMs", c.MarkOverdueMs), 1000, 3600000, d.MarkOverdueMs, "jobs.markOverdueMs", c);
+            c.PumpMs = Ranged(j.GetInt("pumpMs", c.PumpMs), 100, 60000, d.PumpMs, "jobs.pumpMs", c);
         }
 
         c.Loaded = true;
         return c;
     }
 
-    private static int Clamp(int v, int lo, int hi, string what, Rdv3Config c)
+    // Out of range means THIS member falls back on its own default, which is what
+    // the shipped file and docs\settings.md promise. The nearest limit would be a
+    // different answer to a different question: a typed "0" for jobs.checkTimeoutMs
+    // is not a request for the shortest legal timeout, and 1000 ms would cut off a
+    // start-up check that normally runs longer than that.
+    private static int Ranged(int v, int lo, int hi, int def, string what, Rdv3Config c)
     {
         if (v < lo || v > hi)
         {
-            int fixedTo = (v < lo) ? lo : hi;
             c.Notes.Add(what + " " + v.ToString(CultureInfo.InvariantCulture) + " is out of range ["
                 + lo.ToString(CultureInfo.InvariantCulture) + ".."
-                + hi.ToString(CultureInfo.InvariantCulture) + "]; using "
-                + fixedTo.ToString(CultureInfo.InvariantCulture));
-            return fixedTo;
+                + hi.ToString(CultureInfo.InvariantCulture) + "]; using the default "
+                + def.ToString(CultureInfo.InvariantCulture));
+            return def;
         }
         return v;
     }
@@ -456,13 +507,16 @@ public sealed class Rdv3Config
 
     internal static string B(bool v) { return v ? "true" : "false"; }
 
-    // What a running app may adopt without a restart. Paths are deliberately
-    // left out: the ledger and the CSVs are read at start-up, and swapping them
-    // under a live session would be a different program.
+    // What a running app may adopt without a restart. Paths and key.length are
+    // deliberately left out: the ledger and the CSVs are read at start-up, WITH
+    // the key length they were read with, and swapping either under a live
+    // session would be a different program -- a shorter key would leave the
+    // screen asking for numbers the index that is already built cannot answer.
+    // key.digitsOnly is NOT in that group: it only decides which characters make
+    // a key, nothing built at start-up depends on it, so it applies at once.
     public void AdoptRuntimeFrom(Rdv3Config o)
     {
         if (o == null) { return; }
-        KeyLength = o.KeyLength;
         KeyDigitsOnly = o.KeyDigitsOnly;
         PollMs = o.PollMs;
         StableMs = o.StableMs;
@@ -475,6 +529,22 @@ public sealed class Rdv3Config
         SaveTimeoutMs = o.SaveTimeoutMs;
         MarkOverdueMs = o.MarkOverdueMs;
         PumpMs = o.PumpMs;
+    }
+
+    // What the file now says for the members that only take effect at the next
+    // start. The running session goes on using what it started with -- those
+    // values live elsewhere by then (the resolved paths in Rdv3App, the key rule
+    // in Rdv3Spec) -- but this object is also what the settings dialog opens on
+    // and what the next save writes. Without this, the dialog would come back up
+    // showing the OLD paths and the next save would quietly undo the change the
+    // operator had just made.
+    public void AdoptSavedFrom(Rdv3Config o)
+    {
+        if (o == null) { return; }
+        DataDir = o.DataDir;
+        Ledger = o.Ledger;
+        Log = o.Log;
+        KeyLength = o.KeyLength;
     }
 
     // deep enough for the dialog to edit without touching the running settings
@@ -506,11 +576,21 @@ public sealed class Rdv3Config
         sb.Append(KeyDigitsOnly ? "digits" : "any");
         sb.Append(" poll=").Append(PollMs.ToString(CultureInfo.InvariantCulture));
         sb.Append("/").Append(StableMs.ToString(CultureInfo.InvariantCulture));
+        // targets= is every target in the file, including the ones that are
+        // switched off; watched= is how many of them are actually being looked
+        // at. A support question that starts from this line has to be able to
+        // tell those apart, and each entry says which it is.
+        int watched = 0;
+        for (int i = 0; i < Targets.Count; i++) { if (Targets[i].IsWatchable) { watched++; } }
         sb.Append(" targets=").Append(Targets.Count.ToString(CultureInfo.InvariantCulture));
+        sb.Append(" watched=").Append(watched.ToString(CultureInfo.InvariantCulture));
         for (int i = 0; i < Targets.Count; i++)
         {
             Rdv3Target t = Targets[i];
-            sb.Append(" [").Append(t.Name).Append(": win ").Append(t.Window.Describe());
+            sb.Append(" [").Append(t.Name);
+            if (!t.Enabled) { sb.Append(" OFF"); }
+            else if (t.WhyNotWatchable().Length > 0) { sb.Append(" UNUSABLE"); }
+            sb.Append(": win ").Append(t.Window.Describe());
             for (int k = 0; k < t.Steps.Count; k++)
             {
                 sb.Append(" > ").Append(t.Steps[k].Describe());

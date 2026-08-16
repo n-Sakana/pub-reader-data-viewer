@@ -75,9 +75,24 @@ Public Const RDV3_K_BEERR As String = "BEERR"
 ' an unread confirmation cannot be overwritten.
 Public Const RDV3_K_MARK As String = "MARK"
 
+' The element the operator pointed the settings screen at. Its own kind for the
+' same reason MARK has one: it MUST arrive. A heartbeat or a search answer
+' published in the same second would otherwise take its place and the settings
+' screen would sit there having asked for something that already happened.
+Public Const RDV3_K_INSPECT As String = "INSPECT"
+
+' The BE's answer to a settings save. Its own kind for the same reason: the
+' settings screen has to be told whether the running session actually took
+' the new values, and a heartbeat must not be able to take its place.
+Public Const RDV3_K_CONFIG As String = "CONFIG"
+
 Public Const RDV3_RQ_DECISION As String = "decision"
 Public Const RDV3_RQ_SEARCH As String = "search"
 Public Const RDV3_RQ_PICK As String = "pick"
+' the element picker, which is not the candidate pick above
+Public Const RDV3_RQ_INSPECT As String = "inspect"
+' re-read the settings file and adopt what may be adopted without a restart
+Public Const RDV3_RQ_CONFIG As String = "config"
 Public Const RDV3_RQ_MARK As String = "mark"
 Public Const RDV3_RQ_WATCH As String = "watch"
 
@@ -88,6 +103,8 @@ Private m_leaseSid As String
 ' BE lease handle (the mirror image, held by the BE process)
 Private m_beLeaseNo As Integer
 Private m_beLeaseSid As String
+' the ledger lock (held open for the session; see Rdv3ChLedgerLockTake)
+Private m_ledgerLockNo As Integer
 
 ' last failure code from Rdv3ChReplaceFile, for the caller's log
 Private m_lastReplaceErr As Long
@@ -522,6 +539,50 @@ End Function
 ' deny-all lock; the BE probes by trying to lock it. Locked = FE alive (even
 ' mid cell-edit). A crash releases the lock the instant the process dies.
 '------------------------------------------------------------------------------
+'------------------------------------------------------------------------------
+' The LEDGER lock: one writer per ledger FILE.
+'
+' The settings file can point this build at any ledger, so two copies of the FE
+' can now be aimed at the same xlsx -- and two processes writing the same
+' workbook is how a saved record gets lost. The guard is a lock file beside the
+' ledger, opened with Lock Read Write and held for the whole session; the OS
+' releases it however the process ends.
+'
+' It guards the FILE, not the spelling. "x\led.xlsx" and "x\.\led.xlsx" name the
+' same lock file on disk, so a second instance is refused however its path was
+' written -- no normalising, and nothing to get wrong.
+'------------------------------------------------------------------------------
+Public Function Rdv3ChLedgerLockPath(ByVal ledgerPath As String) As String
+    Rdv3ChLedgerLockPath = ledgerPath & ".lock"
+End Function
+
+Public Function Rdv3ChLedgerLockTake(ByVal ledgerPath As String) As Boolean
+    Dim f As Integer
+    If m_ledgerLockNo <> 0 Then
+        Rdv3ChLedgerLockTake = True
+        Exit Function
+    End If
+    On Error Resume Next
+    f = FreeFile
+    Err.Clear
+    Open Rdv3ChLedgerLockPath(ledgerPath) For Output Lock Read Write As #f
+    If Err.Number = 0 Then
+        Print #f, "owner=" & Rdv3SelfId()
+        m_ledgerLockNo = f
+        Rdv3ChLedgerLockTake = True
+    Else
+        Close #f
+    End If
+    On Error GoTo 0
+End Function
+
+Public Sub Rdv3ChLedgerLockRelease()
+    On Error Resume Next
+    If m_ledgerLockNo <> 0 Then Close #m_ledgerLockNo
+    m_ledgerLockNo = 0
+    On Error GoTo 0
+End Sub
+
 Public Function Rdv3ChEnsureLease(ByVal sid As String) As Boolean
     Dim f As Integer
     If m_leaseNo <> 0 Then

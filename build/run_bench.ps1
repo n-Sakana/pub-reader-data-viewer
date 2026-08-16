@@ -1,4 +1,4 @@
-# ============================================================================
+﻿# ============================================================================
 # run_bench.ps1 -- drive one method through N merge-selects and collect the
 # per-stage numbers.
 #
@@ -26,6 +26,7 @@ param(
   [switch]   $KeepOpen
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'excel_own.ps1')   # exact Excel ownership, never a pid diff
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
@@ -138,17 +139,18 @@ if ($wins.Count -eq 0) {
 
 # --- start the app ----------------------------------------------------------
 $appProc = $null
-$excelPidBefore = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
 $myExcel = @()
 
 if ($Method -eq 'vba') {
   $book = Join-Path $dist 'ReaderDataViewer-VBA.xlsm'
   if (-not (Test-Path -LiteralPath $book)) { throw "not built: $book" }
-  $xl = New-Object -ComObject Excel.Application
+  # identity is settled before anything is done to it (excel_own.ps1):
+  # a reused or unidentifiable instance throws here and is never driven
+  $rdvOwn = New-OwnedExcel
+  $xl = $rdvOwn.App
+  $myExcel = @($rdvOwn.Pid)
   $xl.Visible = $true
   $xl.DisplayAlerts = $false
-  $after = @(Get-Process EXCEL -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Id)
-  $myExcel = @($after | Where-Object { $excelPidBefore -notcontains $_ })
   Write-Output ("started Excel pid " + ($myExcel -join ','))
   $sec = $xl.AutomationSecurity
   $xl.AutomationSecurity = 1     # msoAutomationSecurityLow: this book only
