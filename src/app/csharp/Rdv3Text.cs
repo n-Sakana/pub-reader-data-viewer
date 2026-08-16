@@ -88,8 +88,13 @@ public static class Rdv3Text
     public const string VerdictManyCut = "候補 {n} 件中 {m} 件を表示 -- 一覧から 1 件選んでください";
     public const string VerdictNone = "該当なし";
     public const string VerdictErr = "エラー";
+    // the same row, said as a completion. "設定を保存しました" and "処理済みの保存が
+    // 完了しました" were both going out tagged エラー, which reads as "it did not
+    // work" for two things that did.
+    public const string VerdictNote = "完了";
 
     public const string ErrNo64 = "64 ビットのプロセスが必要です。";
+    public const string ErrAlreadyRunning = "同じ統合台帳を開いている Reader Data Viewer が、すでに起動しています。";
     public const string ErrNoData = "CSV が見つかりません: ";
     public const string ErrBadLedgerPath = "統合台帳のパスが不正です: ";
     public const string ErrNoLedger = "統合台帳がありません。検索できません。";

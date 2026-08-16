@@ -983,6 +983,9 @@ public sealed class Rdv3Form : Form
     private string sMerge = Rdv3Text.NotYet;
     private string sSearch = Rdv3Text.NotYet;
     private string sError = "";
+    // whether that row is a completion rather than a failure: the row itself is
+    // the same one, only its tag differs
+    private bool sErrorNote;
     // a bad key is answered under the input box, not in the error row at the
     // bottom: it belongs to the thing the operator just typed, and moving the
     // rest of the screen for it would be worse than the mistake
@@ -1288,6 +1291,8 @@ public sealed class Rdv3Form : Form
             askedW = want;
             MinimumSize = new Size(want, MinimumSize.Height);
             if (Width < want) { Width = want; }
+            // growing must not push the window's own right edge off the desktop
+            if (Left + Width > wa.Right) { Left = Math.Max(wa.X, wa.Right - Width); }
             // ONCE, and inside the guard. The new width needs one more layout
             // pass; that pass must not be able to ask for room again, or the
             // pair is a recursion whose depth is decided by the window manager.
@@ -1895,8 +1900,9 @@ public sealed class Rdv3Form : Form
         Rectangle r = At("err");
         using (SolidBrush b = new SolidBrush(Rdv3Skin.N100)) { g.FillRectangle(b, r); }
         Rdv3Skin.Line(g, Rdv3Skin.Divider, r.X, r.Y, r.Width, Rdv3Skin.Hair());
-        Size z = Rdv3Skin.TagSize(Rdv3Text.VerdictErr, fTag);
-        Rdv3Skin.Tag(g, Rdv3Text.VerdictErr, fTag, Rdv3Skin.TagOutline,
+        string tag = sErrorNote ? Rdv3Text.VerdictNote : Rdv3Text.VerdictErr;
+        Size z = Rdv3Skin.TagSize(tag, fTag);
+        Rdv3Skin.Tag(g, tag, fTag, sErrorNote ? Rdv3Skin.TagAccent : Rdv3Skin.TagOutline,
             new Rectangle(r.X + PX(13.6), r.Y + (r.Height - z.Height) / 2, z.Width, z.Height), 255);
         int tx = r.X + PX(13.6) + z.Width + PX(10.2);
         Rdv3Skin.DrawIn(g, sError, fVerdict, Rdv3Skin.Accent800,
@@ -2061,7 +2067,24 @@ public sealed class Rdv3Form : Form
         MinimumSize = new Size(minW, minH);
         askedW = minW;                 // a new scale re-establishes the minimum
         if (Width < minW || Height < minH) { Size = new Size(Math.Max(Width, minW), Math.Max(Height, minH)); }
+        // StartPosition = CenterScreen centred the window while it was still the
+        // DEFAULT 300 x 300 -- the real size is only knowable here, after the dpi
+        // is, and the line above grows it from that same top-left. So every start
+        // put the bottom right of the window off the desktop: measured at 125% on
+        // a 1920 x 1020 work area, a 1568 x 908 window sat at 810,360 ((1920-300)/2,
+        // (1020-300)/2) and 458 px of the buttons and 248 px of the status bar were
+        // outside it. Centre it again, now that the size is the final one.
+        Centre(wa);
         Layout1();
+    }
+
+    // where StartPosition promised to put it, for the size it actually ended up
+    // with, and never outside the working area
+    private void Centre(Rectangle wa)
+    {
+        if (!IsHandleCreated) { return; }
+        Location = new Point(wa.X + Math.Max(0, (wa.Width - Width) / 2),
+                             wa.Y + Math.Max(0, (wa.Height - Height) / 2));
     }
 
     private void ApplyFonts()
@@ -2192,10 +2215,23 @@ public sealed class Rdv3Form : Form
 
     public void SetError(string text)
     {
+        SetErrRow(text, false);
+    }
+
+    // a completion, in the row the errors use. Only the tag changes -- one row,
+    // one place on the screen, so a success does not move anything the operator
+    // is looking at.
+    public void SetNotice(string text)
+    {
+        SetErrRow(text, true);
+    }
+
+    private void SetErrRow(string text, bool note)
+    {
         Ui(delegate
         {
-            bool was = sError.Length > 0;
             sError = (text == null) ? "" : text;
+            sErrorNote = note && sError.Length > 0;
             Layout1();
         });
     }

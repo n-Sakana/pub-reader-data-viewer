@@ -839,7 +839,10 @@ public sealed class Rdv3App
         if (closeAskedWhileSaving)
         {
             closeAskedWhileSaving = false;
-            form.SetError(ok ? Rdv3Text.NoteSaveDoneCanClose : Rdv3Text.NoteSaveFailedCanClose);
+            // a save that WORKED is not an error. The failed one still is: it
+            // says the record did not reach the file.
+            if (ok) { form.SetNotice(Rdv3Text.NoteSaveDoneCanClose); }
+            else { form.SetError(Rdv3Text.NoteSaveFailedCanClose); }
         }
     }
 
@@ -899,7 +902,7 @@ public sealed class Rdv3App
                 log.Write("-", "settings", "target [" + cfg.Targets[i].Name + "] is not watched: " + why);
             }
         }
-        form.SetError(Rdv3Text.NoteSettingsApplied);
+        form.SetNotice(Rdv3Text.NoteSettingsApplied);
     }
 
     // What the screen calls the thing being watched -- counted over the targets
@@ -1094,7 +1097,7 @@ public static class Rdv3Program
         {
             if (!createdNew)
             {
-                MessageBox.Show(Rdv3Text.AppTitle + " is already running for this ledger.",
+                MessageBox.Show(Rdv3Text.ErrAlreadyRunning,
                     Rdv3Text.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return 4;
             }

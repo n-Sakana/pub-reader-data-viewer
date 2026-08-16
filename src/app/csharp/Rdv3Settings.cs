@@ -1692,7 +1692,13 @@ public sealed class Rdv3PickerForm : Rdv3Dialog
             Put("pk.v" + i.ToString(CultureInfo.InvariantCulture),
                 v0.X, v0.Y + Rdv3SetGeom.PkRowH * i, v0.W, v0.H);
         }
-        Put("pk.esc", Rdv3SetGeom.PkEsc);
+        // the design width is the FLOOR here as it is everywhere else in this
+        // dialog. Taking the reference's 50.7 px as the answer left "Esc で中止"
+        // a couple of pixels short of its own box, and the painter then cut it
+        // to "Esc で..." -- the one line that says the panel can be dismissed
+        // from the keyboard.
+        Rdv3SetGeom.R es = Rdv3SetGeom.PkEsc;
+        Put("pk.esc", es.X, es.Y, Math.Max(es.W, Wid(Rdv3Text.PickEsc, fKey)), es.H);
         Rdv3SetGeom.R cl = Rdv3SetGeom.PkClose;
         double clw = Math.Max(cl.W, Wid(Rdv3Text.BtnClose, btnClose.Font) + 28.5);
         double clx = Rdv3SetGeom.PkFootRight.X - clw;
