@@ -128,6 +128,63 @@ function Dialog-Present([string] $title) {
   return ([RdvGuardWin]::FindWindowW('#32770', $title) -ne [IntPtr]::Zero)
 }
 
+# Answer a modal from ANOTHER process. Needed when the call that raises the
+# modal does not return until it is answered (Hyperlink.Follow on a button whose
+# handler shows a confirm), which no single thread can do for itself. The child
+# clicks the real button through UI Automation; nothing is posted blindly.
+function Arm-Answer([string] $title, [string] $buttonPrefix, [int] $sec) {
+  $ps = Join-Path $scratch ('answer-' + [Guid]::NewGuid().ToString('N').Substring(0, 8) + '.ps1')
+  # Win32, not UI Automation: this MsgBox belongs to Excel, and UIA does not
+  # list it under the desktop (measured: FindFirst by name at Children scope
+  # returns nothing while FindWindowW('#32770', title) finds it at once). Same
+  # mechanism Answer-Dialog above already uses.
+  # Template is single-quoted so nothing in it is interpolated here; the three
+  # placeholders are substituted afterwards.
+  $tpl = @'
+Add-Type @"
+using System;
+using System.Text;
+using System.Runtime.InteropServices;
+public static class RdvAns {
+  public delegate bool EnumProc(IntPtr h, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string c, string t);
+  [DllImport("user32.dll")] public static extern IntPtr PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr r, EnumProc p, IntPtr l);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder b, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassNameW(IntPtr h, StringBuilder b, int n);
+}
+"@
+$t0 = Get-Date
+while (((Get-Date) - $t0).TotalSeconds -lt __SECS__) {
+  $d = [RdvAns]::FindWindowW('#32770', '__TITLE__')
+  if ($d -ne [IntPtr]::Zero) {
+    Start-Sleep -Milliseconds 250
+    $script:hit = [IntPtr]::Zero
+    $cb = [RdvAns+EnumProc]{
+      param($h, $l)
+      $c = New-Object System.Text.StringBuilder 256
+      [void][RdvAns]::GetClassNameW($h, $c, 256)
+      $t = New-Object System.Text.StringBuilder 256
+      [void][RdvAns]::GetWindowTextW($h, $t, 256)
+      if ($c.ToString() -eq 'Button' -and $t.ToString().Replace('&', '') -like '__BTN__*') { $script:hit = $h }
+      return $true
+    }
+    [void][RdvAns]::EnumChildWindows($d, $cb, [IntPtr]::Zero)
+    if ($script:hit -ne [IntPtr]::Zero) {
+      [void][RdvAns]::PostMessage($script:hit, 0x00F5, [IntPtr]0, [IntPtr]0)
+      exit 0
+    }
+  }
+  Start-Sleep -Milliseconds 200
+}
+exit 1
+'@
+  $body = $tpl.Replace('__SECS__', [string]$sec).Replace('__TITLE__', $title).Replace('__BTN__', $buttonPrefix)
+  Set-Content -LiteralPath $ps -Value $body -Encoding UTF8
+  return (Start-Process powershell -ArgumentList '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $ps `
+          -PassThru -WindowStyle Hidden)
+}
+
 function Read-Log([string] $p, [object] $enc) {
   if (-not (Test-Path -LiteralPath $p)) { return @() }
   for ($i = 0; $i -lt 20; $i++) {
@@ -365,35 +422,112 @@ function Test-Vba {
     $ws.Activate()
     [void][RdvGuardWin]::SetForegroundWindow($xlHwnd)
     Start-Sleep -Milliseconds 600
-    $ws.Range('C9').Value2 = $TargetKey1
+
+    # The screen is a pseudo-pixel grid, so a control is a NAMED RANGE spanning
+    # many narrow cells -- not one fixed address. The app itself only ever asks
+    # for the name (modRdv3App.Rdv3HandleClick -> HitsName -> Rdv3UiRangeOf), so
+    # this drives it the same way. Fixed addresses were the old layout: after the
+    # screen was rebuilt, "C9"/"E9"/"G9" stopped naming the input and the
+    # buttons, and clicking them did nothing at all.
+    # Resolve a name to a plain ADDRESS STRING and then use $ws.Range(<address>),
+    # which is the one form that reliably carries .Value2 / .Left / .Top through
+    # PowerShell's COM adapter. Name.RefersTo is a string ("=UI!$FD$25:$GE$33"),
+    # so nothing here depends on a parameterised COM member.
+    function Addr-Of([string] $nm) {
+      try {
+        $r = [string]$wb.Names.Item($nm).RefersTo      # =UI!$FD$25:$GE$33
+        $r = $r.TrimStart('=')
+        if ($r.Contains('!')) { $r = $r.Substring($r.IndexOf('!') + 1) }
+        return $r.Replace('$', '')                     # FD25:GE33
+      } catch { return $null }
+    }
+    $inAddr = Addr-Of 'rdvInput'
+    if ([string]::IsNullOrEmpty($inAddr)) { Check $b 'ui_names' $false 'rdvInput is not a name in the workbook'; return }
+    Say ("VBA: rdvInput = " + $inAddr)
+    $rIn = $ws.Range(($inAddr -split ':')[0])          # the merged anchor
+    # Write the merged range itself: Excel puts the value on its anchor. Do NOT
+    # go through Range.Address / Range.Cells(r,c) / Range.Row here -- those are
+    # parameterised members that do not bind through PowerShell's COM adapter
+    # (Address comes back as the method signature, and the rest raise 0x800A03EC
+    # / DISP_E_TYPEMISMATCH). Read it back, because a write that lands on a
+    # merged cell's non-anchor is dropped in silence.
+    $rIn.Value2 = $TargetKey1
+    $echo = [string]$rIn.Value2
+    if ($echo -ne $TargetKey1) {
+      Check $b 'input' $false ("the key did not land in rdvInput (read back '" + $echo + "')")
+      return
+    }
+    Check $b 'input' $true ("rdvInput now holds " + $echo)
 
     $win = $xl.ActiveWindow
     $x0 = $win.PointsToScreenPixelsX(0)
     $y0 = $win.PointsToScreenPixelsY(0)
     $dpi = [RdvGuardWin]::GetDpiForWindow($xlHwnd)
     if ($dpi -eq 0) { $dpi = 96 }
-    $s = $dpi / 72.0
-    function Click-Cell([string] $addr) {
-      $r = $ws.Range($addr)
-      $x = [int]($x0 + ($r.Left + $r.Width / 2) * $s)
-      $y = [int]($y0 + ($r.Top + $r.Height / 2) * $s)
-      [void][RdvGuardWin]::SetCursorPos($x, $y)
-      Start-Sleep -Milliseconds 150
-      [RdvGuardWin]::mouse_event(2, 0, 0, 0, [UIntPtr]::Zero)
-      Start-Sleep -Milliseconds 60
-      [RdvGuardWin]::mouse_event(4, 0, 0, 0, [UIntPtr]::Zero)
+    # Range.Left/Top are POINTS on the sheet, so screen pixels are
+    #   origin + points * (zoom/100) * (dpi/72)
+    # PointsToScreenPixels is only trustworthy for the origin itself. The ZOOM
+    # factor matters: this screen is a pseudo-pixel grid that Excel fits at well
+    # under 100% (69% measured here), and the controls sit far to the right --
+    # at column GG a missing zoom factor puts the pointer hundreds of pixels off
+    # the button, so the click lands on empty grid and nothing happens.
+    $zoom = 100.0
+    try { $zoom = [double]$win.Zoom } catch { }
+    $s = ($zoom / 100.0) * ($dpi / 72.0)
+    Say ("VBA: zoom {0}% dpi {1} -> scale {2}" -f $zoom, $dpi, [Math]::Round($s, 4))
+    # Press a button by FOLLOWING its hyperlink.
+    #
+    # Every button cell on this screen is a hyperlink to itself, and the sheet's
+    # single click entry point is Worksheet_FollowHyperlink ->
+    # modRdv3App.Rdv3HandleClick. Hyperlink.Follow raises that same event with
+    # that same Hyperlink as Target, so the product's own handler runs exactly as
+    # it does under a person's click. Selecting the cell does NOT press the
+    # button -- there is no SelectionChange handler -- and a synthetic mouse
+    # click at computed coordinates does not land on it either: the screen is a
+    # pseudo-pixel grid Excel fits at 69% here, and points -> screen pixels
+    # through PointsToScreenPixels plus zoom plus dpi missed by whole columns
+    # (measured: aiming at GG26:GY33 selected HT34).
+    function Click-Named([string] $nm) {
+      $a = Addr-Of $nm
+      if ([string]::IsNullOrEmpty($a)) { throw ("no such name in the workbook: " + $nm) }
+      $anchor = ($a -split ':')[0]
+      $cell = $ws.Range($anchor)
+      if ($cell.Hyperlinks.Count -lt 1) { throw ("no hyperlink on " + $nm + " at " + $anchor) }
+      $cell.Hyperlinks.Item(1).Follow()
     }
 
     $from = (Read-Log $log $enc).Count
-    Click-Cell 'E9'
+    Click-Named 'rdvBtnSearch'
+    # Where did the pointer actually land? The app reacts to the SelectionChange
+    # of the button's own cell, so if the selection is not on the button the
+    # click missed and "no search line" says nothing about the product.
+    Start-Sleep -Milliseconds 400
+    $landed = ''
+    try { $landed = [string]$xl.ActiveCell.Address(0, 0, 1, 0) } catch { try { $landed = [string]$ws.Application.ActiveCell.Address } catch { $landed = '?' } }
+    $btnAddr = Addr-Of 'rdvBtnSearch'
+    Say ("VBA: click landed on " + $landed + " (rdvBtnSearch = " + $btnAddr + ")")
     $hit = Wait-Log $log $enc ("`tsearch`tkey=" + $TargetKey1 + " ") $from 60 200
-    if ($null -eq $hit) { Check $b 'search' $false 'no search line'; return }
+    if ($null -eq $hit) {
+      Check $b 'search' $false ("no search line; the click selected " + $landed + " and rdvBtnSearch is " + $btnAddr)
+      return
+    }
     Check $b 'search' $true $hit[1]
 
+    # 処理済み puts a modal confirm up from INSIDE the click handler, and
+    # Hyperlink.Follow does not return until that modal is answered. A single
+    # thread therefore cannot press the button and then answer its own dialog --
+    # it deadlocks (measured: the run sat on 処理済みの確認 for 30 minutes). So
+    # the answer is armed in a separate process FIRST, and the button is pressed
+    # afterwards. Nothing about the product changes: it still gets a real click
+    # on the hyperlink and a real click on はい.
     $from = (Read-Log $log $enc).Count
-    Click-Cell 'G9'
-    if (-not (Answer-Dialog '処理済みの確認' 'はい' 30)) { Check $b 'confirm' $false 'confirm dialog never appeared'; return }
-    Check $b 'confirm' $true 'answered はい'
+    $answerer = Arm-Answer '処理済みの確認' 'はい' 90
+    Click-Named 'rdvBtnProcessed'
+    Start-Sleep -Milliseconds 400
+    if ($null -ne $answerer -and -not $answerer.HasExited) { Start-Sleep -Seconds 2 }
+    $answered = ($null -ne $answerer -and $answerer.HasExited -and $answerer.ExitCode -eq 0)
+    if (-not $answered) { Check $b 'confirm' $false 'the armed answerer never found 処理済みの確認'; return }
+    Check $b 'confirm' $true 'answered はい (armed before the click, because Follow blocks on the modal)'
 
     $started = Wait-Log $log $enc 'dispatched key2=.*exit held' $from 30 100
     if ($null -eq $started) { Check $b 'save_started' $false 'no dispatch line'; return }
