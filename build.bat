@@ -35,7 +35,7 @@ echo ==========================================================================
 echo  Reader Data Viewer -- build
 echo  repository : %RDV_ROOT%
 echo  powershell : %RDV_PS%
-echo  builds     : dist\ (8 comparison files) + dist\app-csharp + dist\app-vba
+echo  builds     : the product only -- dist\app-csharp + dist\app-vba
 echo ==========================================================================
 echo.
 
@@ -62,8 +62,7 @@ echo ==========================================================================
 if "%RDV_RC%"=="0" (
   echo  RESULT: success   ^(exit code %RDV_RC%^)
   echo.
-  echo  The distributables are under:
-  echo      %RDV_ROOT%\dist
+  echo  The products are under:
   echo      %RDV_ROOT%\dist\app-csharp
   echo      %RDV_ROOT%\dist\app-vba
 ) else (

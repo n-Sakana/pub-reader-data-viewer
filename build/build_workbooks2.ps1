@@ -8,7 +8,7 @@
 # clsRdv2IdxDict.cls both declare a class called clsRdv2Idx with the same four
 # members, so modRdv2Engine says New clsRdv2Idx and never knows which it got.
 #
-# It does not touch dist\ReaderDataViewer-VBA.xlsm or the hybrid book: those are
+# It does not touch dist\ReaderDataViewer-VBA.xlsm: that is
 # the frozen 1:1 build and build_workbooks.ps1 still owns them.
 #
 # Same four traps as build_workbooks.ps1, checked the same way before Excel is

@@ -71,7 +71,6 @@ Private s_polls(0 To MAX_SLOTS - 1) As Long
 Private s_fired(0 To MAX_SLOTS - 1) As String
 Private s_empty(0 To MAX_SLOTS - 1) As Boolean
 
-Private m_pids As Object                         ' process id -> process name
 
 '==============================================================================
 ' configuration
@@ -321,7 +320,12 @@ Private Function MatchElement(ByVal el As UIAutomationClient.IUIAutomationElemen
         If Not Rdv3UiaLike(el.CurrentName, CStr(m("nameLike"))) Then Exit Function
     End If
     If Len(CStr(m("processName"))) > 0 Then
-        If StrComp(ProcessNameOf(el.CurrentProcessId), CStr(m("processName")), vbTextCompare) <> 0 Then Exit Function
+        ' processName cannot be resolved any more: the only way to turn a
+        ' process id into a name here was WMI, which this build may no longer
+        ' use. Rather than ignore the constraint -- which would let the matcher
+        ' bind to a window the operator never named -- a target that asks for a
+        ' process name matches nothing. Match on className / nameLike instead.
+        Exit Function
     End If
     If CBool(m("requireValuePattern")) Then
         If CBool(el.GetCurrentPropertyValue(UIA_IsValuePatternAvailablePropertyId)) = False Then Exit Function
@@ -428,36 +432,6 @@ Private Function LikeAt(ByVal s As String, ByVal si As Long, _
     LikeAt = (si = Len(s) + 1)
 End Function
 
-' the process name behind a process id. WMI, which this build already uses for
-' its waits -- not Win32 and not a helper. Asked once per process id and only at
-' bind time, never in the poll.
-Private Function ProcessNameOf(ByVal pid As Long) As String
-    Dim svc As Object
-    Dim procs As Object
-    Dim p As Object
-    Dim nm As String
-
-    On Error GoTo Failed
-    If m_pids Is Nothing Then Set m_pids = CreateObject("Scripting.Dictionary")
-    If m_pids.Exists(CStr(pid)) Then
-        ProcessNameOf = CStr(m_pids(CStr(pid)))
-        Exit Function
-    End If
-    Set svc = GetObject("winmgmts:\\.\root\cimv2")
-    Set procs = svc.ExecQuery("SELECT Name FROM Win32_Process WHERE ProcessId=" & CStr(pid))
-    For Each p In procs
-        nm = CStr(p.Name)
-        Exit For
-    Next p
-    If Len(nm) > 4 Then
-        If LCase$(Right$(nm, 4)) = ".exe" Then nm = Left$(nm, Len(nm) - 4)
-    End If
-    m_pids(CStr(pid)) = nm
-    ProcessNameOf = nm
-    Exit Function
-Failed:
-    ProcessNameOf = ""
-End Function
 
 '==============================================================================
 ' polling
@@ -637,12 +611,6 @@ Public Function Rdv3UiaPickFocused(ByVal reqId As String) As String
         Rdv3UiaPickFocused = "err=フォーカスされている要素がありません"
         Exit Function
     End If
-    ' Excel's own window is not a target: picking it would be picking this app
-    If StrComp(ProcessNameOf(el.CurrentProcessId), "EXCEL", vbTextCompare) = 0 Then
-        Rdv3UiaPickFocused = "err=対象アプリの欄をクリックしてから取得してください"
-        Exit Function
-    End If
-
     ' the ancestors, nearest first, up to the top level window
     Set chain = New Collection
     Set root = m_Uia.GetRootElement
@@ -656,9 +624,16 @@ Public Function Rdv3UiaPickFocused(ByVal reqId As String) As String
         chain.Add win
     Next depth
 
+    ' Excel's own window is not a target: picking it would be picking this app.
+    ' Asked on the TOP LEVEL window through UIA (class XLMAIN) because the
+    ' process name behind a process id needed WMI, which this build may not use.
+    If StrComp(win.CurrentClassName, "XLMAIN", vbTextCompare) = 0 Then
+        Rdv3UiaPickFocused = "err=対象アプリの欄をクリックしてから取得してください"
+        Exit Function
+    End If
+
     s = "req=" & reqId
     s = s & ";cls=" & Clean(win.CurrentClassName)
-    s = s & ";proc=" & Clean(ProcessNameOf(win.CurrentProcessId))
     s = s & ";wname=" & Clean(win.CurrentName)
     ' the window's OWN automationId. It is not a path step (see PathIds), but it
     ' is the strongest thing the window matcher can hold, so 採用 gets to use it.

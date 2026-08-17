@@ -8,8 +8,9 @@ Entry-point notes. For details see [README.md](README.md).
 - Reading detection (Notepad / UI Automation) → join three 1,000,000-row × 10-column CSVs
   → search by key 1 → display, with every stage timed
 - A-B joins on key 1, B-C joins on key 2, both one-to-one, over all rows every time
-- Three implementations, same workload and same measurement boundaries:
-  VBA/Excel, C#/WinForms, C# + Excel
+- Two products, same workload and same measurement boundaries:
+  C#/WinForms and VBA/Excel. There is no third build of any kind: only these
+  two are authorised, and only these two are produced.
 - `benchmarks/` holds method-selection evidence only. It is not the product and is
   read-only: do not change anything under it.
 
@@ -33,7 +34,7 @@ distributables and measurements:
 
 | | sources | build | data | measured |
 |---|---|---|---|---|
-| 1:1, 1,000,000 rows, 3 methods | `src/csharp`, `src/vba`, `src/cmd` | `build_all.ps1` | `data/` | `docs/results.md` |
+| 1:1, 1,000,000 rows, 2 methods | `src/csharp`, `src/vba`, `src/cmd` | `build_all.ps1` | `data/` | `docs/results.md` |
 | one-to-many, 100,000 rows, 4 methods | `src/v2/**` | `build_all2.ps1` | `data-100k/`, `data-tiny/` | `docs/results2.md` |
 | practical, standard index only | `src/app/**` | `build_app.ps1` | copies of `data-100k/` | `docs/app.md` |
 
@@ -62,8 +63,8 @@ lease-file lock in both directions. Keep it that way — the reasons, and the
 measurements behind each choice, are in `docs/app.md` ("Win32 / Shell を使わない実装").
 The frozen comparison builds keep their Declare blocks and are not touched.
 
-The 1:1 sources are **frozen**: they still have to reproduce the four distributables that
-were measured for `docs/results.md`. Work on the one-to-many side goes in `src/v2`, even
+The 1:1 sources are **frozen** and are NOT built by `build.bat` any more: it builds only
+the two products. They are kept for the measurements in `docs/results.md`. Work on the one-to-many side goes in `src/v2`, even
 when that means a deliberate copy (`Rdv2Watch.cs`, `modRdv2Uia.bas`).
 
 - `src/csharp/RdvCore.cs` — the 1:1 engine (both .cmd builds share it verbatim)
@@ -83,7 +84,6 @@ build.bat            everything in dist\, from source (double-clickable, no admi
 powershell -ExecutionPolicy Bypass -File build\build_dist.ps1     # what build.bat runs
 powershell -ExecutionPolicy Bypass -File build\build_all.ps1
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method csharp -Repeat 7
-powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method hybrid -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method vba    -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\summarize.ps1 -Log work\bench-vba-<stamp>.tsv
 
@@ -148,7 +148,7 @@ the third one leaves every other byte of the package alone.
   after a procedure are the usual cause. The builders check for it; so should any harness.
 - Never start, close or kill Notepad. The app attaches to a window that is already there
   and only reads from it.
-- Do not commit generated artifacts: `data\` (241 MB), `dist\` (the four distributables),
+- Do not commit generated artifacts: `data\` (241 MB), `dist\` (the two products),
   `work\` (logs). All are reproducible from `build\`.
 - Four methods on the one-to-many side must stay comparable too: same files, same key
   sequence, same measurement boundary. The boundary ends when one candidate is on screen

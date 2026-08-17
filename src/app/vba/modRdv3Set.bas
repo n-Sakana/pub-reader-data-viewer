@@ -257,7 +257,9 @@ Public Sub Rdv3SetAdoptPreview()
     End If
     r = TargetRow()
     PutSet "setT" & CStr(r) & "_class", CStr(m_pv("cls"))
-    PutSet "setT" & CStr(r) & "_proc", CStr(m_pv("proc"))
+    ' not the process name: see the comment in the other adopt path below. The
+    ' window is identified by className / automationId, which UIA does give.
+    PutSet "setT" & CStr(r) & "_proc", ""
     PutSet "setT" & CStr(r) & "_fid", CStr(m_pv("fid"))
     PutSet "setT" & CStr(r) & "_ftype", CStr(m_pv("ftype"))
     PutSet "setT" & CStr(r) & "_read", CStr(m_pv("read"))
@@ -289,7 +291,13 @@ Public Sub Rdv3SetAdoptPreview()
     t("name") = GetSet("setT" & CStr(r) & "_name")
     t("window")("automationId") = CStr(m_pv("wid"))
     t("window")("className") = CStr(m_pv("cls"))
-    t("window")("processName") = CStr(m_pv("proc"))
+    ' processName is deliberately NOT taken. Turning a process id into an
+    ' executable name needed WMI, and the only external mechanism this build
+    ' may use is UI Automation -- which exposes the process ID but no name
+    ' (measured: ProviderDescription is not available, and ClassName matches
+    ' the exe only by coincidence). The window is identified by its
+    ' automationId / className instead, both of which UIA does give.
+    t("window")("processName") = ""
     t("window")("descendants") = False
     t("field")("automationId") = CStr(m_pv("fid"))
     t("field")("className") = IIf(Len(CStr(m_pv("fid"))) = 0, CStr(m_pv("fcls")), "")
@@ -741,7 +749,7 @@ Public Function Rdv3SetAdoptSelfTest() As String
         ' what the picked element says
         bad = bad & ExpectSet("win id", CStr(t("window")("automationId")), "newWin")
         bad = bad & ExpectSet("win cls", CStr(t("window")("className")), "NewCls")
-        bad = bad & ExpectSet("win proc", CStr(t("window")("processName")), "NewApp")
+        bad = bad & ExpectSet("win proc not taken", CStr(t("window")("processName")), "")
         bad = bad & ExpectSet("fld cls", CStr(t("field")("className")), "NewEdit")
         bad = bad & ExpectSet("fld idx", CStr(CLng(t("field")("index"))), "3")
         bad = bad & ExpectSet("read", CStr(t("read")), "text")

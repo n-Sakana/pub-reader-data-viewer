@@ -1,6 +1,6 @@
 # Reader Data Viewer
 
-読み取り → 三 CSV 統合 → 検索 → 閲覧表示を、**同じ仕事を 3 通りの方式で実装して比べられる**
+読み取り → 三 CSV 統合 → 検索 → 閲覧表示を、**同じ仕事を 2 通りの方式で実装して比べられる**
 形で作ったアプリです。
 
 メモ帳を実業務アプリの代役にして、そこへ入力・貼り付けされた番号を UI Automation の
@@ -13,7 +13,7 @@
 
 | | 対象 | データ | 配布物 | 記録 |
 |---|---|---|---|---|
-| **1 対 1 版** | VBA 単独 / C# 単独 / 併用 の **3 方式** | 100 万行 × 3 表、番号1 は一意 | 4 ファイル | [docs/results.md](docs/results.md) |
+| **1 対 1 版** | VBA 単独 / C# 単独 の **2 方式** | 100 万行 × 3 表、番号1 は一意 | 2 ファイル | [docs/results.md](docs/results.md) |
 | **一対多版** | VBA・C# × 自前ハッシュ・標準連想配列 の **4 方式** | 10 万行 × 3 表、番号1 は正常に複数件 | 4 ファイル | [docs/results2.md](docs/results2.md) |
 
 以下は 1 対 1 版の説明です。一対多版は [「一対多版 — 4 方式」](#一対多版--4-方式) に分けて
@@ -21,24 +21,23 @@
 
 計測結果は [docs/results.md](docs/results.md) にあります。3 行でまとめると:
 
-- **方式差は 5.3 倍。** 併用 (C#+Excel) 0.59 秒、C# 単独 0.66 秒、VBA 単独 3.14 秒。
+- **方式差は 4.8 倍。** C# 単独 0.66 秒、VBA 単独 3.14 秒。
 - **効くのは読み込みと結合だけ。** どの方式でも合計の 99% 以上がそこです。検索は 0.1 ms 未満、
   表示はいちばん重い方式でも 34 ms で、順位に寄与しません。
 - **表示だけは順位が逆。** 同一プロセスのシート書き込み 1.9 ms < COM 越し 10.4 ms <
   WinForms 34.1 ms。30 項目でも経路の差は 18 倍あります。
 
-## 配布物 — 4 ファイル (1 対 1 版)
+## 配布物 — 2 ファイル (1 対 1 版)
 
 | ファイル | 方式 | 中身 |
 |---|---|---|
 | `dist\ReaderDataViewer-VBA.xlsm` | **VBA 単独** | 監視・読込・結合・検索・表示・計測を 1 冊の中で完結 |
 | `dist\ReaderDataViewer-CSharp.cmd` | **C# 単独** | 通常権限で Windows PowerShell を起動し、自分の中の C# をコンパイルして実行。WinForms で表示 |
-| `dist\ReaderDataViewer-Hybrid.cmd` + `dist\ReaderDataViewer-Hybrid.xlsm` | **併用** | `.cmd` が監視・読込・結合・検索・計測、`.xlsm` が同じ内容の Excel 画面 |
 
 `.cmd` はどちらも 1 ファイルで完結します。別の `.ps1` / `.cs` / `.exe` / `.dll` は要りません。
 XLL、タスク スケジューラ、COM 登録、管理者権限も使いません。
 
-**この 4 つは git に入っていません。** ビルド生成物なので、下の手順で作り直してください。
+**これらは git に入っていません。** ビルド生成物なので、下の手順で作り直してください。
 
 ## 使う
 
@@ -50,7 +49,6 @@ powershell -ExecutionPolicy Bypass -File build\build_all.ps1
 
 # 3. どれか 1 つを起動する
 dist\ReaderDataViewer-CSharp.cmd
-dist\ReaderDataViewer-Hybrid.cmd
 #   または dist\ReaderDataViewer-VBA.xlsm を開いて [監視開始]
 ```
 
@@ -72,7 +70,6 @@ dist\ReaderDataViewer-Hybrid.cmd
 
 ```
 ReaderDataViewer-CSharp.cmd [データフォルダ] [-log <出力先.tsv>]
-ReaderDataViewer-Hybrid.cmd [データフォルダ] [-log <出力先.tsv>]
 ```
 
 データフォルダを省略すると `..\data` → `.\data` の順に探します。`-log` を付けたときだけ、
@@ -93,7 +90,7 @@ ReaderDataViewer-Hybrid.cmd [データフォルダ] [-log <出力先.tsv>]
 - ポーリングが番号を確定するまでの**検知遅延は主計測から分離**して、参考値として出します。
 - C# のコンパイルと Excel の起動は**監視を始める前に**終わらせ、merge-select には混ぜません。
 
-## 3 方式が同じ仕事をしている確認 (1 対 1 版)
+## 2 方式が同じ仕事をしている確認 (1 対 1 版)
 
 方式差を「方式の差」と呼ぶには、中身が同じでなければ意味がありません。毎回の実行が
 次を報告し、24 回すべてで一致しています。
@@ -125,7 +122,7 @@ A は `key1` 順、C は `key2` 順、B は種を固定したシャッフル順�
 ## 動かすのに要るもの
 
 - Windows 10 / 11 (64bit)
-- Excel デスクトップ版 (VBA が使えるもの、**64bit**) — VBA 単独方式と併用方式で必要
+- Excel デスクトップ版 (VBA が使えるもの、**64bit**) — VBA 単独方式で必要
 - .NET Framework 4.x の `csc.exe` (Windows 同梱) — `.cmd` のコンパイルに使用
 - Windows PowerShell 5.1 (64bit)
 - 空きメモリ 1 GB 程度
@@ -166,10 +163,9 @@ VBA を入れる唯一の経路が `VBProject.VBComponents.Import` だからで�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\build_dist.ps1         # build.bat の中身
-powershell -ExecutionPolicy Bypass -File build\build_all.ps1          # 1 対 1 版 4 ファイル
+powershell -ExecutionPolicy Bypass -File build\build_all.ps1          # 1 対 1 版 2 ファイル
 powershell -ExecutionPolicy Bypass -File build\gen_data.ps1 -Force    # データだけ
 powershell -ExecutionPolicy Bypass -File build\pack_cmd.ps1 -Variant csharp
-powershell -ExecutionPolicy Bypass -File build\pack_cmd.ps1 -Variant hybrid
 powershell -ExecutionPolicy Bypass -File build\build_workbooks.ps1    # ブック 2 冊
 ```
 
@@ -177,7 +173,6 @@ powershell -ExecutionPolicy Bypass -File build\build_workbooks.ps1    # ブッ�
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method csharp -Repeat 7
-powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method hybrid -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method vba    -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\summarize.ps1 -Log work\bench-vba-<日時>.tsv
 ```
@@ -189,7 +184,7 @@ powershell -ExecutionPolicy Bypass -File build\summarize.ps1 -Log work\bench-vba
 ## 一対多版 — 4 方式
 
 番号1 が**正常に複数件ヒットする**ときの版です。1 対 1 版とは配布物もソースも計測も別で、
-`build\build_all2.ps1` は 1 対 1 版の 4 ファイルに触れません。
+`build\build_all2.ps1` は 1 対 1 版の 2 ファイルに触れません。
 
 比べているのは**索引の作り方**です。言語 2 つ × 索引 2 つ の 4 方式:
 
@@ -371,11 +366,9 @@ src\csharp\RdvRunner.cs      検知確定から画面表示までの順序と計
 src\csharp\RdvText.cs        画面に出る文字列 (非 ASCII はここだけ)
 src\csharp\RdvUiForms.cs     WinForms 画面           ← C# 単独
 src\csharp\RdvApp.cs         C# 単独の入口
-src\csharp\RdvUiExcel.cs     Excel 画面 (COM 遅延バインド) ← 併用
-src\csharp\RdvAppHybrid.cs   併用の入口とスレッド構成
 src\cmd\header.cmd           .cmd の頭 (自分の中身を取り出して PowerShell へ渡す)
 src\cmd\boot-common.ps1      参照解決とコンパイル
-src\cmd\boot-csharp.ps1      / boot-hybrid.ps1   それぞれの起動
+src\cmd\boot-csharp.ps1      C# 単独の起動
 
 src\vba\modRdvSpec.bas       定数・時計・ハッシュ・画面レイアウトの住所
 src\vba\modRdvEngine.bas     エンジン (C# 版と同じ手順)
@@ -439,7 +432,7 @@ build\bench_app.ps1            実用版 2 方式の E2E 計測 v2 (全 run 記�
 |---|---|
 | `data\` の CSV 3 本 + `expected.txt` (241 MB) | `build\gen_data.ps1` |
 | `data-100k\` / `data-tiny\` の CSV 3 本 + `expected.txt` | `build\gen_data2.ps1` |
-| `dist\` の 1 対 1 版 4 ファイル | `build\build_all.ps1` |
+| `dist\` の 1 対 1 版 2 ファイル | `build\build_all.ps1` |
 | `dist\` の一対多版 4 ファイル | `build\build_all2.ps1` |
 | `dist\app-vba\` / `dist\app-csharp\` の実用版 2 ルート | `build\build_app.ps1` |
 | **`dist\` 全部を一度に** | **`build.bat` (= `build\build_dist.ps1`)** |

@@ -54,7 +54,6 @@
 |---|---:|---:|---:|
 | VBA 単独 | 3.106 | 3.137 | 3.199 |
 | C# 単独 | 0.612 | 0.663 | 0.677 |
-| 併用 | 0.581 | 0.593 | 0.612 |
 
 ### 読み取り
 
@@ -72,7 +71,6 @@
 | 方式 | 表示 | 経路 |
 |---|---:|---|
 | VBA 単独 | 1.9 ms | 同じプロセスのシートへ `Range.Value2` に配列を 1 回 |
-| 併用 | 10.4 ms | プロセス境界を越えて COM で同じシートへ 1 回 |
 | C# 単独 | 34.1 ms | `Invoke` で UI スレッドへ渡し、ListView を更新して `Refresh()` |
 
 30 項目という小さなデータでも、**プロセス境界と UI フレームワークの差は 18 倍**あります。
@@ -251,7 +249,6 @@ COM 呼び出しのラッパー側で名前を添えるようにしました。
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\build_all.ps1
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method csharp -Repeat 7
-powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method hybrid -Repeat 7
 powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method vba    -Repeat 7
 ```
 

@@ -12,12 +12,11 @@
 # was already running.
 #
 #   pwsh -File build\run_bench.ps1 -Method csharp -Repeat 5
-#   pwsh -File build\run_bench.ps1 -Method hybrid -Repeat 5
 #   pwsh -File build\run_bench.ps1 -Method vba    -Repeat 5
 # ============================================================================
 [CmdletBinding()]
 param(
-  [ValidateSet('csharp', 'hybrid', 'vba')] [string] $Method = 'csharp',
+  [ValidateSet('csharp', 'vba')] [string] $Method = 'csharp',
   [int]      $Repeat = 5,
   [string[]] $Keys = @(),
   [string]   $Root = "",
@@ -165,7 +164,7 @@ if ($Method -eq 'vba') {
   $xl.Run("'" + (Split-Path -Leaf $book) + "'!RDV_StartMonitorAsync")
   Start-Sleep -Seconds 3
 } else {
-  $cmd = if ($Method -eq 'csharp') { Join-Path $dist 'ReaderDataViewer-CSharp.cmd' } else { Join-Path $dist 'ReaderDataViewer-Hybrid.cmd' }
+  $cmd = Join-Path $dist 'ReaderDataViewer-CSharp.cmd'
   if (-not (Test-Path -LiteralPath $cmd)) { throw "not built: $cmd" }
   # launch the .cmd itself, not "cmd /c <quoted line>": with more than one pair
   # of quotes cmd strips the outermost pair and the rest of the line falls apart

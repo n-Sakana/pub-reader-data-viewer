@@ -22,13 +22,15 @@ Attribute VB_Name = "modRdv3Spec"
 '          load ~0.4 s, search 0.05-1 s, detect latency ~0.14 s -- is two to
 '          three orders above that step. Sub-4 ms figures in the BE log are
 '          therefore quantised, and that is the whole cost.
-'   sleep  kernel32 Sleep -> a WMI event source waited on with a timeout.
+'   sleep  kernel32 Sleep -> a yielding spin on VBA's own Timer (Rdv3WaitMs).
 '          Application.Wait cannot do it (measured: one-second granularity,
 '          aligned to the second boundary -- a +40 ms target returns at once,
-'          a +400 ms target waited 861 ms), and Application.OnTime is worse
-'          (a sub-second target fires in ~1 ms, which is a spin). NextEvent
-'          blocks for its timeout and then raises wbemErrTimedout: a real
-'          wait with the thread parked. 40 ms requested measured 45-54 ms.
+'          a +400 ms target waited 861 ms), and Application.OnTime is no
+'          better (a sub-second target fires in ~1 ms). A WMI event source
+'          used to park the thread properly, but WMI is not one of the
+'          mechanisms this build may use: UI Automation is the only external
+'          one. The spin therefore costs CPU for the length of each wait --
+'          stated, not hidden.
 '==============================================================================
 Option Explicit
 
@@ -100,10 +102,6 @@ Public Const RDV3_M_LOGPATH As String = "C5"
 Public Const RDV3_M_WORKER_TOP As Long = 8       ' worker.xlsm base64 in E8 down
 
 ' wait primitive state (module level: declarations precede procedures)
-Private m_evSrc As Object
-Private m_evDead As Boolean
-Private m_evShort As Long
-Private m_evRebuilt As Boolean
 
 ' ---- the rule this SESSION is running on ------------------------------------
 ' The constants above are the built-in defaults -- the values the shipped
@@ -145,87 +143,52 @@ Public Function Rdv3MsSince(ByVal t0 As Double) As Double
 End Function
 
 '------------------------------------------------------------------------------
-' sub-second blocking wait, without Win32 and without a spin.
+' sub-second wait, on VBA alone.
 '
-' The source is an extrinsic WMI event class this machine does not raise on its
-' own: nothing is polled on its behalf, so the source costs nothing while we sit
-' in NextEvent. NextEvent(ms) parks the thread for the timeout and then raises
-' wbemErrTimedout, which is the wait.
+' WMI used to provide this: an extrinsic event source parked the thread inside
+' NextEvent(ms) and returned by timing out, which was a real sleep costing no
+' CPU. WMI is no longer permitted here (the only external mechanism this build
+' may use is UI Automation), and VBA has no other true sub-second sleep --
+' Application.Wait rounds to whole seconds, and Application.OnTime with a
+' sub-second target fires in about a millisecond.
 '
-' Returns False when the primitive is NOT delivering waits. That is a hard
-' failure, never a silent fall back to spinning: the BE tests it once at the
-' start of its resident loop (Rdv3WaitReady) and then treats every later False
-' as fatal, reporting it and stopping. m_evShort counts consecutive waits that
-' came back far too early, which is how a WMI service that died under us is
-' caught.
+' So this is now a yielding SPIN. It is not equivalent: it burns CPU for the
+' length of the wait instead of parking. That cost is stated here rather than
+' hidden, because the BE's resident loop calls this once per poll interval.
+' DoEvents keeps the invisible BE answering COM and its own message queue while
+' it spins, which is what the loop relied on the sleep to allow.
+'
+' It can no longer fail (there is no external service behind it), so it always
+' returns True; Rdv3WaitReady keeps its shape for the callers that test it.
 '------------------------------------------------------------------------------
 Public Function Rdv3WaitMs(ByVal ms As Long) As Boolean
-    Dim svc As Object
     Dim t0 As Double
-    Dim el As Double
 
-    If m_evDead Then Exit Function
     If ms <= 0 Then
         Rdv3WaitMs = True
         Exit Function
     End If
-    If m_evSrc Is Nothing Then
-        On Error GoTo Fail
-        Set svc = GetObject("winmgmts:\\.\root\cimv2")
-        Set m_evSrc = svc.ExecNotificationQuery("SELECT * FROM Win32_PowerManagementEvent")
-        On Error GoTo 0
-    End If
 
     t0 = Timer
-    On Error Resume Next
-    Err.Clear
-    m_evSrc.NextEvent ms                          ' returns by timing out
-    Err.Clear
-    On Error GoTo 0
-    el = Rdv3MsBetween(t0, Timer)
+    Do
+        DoEvents
+    Loop While Rdv3MsBetween(t0, Timer) < CDbl(ms)
 
-    ' A power event (or a broken source) can return early. One early return is
-    ' legitimate; twenty in a row means we are not waiting at all any more.
-    ' A WMI service that restarted under us is worth one rebuild of the source
-    ' before giving up -- but only one, so a permanently broken WMI cannot turn
-    ' this into a spin.
-    If el < CDbl(ms) * 0.25 Then
-        m_evShort = m_evShort + 1
-        If m_evShort >= 20 Then
-            m_evShort = 0
-            Set m_evSrc = Nothing
-            If m_evRebuilt Then
-                m_evDead = True
-                Exit Function
-            End If
-            m_evRebuilt = True
-        End If
-    Else
-        m_evShort = 0
-    End If
     Rdv3WaitMs = True
-    Exit Function
-Fail:
-    m_evDead = True
 End Function
 
 ' One-off self test: ask for 40 ms and insist on getting at least half of it.
-' The first call builds the event source, so it is not the one measured --
-' otherwise the setup cost alone could pass the test for a wait that returns
-' instantly.
+' The wait is a yielding spin now (see Rdv3WaitMs), so there is no source to
+' build and nothing external to fail -- but the timing is still checked, because
+' a wait that returns instantly would turn the BE's resident loop into a busy
+' loop with no interval at all.
 Public Function Rdv3WaitReady(ByRef why As String) As Boolean
     Dim t0 As Double
     Dim el As Double
     why = ""
-    If Not Rdv3WaitMs(40) Then
-        why = "WMI の待機イベントソースを作成できません"
-        Exit Function
-    End If
+    Rdv3WaitMs 40
     t0 = Timer
-    If Not Rdv3WaitMs(40) Then
-        why = "WMI の待機が失敗しました"
-        Exit Function
-    End If
+    Rdv3WaitMs 40
     el = Rdv3MsBetween(t0, Timer)
     If el < 20# Then
         why = "待機が効いていません (40 ms 要求で " & Format$(el, "0.0") & " ms)"

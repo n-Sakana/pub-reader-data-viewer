@@ -2,7 +2,6 @@
 # build_workbooks.ps1 -- assemble the two workbooks from src\vba.
 #
 #   dist\ReaderDataViewer-VBA.xlsm      method 1: everything inside Excel
-#   dist\ReaderDataViewer-Hybrid.xlsm   method 3: the display half only
 #
 # The .bas files are the source of truth; the .xlsm files are build output.
 # Both books get the SAME sheet layout, painted by the same function below, so
@@ -320,21 +319,6 @@ $dist = Join-Path $Root 'dist'
 if (-not (Test-Path -LiteralPath $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
 
 try {
-  # ---------- the display half of the hybrid (no code at all) ----------
-  $hybPath = Join-Path $dist 'ReaderDataViewer-Hybrid.xlsm'
-  if (Test-Path -LiteralPath $hybPath) { Remove-Item -LiteralPath $hybPath -Force }
-  Step 'hybrid: Workbooks.Add'
-  $wbH = $xl.Workbooks.Add($xlWBATWorksheet)
-  $wbH.SaveAs($hybPath, $xlOpenXMLWorkbookMacroEnabled)
-  Paint-View $wbH.Worksheets.Item(1) '併用方式 (C# + Excel)' $false
-  $wsH = $wbH.Worksheets.Item(1)
-  $wsH.Range('C2').Value2 = '未接続'
-  $wsH.Range('B52').Value2 = 'この画面は表示専用です。読み取り・CSV 読込・結合・計測は ReaderDataViewer-Hybrid.cmd が行います。'
-  $wsH.Range('B52').Font.Color = 8210719
-  $wbH.Save()
-  $wbH.Close($false)
-  Step "hybrid: built $hybPath"
-
   # ---------- method 1: everything inside Excel ----------
   $vbaPath = Join-Path $dist 'ReaderDataViewer-VBA.xlsm'
   if (Test-Path -LiteralPath $vbaPath) { Remove-Item -LiteralPath $vbaPath -Force }

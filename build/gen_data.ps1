@@ -6,7 +6,7 @@
 #   data\tableC.csv   1,000,000 data rows x 10 fields, keyed by key2
 #   data\expected.txt the oracle: row count, join checksum, sample records
 #
-# The three implementations (VBA / C# / hybrid) read these exact bytes. Nothing
+# The comparison implementations (VBA / C#) read these exact bytes. Nothing
 # generates its own data, so "same input" is a property of the files, not of
 # three separate generators agreeing.
 #

@@ -14,7 +14,6 @@ public static class RdvText
     public const string AppTitle = "Reader Data Viewer";
 
     public const string MethodCs     = "C# 単独 (WinForms)";
-    public const string MethodHybrid = "併用 (C# + Excel)";
 
     public const string StateBoot     = "起動中";
     public const string StateWatching = "監視中";
@@ -82,7 +81,4 @@ public static class RdvText
     public const string ErrNoExcel   = "Excel を起動できませんでした: ";
     public const string ErrNoBook    = "表示用ブックが見つかりません: ";
 
-    public const string ExcelReady   = "Excel フロント接続済み";
-    public const string ExcelClosed  = "Excel フロントが閉じられました。終了します。";
-    public const string HybridHint   = "この画面は状態表示のみです。結果は Excel のブックに表示されます。";
 }

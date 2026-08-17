@@ -2,7 +2,6 @@
 # pack_cmd.ps1 -- assemble one self-contained .cmd from src\csharp and src\cmd.
 #
 #   dist\ReaderDataViewer-CSharp.cmd   = engine + WinForms front
-#   dist\ReaderDataViewer-Hybrid.cmd   = engine + Excel front (needs the .xlsm)
 #
 # Three things it has to get right:
 #
@@ -21,13 +20,12 @@
 #     text, so neither section may contain the marker strings.
 #
 #   pwsh -File build\pack_cmd.ps1 -Variant csharp    src\csharp     (1:1, frozen)
-#   pwsh -File build\pack_cmd.ps1 -Variant hybrid    src\csharp     (1:1, frozen)
 #   pwsh -File build\pack_cmd.ps1 -Variant v2hash    src\v2\csharp  (one-to-many)
 #   pwsh -File build\pack_cmd.ps1 -Variant v2dict    src\v2\csharp  (one-to-many)
 # ============================================================================
 [CmdletBinding()]
 param(
-  [ValidateSet('csharp', 'hybrid', 'v2hash', 'v2dict')] [string] $Variant = 'csharp',
+  [ValidateSet('csharp', 'v2hash', 'v2dict')] [string] $Variant = 'csharp',
   [string] $Root = "",
   [string] $Out = ""
 )
@@ -46,12 +44,6 @@ if ($Variant -eq 'csharp') {
   $usage = 'ReaderDataViewer-CSharp.cmd [dataDir] [-log <file>]'
   $name = 'ReaderDataViewer-CSharp.cmd'
   $boot = 'boot-csharp.ps1'
-} elseif ($Variant -eq 'hybrid') {
-  $sources = $common + @('RdvUiExcel.cs', 'RdvAppHybrid.cs')
-  $title = 'Reader Data Viewer -- method 3: C# engine + Excel front'
-  $usage = 'ReaderDataViewer-Hybrid.cmd [dataDir] [-log <file>]'
-  $name = 'ReaderDataViewer-Hybrid.cmd'
-  $boot = 'boot-hybrid.ps1'
 } else {
   $srcDir = 'src\v2\csharp'
   $cmdDir = 'src\v2\cmd'

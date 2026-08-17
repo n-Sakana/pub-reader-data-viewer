@@ -1,25 +1,22 @@
 ﻿# ============================================================================
-# build_dist.ps1 -- every distributable in dist\, from the sources in this
-# repository. build.bat calls this; it is also fine to run directly.
+# build_dist.ps1 -- the PRODUCT, from the sources in this repository.
+# build.bat calls this; it is also fine to run directly.
 #
 #   powershell -ExecutionPolicy Bypass -File build\build_dist.ps1
-#   ... -SkipFrozen     only the practical build (dist\app-csharp, dist\app-vba)
-#   ... -SkipApp        only the two frozen comparisons
+#
+# It builds the two authorised products and NOTHING else. No comparison build,
+# no benchmark, no test fixture, no sample, no comparison: those are not products
+# and must never reach dist\ through this path.
 #
 # What it produces, all of it from the .cs / .bas / .cls / .ps1 sources:
 #
-#   dist\ReaderDataViewer-CSharp.cmd        1:1 comparison, C# only
-#   dist\ReaderDataViewer-Hybrid.cmd        1:1 comparison, C# engine + Excel UI
-#   dist\ReaderDataViewer-VBA.xlsm          1:1 comparison, VBA
-#   dist\ReaderDataViewer-Hybrid.xlsm       1:1 comparison, the hybrid's book
-#   dist\ReaderDataViewer-CSharp-Hash.cmd   one-to-many, hand-built hash
-#   dist\ReaderDataViewer-CSharp-Dict.cmd   one-to-many, standard Dictionary
-#   dist\ReaderDataViewer-VBA-Hash.xlsm     one-to-many, hand-built hash
-#   dist\ReaderDataViewer-VBA-Dict.xlsm     one-to-many, standard Dictionary
-#   dist\app-csharp\ReaderDataViewer.cmd            practical build
+#   dist\app-csharp\ReaderDataViewer.vbs            the C# product (entry point)
+#   dist\app-csharp\ReaderDataViewer.cmd            the same payload with a console
+#   dist\app-csharp\ReaderDataViewer.json           its settings
 #   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    its initial ledger
 #   dist\app-csharp\data\table{A,B,C}.csv
-#   dist\app-vba\ReaderDataViewer.xlsm              practical build (FE)
+#   dist\app-vba\ReaderDataViewer.xlsm              the VBA product (FE)
+#   dist\app-vba\ReaderDataViewer.json              its settings
 #   dist\app-vba\ReaderDataViewer-Ledger.xlsx       the BE-owned ledger
 #   dist\app-vba\ReaderDataViewer-Ledger.state      its sidecar mirror
 #   dist\app-vba\data\table{A,B,C}.csv
@@ -45,9 +42,7 @@
 # ============================================================================
 [CmdletBinding()]
 param(
-  [string] $Root = "",
-  [switch] $SkipFrozen,
-  [switch] $SkipApp
+  [string] $Root = ""
 )
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
@@ -66,7 +61,7 @@ Write-Output ("  repository     : " + $Root)
 Write-Output ("  PowerShell     : " + $PSVersionTable.PSVersion.ToString())
 Write-Output ("  .NET (this ps) : " + [Environment]::Version.ToString())
 
-$needExcel = -not ($SkipFrozen -and $SkipApp)
+$needExcel = $true
 if ($needExcel) {
   $excel = $null
   foreach ($k in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe',
@@ -98,9 +93,7 @@ Excel の「VBA プロジェクト オブジェクト モデルへのアクセ�
   }
   Write-Output ("  AccessVBOM     : 1 (trusted)")
 }
-Write-Output ("  will build     : " +
-  $(if ($SkipFrozen) { '' } else { 'frozen 1:1, frozen one-to-many, ' }) +
-  $(if ($SkipApp) { '' } else { 'practical (app-csharp, app-vba)' }))
+Write-Output ("  will build     : the product only (app-csharp, app-vba)")
 
 try {
   # --- data: only the set a distributable is actually built from ------------
@@ -111,18 +104,11 @@ try {
     & (Join-Path $Root 'build\gen_data2.ps1')
   }
 
-  if (-not $SkipFrozen) {
-    Head 'frozen 1:1 comparison -> 2 .cmd + 2 .xlsm'
-    & (Join-Path $Root 'build\build_all.ps1') -Root $Root -SkipData
-
-    Head 'frozen one-to-many comparison -> 2 .cmd + 2 .xlsm'
-    & (Join-Path $Root 'build\build_all2.ps1') -Root $Root -SkipData
-  }
-
-  if (-not $SkipApp) {
-    Head 'practical build -> dist\app-csharp + dist\app-vba'
-    & (Join-Path $Root 'build\build_app.ps1') -Root $Root
-  }
+  # The product, and only the product. Comparison builds, benchmarks, test
+  # fixtures are deliberately NOT called from here: nothing that
+  # is not a shipped product may reach dist\ through build.bat.
+  Head 'product -> dist\app-csharp + dist\app-vba'
+  & (Join-Path $Root 'build\build_app.ps1') -Root $Root
 }
 catch {
   Write-Output ""
@@ -136,33 +122,27 @@ catch {
 }
 
 # --- what is on disk now, checked against what was supposed to be built -----
-$frozen = @('dist\ReaderDataViewer-CSharp.cmd',
-            'dist\ReaderDataViewer-Hybrid.cmd',
-            'dist\ReaderDataViewer-VBA.xlsm',
-            'dist\ReaderDataViewer-Hybrid.xlsm',
-            'dist\ReaderDataViewer-CSharp-Hash.cmd',
-            'dist\ReaderDataViewer-CSharp-Dict.cmd',
-            'dist\ReaderDataViewer-VBA-Hash.xlsm',
-            'dist\ReaderDataViewer-VBA-Dict.xlsm')
-$app = @('dist\app-csharp\ReaderDataViewer.cmd',
+# The .vbs is the entry point people actually double-click and the .json is
+# half of the distribution, so both are checked. They were missing from this
+# list while the list still described the comparison builds it no longer makes.
+$app = @('dist\app-csharp\ReaderDataViewer.vbs',
+         'dist\app-csharp\ReaderDataViewer.cmd',
          'dist\app-csharp\ReaderDataViewer-Ledger.xlsx',
          'dist\app-vba\ReaderDataViewer.xlsm',
          'dist\app-vba\ReaderDataViewer-Ledger.xlsx',
          'dist\app-vba\ReaderDataViewer-Ledger.state')
-# the shipped CSVs are copies of data-100k\, so "current" means "identical to
+# the shipped CSVs and settings are copies, so "current" means "identical to
 # the source", not "written after this run started" (Copy-Item keeps the
 # source's timestamp, and re-copying an unchanged file changes nothing)
 $copies = @()
-if (-not $SkipApp) {
-  foreach ($d in 'dist\app-csharp\data', 'dist\app-vba\data') {
-    foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv') {
-      $copies += @{ dest = (Join-Path $d $n); src = (Join-Path 'data-100k' $n) }
-    }
+foreach ($d in 'dist\app-csharp', 'dist\app-vba') {
+  $copies += @{ dest = (Join-Path $d 'ReaderDataViewer.json')
+                src  = 'src\app\config\ReaderDataViewer.json' }
+  foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv') {
+    $copies += @{ dest = (Join-Path (Join-Path $d 'data') $n); src = (Join-Path 'data-100k' $n) }
   }
 }
-$want = @()
-if (-not $SkipFrozen) { $want += $frozen }
-if (-not $SkipApp) { $want += $app }
+$want = @() + $app
 
 Head 'produced'
 $missing = @()
@@ -196,11 +176,61 @@ foreach ($c in $copies) {
 }
 $want += ($copies | ForEach-Object { $_.dest })
 
-Head 'note'
-Write-Output '  data\ (1,000,000 rows x 3 tables, ~241 MB) is NOT built here: no'
-Write-Output '  distributable is made from it. It is what the 1:1 comparison READS at'
-Write-Output '  run time. Generate it when you want to run those four:'
-Write-Output '      powershell -ExecutionPolicy Bypass -File build\gen_data.ps1'
+# --- dist holds the product and nothing else --------------------------------
+# Two things end up here that are not products, and BOTH have to go without the
+# operator doing anything: artifacts an older version of this script used to
+# build (the comparison files, which are no longer made but are
+# still on disk from a previous run), and runtime leftovers from the workbook
+# self tests (.log, .lock). A build that only stops MAKING them would leave a
+# dist\ that still ships them, so they are removed here and the result is
+# asserted to be exactly the allowed set.
+$allowed = @{}
+foreach ($p in $want) { $allowed[$p.ToLowerInvariant()] = $true }
+
+$distRoot = Join-Path $Root 'dist'
+$removed = @()
+$stuck = @()
+if (Test-Path -LiteralPath $distRoot) {
+  foreach ($f in @(Get-ChildItem -LiteralPath $distRoot -Recurse -File)) {
+    $rel = $f.FullName.Substring($Root.Length + 1)
+    if ($allowed.ContainsKey($rel.ToLowerInvariant())) { continue }
+    try {
+      Remove-Item -LiteralPath $f.FullName -Force
+      $removed += $rel
+    } catch {
+      $stuck += ($rel + '  (could not remove: ' + $_.Exception.Message + ')')
+    }
+  }
+  # directories the removals emptied (an old comparison folder, say)
+  foreach ($d in @(Get-ChildItem -LiteralPath $distRoot -Recurse -Directory |
+                   Sort-Object { $_.FullName.Length } -Descending)) {
+    if (-not @(Get-ChildItem -LiteralPath $d.FullName -Recurse -File)) {
+      try { Remove-Item -LiteralPath $d.FullName -Force -Recurse } catch { }
+    }
+  }
+}
+
+Head 'dist holds the product only'
+if ($removed.Count -eq 0) {
+  Write-Output '  nothing to remove'
+} else {
+  Write-Output ("  removed {0} file(s) that are not products:" -f $removed.Count)
+  foreach ($r in $removed) { Write-Output ('    ' + $r) }
+}
+foreach ($e in $stuck) { Write-Output ('  STILL THERE  ' + $e) }
+$missing += $stuck
+
+# and now say what is actually on disk, so "only the product" is a list, not a claim
+$onDisk = @()
+if (Test-Path -LiteralPath $distRoot) {
+  $onDisk = @(Get-ChildItem -LiteralPath $distRoot -Recurse -File |
+              ForEach-Object { $_.FullName.Substring($Root.Length + 1) } | Sort-Object)
+}
+Write-Output ("  dist now holds {0} file(s):" -f $onDisk.Count)
+foreach ($f in $onDisk) { Write-Output ('    ' + $f) }
+$extra = @($onDisk | Where-Object { -not $allowed.ContainsKey($_.ToLowerInvariant()) })
+Write-Output ("  extra (not a product): {0}" -f $extra.Count)
+$missing += $extra
 
 Head 'result'
 if ($missing.Count -eq 0) {

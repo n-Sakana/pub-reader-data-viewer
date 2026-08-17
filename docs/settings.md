@@ -26,6 +26,20 @@ VBA 版の設定画面は**別ウィンドウではなくシート**です (画�
 中身は C# 版のモーダルと同じ 3 区分 — 監視対象 / 動作 / ファイル。「保存」でこのファイルへ
 書き戻し、「取消」でファイルを読み直します。
 
+### VBA 版は `processName` を使いません
+
+`processName` で対象を絞れるのは **C# 版だけ**です。プロセス ID から実行ファイル名を引く
+手段が、VBA では WMI しかありません。VBA 版が外部に使ってよい機構は **UI Automation だけ**で、
+UIA はプロセス ID までしか出しません (実測: `ProviderDescription` は取得できず、`ClassName` が
+実行ファイル名と一致するのはメモ帳のように**たまたま同じ場合だけ**。electron は
+`Chrome_WidgetWin_1`、explorer は `Progman`)。
+
+そのため VBA 版では、`processName` を書いた対象は**一致しません**(黙って無視して別の
+ウィンドウに接続するより安全なため)。「画面から選ぶ」も `processName` を記録しません。
+VBA 版で対象を絞るときは **`className` / `nameLike` / `automationId`** を使ってください。
+どれも UIA が直接返す値です。出荷時の既定設定は `className: "Notepad"` なので、既定のままなら
+影響はありません。
+
 ### VBA 版で 1 つだけ違うこと (監視対象の見つけ方)
 
 C# 版は**フォーカスの有無に関係なく**ウィンドウを探します。VBA 版は探しません ——
@@ -72,7 +86,7 @@ window  ->  path[0]  ->  path[1]  ->  ...  ->  field
 | `className` | ウィンドウ／コントロールのクラス名 |
 | `name` | 完全一致 |
 | `nameLike` | `*` `?` のワイルドカード |
-| `processName` | 実行ファイル名（`.exe` なし） |
+| `processName` | 実行ファイル名（`.exe` なし）。**C# 版のみ**（下記） |
 | `controlTypes` | `Edit` `Document` `DataGrid` `Pane` `Custom` など |
 | `index` | 複数一致したとき何番目を採るか（0 起点） |
 | `scope` | `descendants`（既定）または `children` |
