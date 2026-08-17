@@ -31,17 +31,23 @@ if not exist "%RDV_PS%" set "RDV_PS=powershell.exe"
 set "RDV_SCRIPT=%RDV_ROOT%\build\build_dist.ps1"
 set "RDV_LOGDIR=%RDV_ROOT%\work"
 
+rem  Every %VAR% below is echoed INSIDE QUOTES on purpose. cmd expands a
+rem  variable before it parses the line, so a folder called
+rem  "C:\Tools (x86) & co" turns an unquoted echo into a broken command --
+rem  and inside an if(...) block a ')' from the path closes the block, which
+rem  aborts the whole file before it reaches the pause at the end. That is
+rem  the "double-click, window vanishes, nothing built" failure.
 echo ==========================================================================
 echo  Reader Data Viewer -- build
-echo  repository : %RDV_ROOT%
-echo  powershell : %RDV_PS%
+echo  repository : "%RDV_ROOT%"
+echo  powershell : "%RDV_PS%"
 echo  builds     : the product only -- dist\app-csharp + dist\app-vba
 echo ==========================================================================
 echo.
 
 if not exist "%RDV_SCRIPT%" (
   echo [ERROR] the build script was not found:
-  echo         %RDV_SCRIPT%
+  echo         "%RDV_SCRIPT%"
   echo.
   echo         Run build.bat from the folder it lives in, inside a complete
   echo         checkout of the repository.
@@ -63,8 +69,8 @@ if "%RDV_RC%"=="0" (
   echo  RESULT: success   ^(exit code %RDV_RC%^)
   echo.
   echo  The products are under:
-  echo      %RDV_ROOT%\dist\app-csharp
-  echo      %RDV_ROOT%\dist\app-vba
+  echo      "%RDV_ROOT%\dist\app-csharp"
+  echo      "%RDV_ROOT%\dist\app-vba"
 ) else (
   echo  RESULT: FAILED   ^(exit code %RDV_RC%^)
   echo.
