@@ -1,0 +1,14 @@
+# バッチファイルは、チェックアウトのとき必ず CRLF にする。
+#
+# cmd はバッチを CRLF 前提で読む。LF だけの .bat を渡すと行を切り違え、
+# goto が "oto" のような断片として実行されてラベルへ飛べず、スクリプトの
+# 末尾へ落ちて窓が閉じる。ダブルクリックすると「一瞬で落ちる」ように見える。
+# 実測：LF 版の ビルド.bat は Explorer から起動して 0.13 秒で消え、
+# 「'oto' は、内部コマンドまたは外部コマンド…として認識されていません」
+# などの断片が並んだ。CRLF 版は同じ経路でメニューを出して入力を待つ。
+#
+# この指定が無いと、core.autocrlf=true の環境で commit したとき blob は LF に
+# 正規化され、autocrlf が無効な環境で checkout した人には壊れた .bat が届く。
+# eol=crlf は core.autocrlf の設定に関わらず作業ツリーを CRLF にする。
+*.bat text eol=crlf
+*.cmd text eol=crlf
