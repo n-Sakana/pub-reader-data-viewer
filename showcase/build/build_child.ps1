@@ -45,15 +45,20 @@ $tw = $wb.VBProject.VBComponents.Item('ThisWorkbook').CodeModule
 # 発火して次を仕掛け直し、Excel は閉じられないまま待たされる（実測：閉じる
 # 要求から Auto_Close が走り出すまで 35 秒）。実証済み実装の
 # Rdv3AppPrepareClose と同じ。
+# PbShowPending も呼ぶ。完了ダイアログはティックからは出さず（背面だと
+# 「見えないモーダル」になる）、利用者の操作 = 前面が保証された文脈まで
+# 持ち越してここで出す。
 $tw.AddFromString(@'
 Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
     On Error Resume Next
     PbEnsureArmed
+    PbShowPending
 End Sub
 
 Private Sub Workbook_SheetActivate(ByVal Sh As Object)
     On Error Resume Next
     PbEnsureArmed
+    PbShowPending
 End Sub
 
 ' メモ帳を触ってから Excel へ戻ってきたとき。このデモはその往復が多いので、
@@ -61,11 +66,13 @@ End Sub
 Private Sub Workbook_WindowActivate(ByVal Wn As Window)
     On Error Resume Next
     PbEnsureArmed
+    PbShowPending
 End Sub
 
 Private Sub Workbook_Activate()
     On Error Resume Next
     PbEnsureArmed
+    PbShowPending
 End Sub
 
 Private Sub Workbook_BeforeClose(Cancel As Boolean)
