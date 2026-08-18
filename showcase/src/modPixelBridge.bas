@@ -1772,8 +1772,10 @@ Public Sub PbShutdown()
     KillQuiet CleanPath()
     KillQuiet ProgPath()
     KillQuiet FePath()
-    RmDirQuiet Left$(TempDir(), Len(TempDir()) - 1)
+    ' BE のコピーもこのフォルダの中にある。先に消さないとフォルダが空にならず、
+    ' RmDir が失敗して空の pixelbridge フォルダが残る。
     KillQuiet BeBookPath()
+    RmDirQuiet Left$(TempDir(), Len(TempDir()) - 1)
 
     ' 1px セルの盤面を前に出したまま表示設定を戻すと再配置が何度も走る。
     ' 先にふつうのシートへ移る。
@@ -2105,12 +2107,16 @@ Private Function CleanPath() As String
     CleanPath = TempDir() & "clean.txt"
 End Function
 
-' BE 用ブックの名前に空白を入れない。実証済みの実装（src\app\vba）は
-' ReaderDataViewer_worker_<sid>.xlsm という空白なしの名前を使っている。
-' Application.Run は 'a b.xlsm'!Proc を解決できるが、Application.OnTime の
-' 名前解決はそれとは別物で、空白入りだと仕掛けても発火しなかった（実測）。
+' BE 用の軽いコピーは %TEMP%\pixelbridge\ に置く。配布物のフォルダには
+' 何も作らない。配布するのは 1px / 2px / 4px の FE ブック 1 冊ずつだけで、
+' BE 用の別冊は配らない。
+'
+' 場所を TEMP にできるのは、開くときに AutomationSecurity = 1 を使っている
+' から。あれは「プログラムから開くときはマクロの警告を出さない」設定で、
+' 置き場所の信頼設定とは別の口。XLToolRack も同じやり方で %TEMP% のコピーを
+' 開いている（JobHost.cls の WorkerCopy）。
 Private Function BeBookPath() As String
-    BeBookPath = ThisWorkbook.Path & "\pixelbridge_be.xlsm"
+    BeBookPath = TempDir() & "pixelbridge_be.xlsm"
 End Function
 
 Private Sub WriteAll(ByVal path As String, ByVal s As String)
@@ -2196,8 +2202,9 @@ Private Sub KillQuiet(ByVal path As String)
 End Sub
 
 '------------------------------------------------------------------ FE 側
-' BE 用ブックは元ファイルと同じ（信頼済みの）フォルダへ置く。%TEMP% は JSON の
-' やりとりだけに使う（要件 v2 §3.1）。
+' BE 用のコピーも、やりとりの JSON も、みんな %TEMP%\pixelbridge\ の中。
+' 配布物のフォルダには何も書かない。異常終了でコピーが残っていても、次に
+' 起動したときここで消してから作り直すので、溜まっていくことはない。
 Private Sub PbEnsureBe()
     Dim beApp As Object
     Dim beBook As Object

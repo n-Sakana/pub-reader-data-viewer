@@ -29,7 +29,7 @@ v1 からの変更点は各項の末尾に `※v1 からの変更` として記�
 
 - BE の起動は `CreateObject("Excel.Application")` で可。COM のみで Win32 API も Shell も不要。`.Visible = False` で非表示
 - **FE→BE の呼び出しは即 return 必須**。`beApp.Run "BeMain"` を同期で呼ぶと処理完了まで FE がブロックされ、非同期化の意味がなくなる。BE 側の入口で `Application.OnTime` を仕込んで即座に戻し、実処理は BE 自身のタイマーで回す
-- **BE 用ブックの置き場所**：プログラムから開いたブックは信頼できる場所以外だとマクロが黙って無効化される。したがって BE 用ブックは元ファイルと同じ（信頼済みの）フォルダへコピーし、`%TEMP%` は JSON のやりとりだけに使う
+- **BE 用ブックの置き場所**：`%TEMP%\pixelbridge\` へ軽いコピーを作り、読み取り専用で開く。配布物のフォルダには何も書かない（配るのは 1px / 2px / 4px の FE ブック 1 冊ずつだけ）。プログラムから開くときのマクロは `AutomationSecurity = Low` で通す。これは置き場所の信頼設定とは別の口で、`%TEMP%` でも有効になる。コピーは正常終了時に消し、異常終了で残っていても次回起動時に消してから作り直す
 - `Auto_Open` は `Workbooks.Open` では走らないため `wb.RunAutoMacros xlAutoOpen` で明示的に起動する
 
 ※v1 からの変更：BE 起動可否とマクロ信頼の制約を明記

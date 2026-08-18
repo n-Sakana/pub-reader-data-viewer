@@ -142,7 +142,7 @@ UIA の列挙は端から端まで全部のトップレベル窓に触りにい�
 | 0.5 秒ポーリングの実現方法 | `OnTime Now + 0.5s` は**即時発火**（8 tick が 0.016 秒）。`+1.5s` は 1.0 / 2.0 秒に丸まる | **1 秒**（§10 が認める「1 秒に戻す判断」）。XLToolRack の JobPump も 1 秒 |
 | 重い処理の内容と、短すぎるときの調整 | 代入だけだと 10,000 セルで約 1.05 秒。短すぎて FE/BE の差が見えない | メモ帳 2 枚の「原稿 → 清書」に差し替え。長さは原稿の文字数と校正の周回数で決まる |
 | 疑似ピクセルのセル寸法 | 行高・列幅は表示 DPI の 1 デバイスピクセルに丸められる。この端末は 1 デバイスピクセル = 0.5pt | 起動時に実測。**1 デザイン px = 0.75pt**。1 セルが何 px 分かは**ビルド時に選ぶ** |
-| BE 用ブックの配置 | プログラムから開いたブックは信頼できる場所以外だとマクロが黙って無効化される | 元ファイルと同じフォルダへ `SaveCopyAs` し、`AutomationSecurity = Low` で開く |
+| BE 用ブックの配置 | `AutomationSecurity = Low` はプログラムから開くときのマクロを通す設定で、置き場所の信頼設定とは別の口。`%TEMP%` のコピーでもマクロは動く（XLToolRack も同じやり方） | `%TEMP%\pixelbridge\` へ `SaveCopyAs` し、読み取り専用で開く。**配布物のフォルダには何も書かない** |
 | UIAutomationClient の早期バインディング（tagPOINT） | `ElementFromPoint` は POINT を **ByVal** で取り、VBA は UDT を ByVal で渡せない。**コンパイル**エラーなので実行時には捕まえられない | 早期バインディング（参照設定）必須。点→要素は UIA の矩形ヒットテストで同義に実装 |
 | DADS トークンの適用範囲 | — | 色・角丸・4px グリッド・Noto Sans JP を全面に適用。等幅は Noto Sans Mono、無ければ Consolas |
 
@@ -237,8 +237,8 @@ powershell -ExecutionPolicy Bypass -File showcase\verify\e2e_close.ps1         #
 ふつうに閉じたあと：
 
 - BE のプロセス … 終了（`quit` を送り、`bye` を待ってから消える。強制終了はしない）
-- `%TEMP%\pixelbridge\`（command / progress / fe / manuscript / clean） … 削除
-- `dist\pixelbridge_be.xlsm`（BE 用コピー） … 削除
+- `%TEMP%\pixelbridge\`（BE 用コピー、command / progress / fe / manuscript / clean） … フォルダごと削除
+- 配布物のフォルダ … 何も作らないので、消すものが無い
 - `PIXELBRIDGE` シート … 削除（保存はしない）
 - 利用者のメモ帳 … 無傷。アプリは起動も終了もしない
 - 利用者の Excel … 触らない
