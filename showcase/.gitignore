@@ -1,0 +1,29 @@
+# 検証を回すと出るもの。成果物ではないので追跡しない。
+#
+# とくにスクリーンショットは、画面全体を撮ったものが混ざっている。ここは公開
+# リポジトリなので、利用者のデスクトップ（開いているブラウザのタブ、チャット、
+# ファイル名）がそのまま出てしまう。実測の証跡として手元に残すのはよいが、
+# 追跡はしない。
+verify/*.png
+verify/*.log
+verify/*.err
+verify/*.pid
+verify/*.txt
+verify/probe/*.log
+verify/probe/*.err
+verify/probe/*.pid
+verify/probe/*.txt
+build/*.log
+build/*.err
+build/*.pid
+
+# ビルドで作られるもの。ビルド.bat が 1 / 2 / 4 を選んで作り直す。
+dist/
+
+# BE 用の作業コピー（終了時に消えるが、強制終了された場合に残ることがある）
+pixelbridge_be.xlsm
+
+build/*.txt
+
+# モックをブラウザで撮った参考画像。周りの UI が写るので追跡しない。
+verify/mock/
