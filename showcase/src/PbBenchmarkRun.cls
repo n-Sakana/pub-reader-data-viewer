@@ -388,7 +388,7 @@ Public Sub Start()
         m_screen.SetText "pb_disp_state", "失敗"
         Exit Sub
     End If
-    m_screen.SetText "pb_disp_state", "作成"
+    m_screen.SetText "pb_disp_state", "動作中"
     Layout
 
     ' ここまでが「配置と準備」。30 秒はこの下から測る。
@@ -397,8 +397,8 @@ Public Sub Start()
     SendCommand "pi", """secs"":" & CLng(PB_BENCHSECS)
     m_screen.Flash "pb_lane_out"
     m_log.Note "bench: started"
-    m_be.StatusText = "計算中"
-    m_screen.SetText "pb_be_state", "計算中"
+    m_be.StatusText = "動作中"
+    m_screen.SetText "pb_be_state", "動作中"
     m_screen.SetText "pb_jobstat", "計算中 ･ 経過 0.0 秒"
     Exit Sub
 Failed:
@@ -406,7 +406,7 @@ Failed:
     m_log.Note "bench: start failed " & Err.Number & " " & Err.Description
     m_screen.SetText "pb_jobstat", "開始に失敗 " & Err.Number
     CloseDisplay
-    m_screen.SetText "pb_disp_state", "終了"
+    m_screen.SetText "pb_disp_state", "待機"
 End Sub
 
 ' 開始時の配置。FE は左半分のまま動かさない（起動時に置いたきり）。
@@ -516,11 +516,11 @@ Public Sub Finish()
     m_be.RequestQuit
     CloseDisplay
     m_screen.FinishTimeline el, m_shown, m_target, (el >= PB_BENCHSECS)
-    m_screen.SetText "pb_disp_state", "終了"
+    m_screen.SetText "pb_disp_state", "待機"
     KillQuiet PiPath()
     m_screen.Unflash "pb_lane_in"
     m_screen.Unflash "pb_lane_out"
-    m_screen.SetText "pb_be_state", "終了中"
+    m_screen.SetText "pb_be_state", "待機"
     m_screen.SetText "pb_jobstat", "完了 " & Format$(el, "0.00") & " 秒 ･ 計算 " & _
         Decimals(m_calc) & " 桁 ･ 表示 " & m_shown & " 桁（結果）"
     m_log.Note "bench: finished " & Format$(el, "0.00") & "s calc=" & m_calc & _

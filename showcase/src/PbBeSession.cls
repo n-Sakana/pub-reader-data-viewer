@@ -34,7 +34,10 @@ Attribute VB_Exposed = False
 '    px の結合セルで、右揃え。溢れた分は隣へ流れず **先頭から** 切れる。実測：
 '    「待機 非表示」は先頭の「待」が欠けて「寺機 非表示」に見えていた（3 文字の
 '    「動作中」は余裕をもって収まる）。詳しい事情は記録・ScreenTip・ジョブの行が
-'    持つので、ここは短い名札に徹する。
+'    持つので、ここは短い名札に徹する。状態は「待機」と「動作中」の 2 つだけに
+'    そろえる（起動中・終了中・作成といった途中の名前は、見る側には区別が
+'    要らない上に 3 つの箱で言葉がばらつく）。例外は「失敗」だけで、これは
+'    握りつぶさず出す。
 '
 ' 終わらせるときは quit をファイルで送るだけ。プロセスは殺さない。返事（bye）
 ' は次のティック以降で待つ。ここでブロックすると FE が数秒固まる。
@@ -130,7 +133,7 @@ Public Sub RequestQuit()
     m_run.SendCommand "quit", ""
     m_stopping = True
     m_stopTicks = 0
-    m_status = "終了中"
+    m_status = "待機"
 End Sub
 
 ' ベンチ以外のティックで呼ぶ。生存の印を置き、BE の様子を見る。
@@ -148,7 +151,7 @@ Public Function PumpIdle() As Boolean
         ' 次のベンチで起こし直せるようにこちら側の印も倒す。
         If JVal(js, "state") = "bye" Then
             m_started = False
-            If Not m_stopping Then m_status = "終了"
+            If Not m_stopping Then m_status = "待機"
         End If
     End If
 
@@ -160,7 +163,7 @@ Public Function PumpIdle() As Boolean
             m_started = False
             m_run.CleanAll
             m_lastProg = ""
-            m_status = "終了"
+            m_status = "待機"
             PumpIdle = True
         End If
     End If
