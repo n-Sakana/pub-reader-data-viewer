@@ -103,10 +103,9 @@ $y = [int]($b.y + ($tr - $b.row) * $pxRow + $pxRow / 2)
 Write-Host "$Name is cell $($target.Address($false,$false)) -> screen $x,$y"
 if ($NoClick) { return }
 
-# ここから先は着地の確認に COM を使えない。ボタンに当たるとその場で確認の
-# MsgBox が出て、モーダルの間 Excel は COM 呼び出しを撥ねるからだ（実測：
-# 当たっているのに Selection が読めず、外したと誤判定して 4 回叩いた）。
-# だから「読めなくなったら当たり」と読む。
+# ここから先は、着地直後の COM 読み取りが一時的に撥ねられる場合も受理する。
+# ボタン処理は次の OnTime ティックで動くため、その最中に Selection が読めない
+# ことがある。読めれば選択位置で確かめ、読めなければ処理中に入ったと判断する。
 for ($i = 1; $i -le 4; $i++) {
     [void][Win.In]::SetCursorPos($x, $y)
     Start-Sleep -Milliseconds 150

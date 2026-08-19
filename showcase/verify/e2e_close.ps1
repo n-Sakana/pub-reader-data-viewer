@@ -1,8 +1,8 @@
 ﻿# e2e_close.ps1 -- VERIFICATION ONLY.
 #
 # この検証が自分で起こした Excel だけを、人が ✕ を押すのと同じやり方で閉じる。
-# Auto_Close を走らせて後始末（BE の終了、Temp の削除、表示設定の復帰）を
-# させたいので、kill は最後の手段にする。
+# BeforeClose から始まる後始末（BE の終了、Temp の削除、表示設定の復帰）を
+# 通したいので、kill は最後の手段にする。
 #
 # 【重要】走っている Excel を名前で拾って全部落とすことは絶対にしない。
 # 利用者が開いているブックを巻き込む。所有の証拠は e2e_open.ps1 が書き出した
@@ -10,7 +10,7 @@
 #
 # 閉じ方は WM_CLOSE。以前は UIA の WindowPattern.Close() を使っていたが、
 # 相手は自分も UIA クライアントなので UIA 越しに触ると刺さる。実測：Close()
-# から Auto_Close が走り出すまで毎回 35 秒。WM_CLOSE なら 5 秒で後始末まで
+# から閉じる処理が走り出すまで毎回 35 秒。WM_CLOSE なら 5 秒で後始末まで
 # 終わる。測っているものを歪めない閉じ方を使う。
 [CmdletBinding()]
 param(

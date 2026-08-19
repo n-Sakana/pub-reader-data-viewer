@@ -106,7 +106,7 @@ Public Sub PbKeyRunPi()
 End Sub
 
 '------------------------------------------------------------------ 外からの確認
-' ビルドはこれを呼んでコンパイルを通す。
+' ビルドはこれを呼んで、取り込みと公開入口の解決を確かめる。
 Public Function PbPing() As String
     PbPing = PB_APP & " ok " & Application.Version
 End Function

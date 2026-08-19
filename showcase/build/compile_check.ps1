@@ -18,7 +18,8 @@
 # その場合 Execute() は何も検査していない。つまり「壊すだけで、確かめない」。
 # 使うなら、そのあと捨てる使い捨ての Excel に対してだけにすること。
 # ビルド本体（build_showcase.ps1）はこれを使わず、Application.Run PbPing で
-# 確かめている。呼び出しでコンパイルが走るので、これで足りる。
+# 取り込みと公開入口だけを確かめる。未実行手続きまで含む全体コンパイルの証明では
+# ないため、最後は実機の一連の操作で確かめる。
 [CmdletBinding()]
 param(
     [Parameter(Mandatory=$true)][string] $Bas,

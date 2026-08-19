@@ -52,7 +52,8 @@ $tw = $wb.VBProject.VBComponents.Item('ThisWorkbook').CodeModule
 # Rdv3AppPrepareClose と同じ。
 # 完了ダイアログは廃止した。ベンチの結果（経過・計算桁・表示桁）は盤面に
 # 残るし、モーダルは次のクリックを飲み込んでしまう（実機で実測：ベンチ直後の
-# 「最大化」がダイアログに吸われて効かなかった）。だから呼ぶのは見張りだけ。
+# 「最大化」がダイアログに吸われて効かなかった）。ここへ注入するのは、ポンプの
+# 見張りと BeforeClose の後始末だけ。
 $tw.AddFromString(@'
 Private Sub Workbook_SheetSelectionChange(ByVal Sh As Object, ByVal Target As Range)
     On Error Resume Next
@@ -82,7 +83,8 @@ Private Sub Workbook_BeforeClose(Cancel As Boolean)
 End Sub
 '@)
 
-# 保存する前にコンパイルを通す
+# 保存する前に公開入口を実際に呼び、取り込みと入口の解決を確かめる。
+# VBA 全体を事前コンパイルする検査ではない。
 $ping = $xl.Run('PbPing')
 Write-Host "PbPing -> $ping"
 

@@ -1,10 +1,10 @@
 ﻿# e2e_ok.ps1 -- VERIFICATION ONLY. Waits for a modal dialog to appear in the
 # given Excel process and presses its default button (OK).
 #
-# It polls instead of looking once: the dialog is raised by the showcase's own
-# OnTime tick, so it appears up to a second after the button is pressed, and a
-# single look right after the press finds nothing (measured -- that is what
-# made an earlier run look like the press had been ignored).
+# Legacy helper for modal-dialog probes. The current 30-second benchmark has no
+# completion dialog, so this is not part of its acceptance path. It polls
+# because older OnTime-driven probes raised their dialog up to a second after
+# the button was pressed.
 #
 # Win32 is used HERE, in a verification script, never in the shipped VBA.
 [CmdletBinding()]

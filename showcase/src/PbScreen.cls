@@ -167,7 +167,7 @@ Private Sub BuildDots()
     m_dotShown = -1
 End Sub
 
-' 円周率ベンチのカード。FE / BE / 表示用 Excel の状態、Temp のレーン、桁の盤、
+' 円周率ベンチのカード。FE / BE / 表示用 Excel の状態、Temp のレーン、30 秒の計器、
 ' 経過と桁数、実行ボタン 1 つ。
 Private Sub BuildBenchCard()
     m_cv.CardBox 418, 528, 380, 224
@@ -430,8 +430,8 @@ Public Function RangeToScreen(ByVal rg As Range, ByRef x1 As Long, ByRef y1 As L
     RangeToScreen = True
 End Function
 
-' ElementFromPoint の実演。その点にある窓の素性を出すだけで、動かす相手を
-' 選ぶ操作ではない（相手は常につないだメモ帳 1 枚）。
+' ミニマップで逆算した点を、保持している窓矩形でヒットテストする。その点にある
+' 窓の素性を出すだけで、動かす相手は常につないだメモ帳 1 枚。
 Public Sub ShowPointInfo(ByVal idx As Long, ByVal ws As PbWorkspace)
     Dim tp As UIAutomationClient.IUIAutomationTransformPattern
     Dim canMove As String

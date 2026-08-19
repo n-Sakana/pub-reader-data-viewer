@@ -13,11 +13,11 @@ Attribute VB_Exposed = False
 ' 責務：BE を起こし、終われと言い、終わったことを見届ける。BE が何を計算するか
 ' は知らない（それは相手側の modPbBackend）。
 '
-' 起こし方は XLToolRack の JobHost と同じ形にしてある。
+' 起こし方は、BE の起動後に COM 参照を捨てる形にしてある。
 '   CreateObject → Visible / DisplayAlerts を決める → AutomationSecurity を
 '   落として開く → 戻す → 入口を名前で呼ぶ → 参照を捨てる
 '
-' 3 つの判断がここに埋まっている。
+' 4 つの判断がここに埋まっている。
 '
 ' 1. **FE は BE への COM 参照を持ち続けない。** 忙しい相手を COM で叩くと、
 '    FE がサーバービジーで固まる。起動して入口を呼んだら、その場で手放す。
