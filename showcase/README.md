@@ -45,17 +45,69 @@ powershell -ExecutionPolicy Bypass -File showcase\build\build_showcase.ps1 -Unit
 
 | もの | 何か |
 |---|---|
-| `dist/modPixelBridge_<N>px.bas` | 仕様上の成果物。標準モジュール 1 枚（ANSI / CP932） |
-| `dist/VBA Pixel Bridge <N>px.xlsm` | その .bas を取り込み、UIAutomationClient の参照を付けたブック |
+| `dist/<部品名>_<N>px.bas` / `.cls` | 仕様上の成果物。VBA のソース一式（ANSI / CP932）。標準モジュール 4 枚とクラス 12 枚 |
+| `dist/VBA Pixel Bridge <N>px.xlsm` | それらを取り込み、UIAutomationClient の参照を付けたブック |
+
+`src/` は UTF-8 で持ち、ビルドが CP932 へ直して `dist/` に出す。往復で 1 文字でも
+変わったら、そこで止める（`〜` のように CP932 を通ると別の字になるものがある）。
+クラスモジュールの先頭にはクラスヘッダ（`VERSION 1.0 CLASS` …）があり、これは
+CRLF でないと取り込み側がヘッダとして認識せず、そのままコード 1 行目に流れ込む。
+取り込みは成功して見えるので、ビルドは書き出す前に必ず CRLF へそろえる。
 
 参照設定は既定の 4 つ（VBA / Excel / stdole / Office）に **UIAutomationClient を
 1 つ足すだけ**。Win32 API / `Declare` / `Shell` / `WScript.Shell` / 外部 helper は
 1 つもない。図形（Shape）もフォームコントロールも ActiveX も使わない。画面は
 すべてセルの塗りと結合セルで描いてある。
 
-ブックには標準モジュール 1 枚のほかに、`ThisWorkbook` へ数行だけ入れてある。
+ブックにはこのソース一式のほかに、`ThisWorkbook` へ数行だけ入れてある。
 ポンプの見張り（`PbEnsureArmed`）と、閉じる合図（`PbPrepareClose`）を呼ぶだけで、
-判断はすべて .bas 側にある。標準モジュールからはブックのイベントを取れないため。
+判断はすべてソース側にある。標準モジュールからはブックのイベントを取れないため。
+
+## 中身の構成（責務ごと）
+
+状態と副作用はクラスに閉じ込め、標準モジュールは公開の入口と、状態を持たない
+計算だけを持つ。Excel から名前で呼ばれるもの（`Auto_Open` / `OnTime` / `OnKey` /
+`ThisWorkbook` のイベント）は VBA の都合で標準モジュールにしか置けないので、
+`modPixelBridge` はその受け口に徹し、受けたらすぐ `PbApp` へ渡す。
+
+| 部品 | 種類 | 受け持ち |
+|---|---|---|
+| `modPixelBridge` | .bas | 公開の入口だけ。判断を持たない |
+| `modPbDesign` | .bas | 寸法・色・`PB_UNIT`・座標計算（状態なし） |
+| `modPbCommon` | .bas | UIA の識別子と文字列ユーティリティ（状態なし） |
+| `modPbBackend` | .bas | BE 側の入口と円周率の計算。コピーされたブックの中だけで動く |
+| `PbApp` | .cls | 本体。1 秒ポンプ、操作の割り振り、起動と後始末 |
+| `PbCanvas` | .cls | 疑似ピクセルの画布。シートの一生と描く道具 |
+| `PbScreen` | .cls | 盤面の配置と差分描画、ボタンの台帳、ミニマップ |
+| `PbUia` | .cls | UI Automation のクライアントと画面の矩形 |
+| `PbNotepad` | .cls | つないでいるメモ帳 1 枚（読み書き・移動・最小化） |
+| `PbWindows` | .cls | ミニマップに映す窓の一覧 |
+| `PbChannel` | .cls | Temp のファイルだけで往復する FE ⇔ BE |
+| `PbBeSession` | .cls | 非表示の別プロセス Excel の一生 |
+| `PbDisplayBook` | .cls | 表示用 Excel（保存しない一時ブック） |
+| `PbBench` | .cls | 15 秒の円周率ベンチ |
+| `PbLog` | .cls | 記録。イミディエイト / ファイル |
+| `PbError` | .cls | 例外の文脈（番号・説明・発生元・手続き・そのときの状態） |
+
+### 例外と後始末
+
+例外は起きた場所では判断しない。`PbError` が `Err` の中身とそのときの状態を
+写し取り、外側の境界（`Startup` / `Tick` / 操作の入口 / `Shutdown`）で受けて、
+記録と、必要なら明示的な後始末（別プロセスの停止・参照解放）へ回す。`Class_Terminate`
+に後始末を任せない。VBA の解放順はこちらから見えず、別プロセスを持つ相手の
+片づけを暗黙の順序に賭けると、消えないプロセスとして表に出る。
+
+「起こりうる状態」は例外にしない。メモ帳が見つからない、`TransformPattern` が
+取れない、BE がまだ答えていない、はすべて戻り値で返し、盤面の文言になる。
+
+### 記録
+
+`PbLog` は既定でイミディエイトウィンドウへ書く。ファイルへ切り替えるのは
+`PbLog.cls` 冒頭の `LOG_TO_FILE` を `True` にする 1 行だけ。書き出しは行を溜めて
+まとめて出す（1 行ごとに開いて閉じると、それ自体が 1 秒ポンプの中で目立つ重さに
+なる）。区切りごとの所要時間（1 秒のティック、UIA の列挙・読み・書き戻し、
+差分描画、JSON の読み書き、窓の操作、BE の起動と停止、COM の解放）は
+`Span` で記録し、閾値（既定 30ms）より短いものは落とす。
 
 ## 使い方
 
@@ -408,6 +460,12 @@ ScreenUpdating トグル）に対するもので、1px「追いつかない」�
 どちらも今の実装では再現しない。
 
 ## 検証
+
+ビルドは書き出した全部品を不可視の Excel へ取り込み、保存する前に `PbPing` を
+呼ぶ。VBA はモジュール単位に遅れてコンパイルするので、取り込みが通っただけでは
+コンパイルが通ったことにならない。`PbPing` は入口から本体（`PbApp`）へ触るので、
+どこか 1 つでもコンパイルが通らなければここで落ちる。返り値には取り込んだ部品数
+（16）が入る。
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File showcase\verify\check_forbidden.ps1   # 禁止 API の機械検査（dist の全成果物）

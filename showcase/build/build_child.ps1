@@ -2,7 +2,9 @@
 # compile error (which is a modal) blocks this process and not the watchdog.
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory=$true)][string] $Bas,
+    # 取り込むファイルの一覧（1 行 1 パス）。製品は責務ごとに複数の
+    # モジュール／クラスへ分かれているので、まとめて取り込む。
+    [Parameter(Mandatory=$true)][string] $FileList,
     [Parameter(Mandatory=$true)][string] $Out,
     [Parameter(Mandatory=$true)][string] $PidFile
 )
@@ -26,7 +28,10 @@ $xl.SheetsInNewWorkbook = $prevSheets
 # 参照は 1 つだけ: UIAutomationClient。IUnknown しか持たない型なので遅延束縛は
 # 使えず、参照設定が要る。
 [void]$wb.VBProject.References.AddFromGuid('{944DE083-8FB8-45CF-BCB7-C477ACB2F897}', 1, 0)
-[void]$wb.VBProject.VBComponents.Import($Bas)
+foreach ($f in (Get-Content -Path $FileList -Encoding UTF8 | Where-Object { $_.Trim() -ne '' })) {
+    [void]$wb.VBProject.VBComponents.Import($f.Trim())
+    Write-Host "imported $(Split-Path -Leaf $f)"
+}
 
 # ThisWorkbook にポンプの見張りを 1 つだけ置く。
 #

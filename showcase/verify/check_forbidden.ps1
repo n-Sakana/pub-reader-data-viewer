@@ -3,7 +3,7 @@
 # 成果物に Win32 / Shell / PowerShell / cmd / WMI / 外部 helper / C# 埋込みが
 # 入っていないことを機械で確かめる。
 # 見るのは 2 つ:
-#   1. ソースと配布用の .bas
+#   1. ソースと配布用の .bas / .cls（責務ごとに分かれている）
 #   2. 配布ブックの中に実際に入っている VBA（その場で書き出して読む）
 # 参照設定も数える。UIAutomationClient 以外の追加参照があれば落とす。
 [CmdletBinding()]
@@ -72,7 +72,11 @@ function Scan-Text([string]$label, [string]$rawText) {
 }
 
 Write-Host '--- sources on disk ---'
-foreach ($f in @("$Root\src\modPixelBridge.bas") + @(Get-ChildItem "$Root\dist" -Filter "modPixelBridge_*px.bas" -ErrorAction SilentlyContinue | ForEach-Object { $_.FullName })) {
+$srcFiles = @(Get-ChildItem "$Root\src" -File -ErrorAction SilentlyContinue |
+              Where-Object { $_.Extension -in '.bas', '.cls' } | ForEach-Object { $_.FullName })
+$distFiles = @(Get-ChildItem "$Root\dist" -File -ErrorAction SilentlyContinue |
+               Where-Object { $_.Extension -in '.bas', '.cls' } | ForEach-Object { $_.FullName })
+foreach ($f in $srcFiles + $distFiles) {
     if (-not (Test-Path $f)) { Write-Host "  MISSING $f"; $fail++; continue }
     $enc = if ($f -like '*\dist\*') { [System.Text.Encoding]::GetEncoding(932) } else { New-Object System.Text.UTF8Encoding($false) }
     $fail += Scan-Text (Split-Path $f -Leaf) ([System.IO.File]::ReadAllText($f, $enc))

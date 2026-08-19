@@ -1,9 +1,13 @@
 ﻿# build_showcase.ps1
 #
 # 成果物をつくる。出来るのは 2 つだけ。
-#   dist\modPixelBridge.bas        ANSI(CP932) の .bas 1 枚。これが仕様上の成果物。
-#   dist\VBA Pixel Bridge.xlsm     その .bas を取り込み、UIAutomationClient の
-#                                  参照を付けたブック。ふつうに開けば動く。
+#   dist\<component>_<N>px.bas / .cls   ANSI(CP932) に直したソース一式
+#   dist\VBA Pixel Bridge <N>px.xlsm    それを取り込み、UIAutomationClient の
+#                                       参照を付けたブック。ふつうに開けば動く。
+#
+# 製品は責務ごとに複数のモジュール／クラスへ分かれている。ビルドは src\ にある
+# .bas と .cls をすべて取り込む。取り込む順序は問わない（VBA は参照を解決して
+# からコンパイルする）が、ここでは名前順にして出力を安定させる。
 #
 # ここでやる COM は全部この子プロセス側（build_child.ps1）に置いてある。VBA の
 # コンパイルエラーは「見えないモーダル」になり得るので、ブックは不可視のまま
@@ -14,50 +18,66 @@ param(
     # 1 セルが受け持つ設計 px。利用者が選ぶもので、既定値は置かない。
     # 既定値を置くと「選ばなかった」と「4 を選んだ」が区別できなくなる。
     [Parameter(Mandatory=$true)][ValidateSet('1','2','4')][string] $Unit,
-    [int] $TimeoutSec = 180
+    [int] $TimeoutSec = 240
 )
 $ErrorActionPreference = 'Stop'
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $root = Split-Path -Parent $here
-$src  = Join-Path $root 'src\modPixelBridge.bas'
+$srcDir = Join-Path $root 'src'
 $dist = Join-Path $root 'dist'
 $child= Join-Path $here 'build_child.ps1'
 if (-not (Test-Path $dist)) { New-Item -ItemType Directory -Path $dist | Out-Null }
 
-# .bas は取り込まれるときシステムの ANSI コードページで読まれる（日本語 Windows
-# なら CP932）。ソースは UTF-8 で持ち、成果物は CP932 で出す。
-$utf8 = [System.IO.File]::ReadAllText($src, (New-Object System.Text.UTF8Encoding($false)))
+$sources = @(Get-ChildItem $srcDir -File | Where-Object { $_.Extension -in '.bas', '.cls' } |
+             Sort-Object Name)
+if ($sources.Count -eq 0) { throw "src にソースがありません: $srcDir" }
 
-# 選んだピクセル値をソースへ埋める。ここが唯一の差し込み口。置換できなかったら
-# 黙って既定のまま作らずに止める。「選んだのに効いていない成果物」がいちばん
-# たちが悪いので、作れないほうがまし。
+# .bas / .cls は取り込まれるときシステムの ANSI コードページで読まれる（日本語
+# Windows なら CP932）。ソースは UTF-8 で持ち、成果物は CP932 で出す。
+$cp932 = [System.Text.Encoding]::GetEncoding(932)
+$decl  = 'Public Const PB_UNIT As Long ='
+$note  = "              ' 1 セルが何設計 px 分か（ビルド時に選ぶ: 1 / 2 / 4）"
 $cr = [char]13
 $lf = [char]10
-$decl = 'Private Const PB_UNIT As Long ='
-$note = "              ' 1 セルが何設計 px 分か（ビルド時に選ぶ: 1 / 2 / 4）"
-$lines = $utf8.Split($lf)
-$hit = 0
-for ($i = 0; $i -lt $lines.Count; $i++) {
-    if ($lines[$i].TrimEnd($cr).StartsWith($decl)) {
-        $tail = ''
-        if ($lines[$i].EndsWith($cr)) { $tail = $cr }
-        $lines[$i] = "$decl $Unit$note$tail"
-        $hit++
+$unitHits = 0
+$outFiles = @()
+
+foreach ($s in $sources) {
+    $text = [System.IO.File]::ReadAllText($s.FullName, (New-Object System.Text.UTF8Encoding($false)))
+
+    # .cls の先頭のクラスヘッダは CRLF で書かれていないと取り込み側が
+    # ヘッダとして認識せず、そのままコード 1 行目に流れ込む。取り込みは
+    # 成功して見えるので、あとから「1 行目が VERSION 1.0 CLASS」という
+    # コンパイル失敗になるだけになる。ここで必ず CRLF へそろえる。
+    $text = $text.Replace("$cr$lf", "$lf").Replace("$lf", "$cr$lf")
+
+    # 選んだピクセル値を差し込む。宣言はプロジェクト全体で 1 つだけ。
+    # 置換できなかったら黙って既定のまま作らずに止める。「選んだのに効いて
+    # いない成果物」がいちばんたちが悪いので、作れないほうがまし。
+    $lines = $text.Split($lf)
+    for ($i = 0; $i -lt $lines.Count; $i++) {
+        if ($lines[$i].TrimEnd($cr).StartsWith($decl)) {
+            $tail = ''
+            if ($lines[$i].EndsWith($cr)) { $tail = $cr }
+            $lines[$i] = "$decl $Unit$note$tail"
+            $unitHits++
+        }
     }
+    $text = [string]::Join($lf, $lines)
+
+    $outPath = Join-Path $dist ("{0}_{1}px{2}" -f $s.BaseName, $Unit, $s.Extension)
+    [System.IO.File]::WriteAllBytes($outPath, $cp932.GetBytes($text))
+    $back = $cp932.GetString([System.IO.File]::ReadAllBytes($outPath))
+    if ($back -ne $text) {
+        throw "CP932 round trip changed $($s.Name). Fix the characters that do not survive it."
+    }
+    $outFiles += $outPath
 }
-if ($hit -ne 1) { throw "PB_UNIT の宣言がソースに $hit 個ありました。1 個であるべきです" }
-$utf8 = [string]::Join($lf, $lines)
-if ($utf8.IndexOf("$decl $Unit") -lt 0) { throw "PB_UNIT を $Unit に差し替えられませんでした" }
+
+if ($unitHits -ne 1) { throw "PB_UNIT の宣言が $unitHits 個ありました。1 個であるべきです" }
 Write-Host "PB_UNIT = $Unit"
-$cp932 = [System.Text.Encoding]::GetEncoding(932)
-$basOut = Join-Path $dist "modPixelBridge_${Unit}px.bas"
-[System.IO.File]::WriteAllBytes($basOut, $cp932.GetBytes($utf8))
-$back = $cp932.GetString([System.IO.File]::ReadAllBytes($basOut))
-if ($back -ne $utf8) {
-    throw "CP932 round trip changed the source. Fix the characters that do not survive it."
-}
-Write-Host "wrote $basOut ($((Get-Item $basOut).Length) bytes, CP932)"
+Write-Host "sources: $($outFiles.Count) files -> $dist"
 
 $xlsm    = Join-Path $dist "VBA Pixel Bridge ${Unit}px.xlsm"
 $pidFile = Join-Path $here "build-owned-${Unit}px.pid"
@@ -77,8 +97,13 @@ function Read-Shared([string]$p) {
     } catch { return '' }
 }
 
+# 取り込むファイルは 1 行 1 つのリストで渡す。引数へ並べるとパスの空白や
+# 括弧で崩れるため。
+$listFile = Join-Path $here "build-files-${Unit}px.txt"
+Set-Content -Path $listFile -Value $outFiles -Encoding UTF8
+
 $childArgs = @('-ExecutionPolicy','Bypass','-NoProfile','-File',"`"$child`"",
-               '-Bas',"`"$basOut`"",'-Out',"`"$xlsm`"",'-PidFile',"`"$pidFile`"")
+               '-FileList',"`"$listFile`"",'-Out',"`"$xlsm`"",'-PidFile',"`"$pidFile`"")
 $p = Start-Process -FilePath 'powershell.exe' -ArgumentList $childArgs -PassThru `
         -RedirectStandardOutput $log -RedirectStandardError "$log.err" -WindowStyle Hidden
 $deadline = (Get-Date).AddSeconds($TimeoutSec)

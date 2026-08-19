@@ -1,0 +1,510 @@
+VERSION 1.0 CLASS
+BEGIN
+  MultiUse = -1  'True
+END
+Attribute VB_Name = "PbScreen"
+Attribute VB_GlobalNameSpace = False
+Attribute VB_Creatable = False
+Attribute VB_PredeclaredId = False
+Attribute VB_Exposed = False
+'==============================================================================
+' PbScreen - 812 x 812 の盤面（何をどこへ描くか）
+'
+' 責務：モックどおりの配置でカードを組み、毎ティックの差分だけを塗り替える。
+' 描く道具は PbCanvas が持つ。ここが持つのは座標と文言、そしてボタンの台帳。
+'
+' 覚えておくこと
+'
+' - **隣り合う要素が同じセルを共有してはいけない。** 結合セルは 1 セル塗られた
+'   だけで全体が塗り潰される。かつて札と枠が同じ行に落ちていて、枠の帯を塗った
+'   瞬間に札が灰色（フォーカス時は青）のベタ塗りになり、下の文字ごと消えた。
+'   だから座標は 4 設計 px の格子に載せる。
+'
+' - **ミニマップの窓の矩形は画面の矩形で切り取る。** 窓は画面の外へ出ている
+'   ことがあり（端に置いた窓、タスクバーの下へ沈んだ窓）、そのまま描くと
+'   ミニマップの枠を越えて隣のカードの上まで塗る。
+'
+' - **ミニマップの中には結合セルを置かない。** 位置が変わるたびに結合し直す
+'   ことになり、その塗り替えの再描画だけでポンプが止まった。
+'==============================================================================
+Option Explicit
+
+Private m_cv As PbCanvas
+Private m_log As PbLog
+
+Private m_btnN As Long
+Private m_btnKey(0 To PB_MAXBTN - 1) As String
+Private m_btnCell(0 To PB_MAXBTN - 1) As String
+
+Private m_mapSig As String
+Private m_dotAt As Long
+Private m_dotShown As Long
+Private m_frameOn As Long
+Private m_lampShown As Long
+
+Public Sub Init(ByVal canvas As PbCanvas, ByVal logger As PbLog)
+    Set m_cv = canvas
+    Set m_log = logger
+End Sub
+
+'==============================================================================
+' 組み立て
+'==============================================================================
+Public Sub BuildAll()
+    Dim prevEv As Boolean
+    Dim prevAl As Boolean
+
+    prevEv = Application.EnableEvents
+    prevAl = Application.DisplayAlerts
+    Application.EnableEvents = False
+    ' 文字は結合セルで描くので「左上の値だけ残ります」を何十回も聞かれる。黙らせる。
+    Application.DisplayAlerts = False
+    On Error GoTo Failed
+    m_cv.Hold
+
+    m_btnN = 0
+    m_cv.Fill 0, 0, PB_W, PB_H, C_LINE
+    m_cv.Fill PB_UNIT, PB_UNIT, PB_W - PB_UNIT * 2, PB_H - PB_UNIT * 2, C_BODY
+    BuildHeader
+    BuildMiniMapCard
+    BuildValueCard
+    BuildBenchCard
+    BuildFooter
+    m_log.Note "build: done"
+
+    Application.DisplayAlerts = prevAl
+    Application.EnableEvents = prevEv
+    Exit Sub
+Failed:
+    Application.DisplayAlerts = prevAl
+    Application.EnableEvents = prevEv
+    m_cv.Unhold
+    Err.Raise Err.Number, , Err.Description
+End Sub
+
+Private Sub BuildHeader()
+    m_cv.Fill 2, 2, 808, 52, C_BAND
+    m_cv.Txt "", 14, 16, 152, 25, PB_APP, 19, C_ONBAND, True, xlLeft, False
+    m_cv.Txt "", 172, 21, 300, 13, PB_SUB, 10, C_ONBAND, False, xlLeft, True
+    ' アニメーションは常時 1 秒。速さの切替は置かない。
+    m_cv.Txt "pb_uptime", 596, 18, 56, 21, "00:00", 15, C_ONBAND, True, xlLeft, True
+    m_cv.Fill 660, 24, 10, 10, C_LAMP
+    m_cv.NameIt "pb_lamp", m_cv.Cel(660, 24, 10, 10)
+    m_cv.Txt "pb_status", 676, 18, 122, 21, "同期中 poll 0", 11, C_ONBAND, False, xlLeft, True
+End Sub
+
+Private Sub BuildMiniMapCard()
+    m_cv.CardBox 14, 66, 784, 450
+    m_cv.Txt "", 28, 82, 60, 15, "MINIMAP", 11, C_TEXT, True, xlLeft, True
+    m_cv.Txt "pb_res", 95, 78, 150, 22, "―", 11, C_TEXT, False, xlLeft, True
+    m_cv.Txt "pb_scale", 254, 83, 200, 13, "―", 10, C_SUB, False, xlLeft, True
+    ' この 2 つが動かすのは、つないでいるメモ帳 1 枚だけ。Excel は起動時に
+    ' 画面の左半分へ置いたきり動かさない。
+    RegisterButton "npmax", m_cv.Button("npmax", 560, 76, 108, 28, "最大化", _
+        "メモ帳を画面の右半分いっぱいへ移動・リサイズします（OS の最大化ではありません）", 0, 10)
+    RegisterButton "npmin", m_cv.Button("npmin", 676, 76, 108, 28, "最小化", _
+        "メモ帳をタスクバーへ格納します。最大化か、ミニマップの範囲選択で戻せます", 0, 10)
+
+    ' 要素情報は 2 行のストリップに畳む
+    m_cv.Fill 16, 116, 780, 40, C_PANEL
+    m_cv.Txt "", 28, 120, 102, 14, "ElementFromPoint", 10, C_KEY, False, xlLeft, True
+    m_cv.Txt "pb_pt_win", 138, 120, 540, 14, "―", 10, C_TEXT, False, xlLeft, True
+    m_cv.Txt "pb_pt_xy", 680, 120, 104, 14, "PT ―", 10, C_SUB, False, xlRight, True
+    m_cv.Txt "", 28, 136, 100, 14, "Rect ･ CanMove", 10, C_SUB, False, xlLeft, True
+    m_cv.Txt "pb_pt_rect", 136, 136, 396, 14, "―", 10, C_TEXT, False, xlLeft, True
+    m_cv.Txt "pb_drag", 540, 136, 244, 14, "ミニマップの範囲でメモ帳を置く", 10, C_SUB, False, xlRight, False
+
+    m_cv.Fill 16, 156, 780, 358, C_PANEL
+    m_cv.NameIt "pb_map", m_cv.Cel(16, 156, 780, 358)
+    m_mapSig = ""
+End Sub
+
+' つなぐメモ帳は 1 枚だけ。入力面もこの 1 つで、ここへ直接書いた内容がその窓へ
+' 流れ、その窓で打った文字がここへ返る。
+Private Sub BuildValueCard()
+    Dim rg As Range
+    m_cv.CardBox 14, 528, 392, 224
+    m_cv.Txt "", 28, 544, 92, 16, "ValuePattern", 11, C_KEY, True, xlLeft, True
+    m_cv.Txt "pb_focus", 124, 546, 176, 14, "focus ―", 10, C_SUB, False, xlLeft, True
+    RegisterButton "sync", m_cv.Button("sync", 304, 540, 88, 28, "同期を停止", _
+        "1 秒ごとに本文を取得し、差分があれば SetValue で書き戻します（Ctrl+Shift+M）", 2)
+
+    m_cv.Txt "pb_np_title", 28, 572, 268, 16, "―", 10, C_SUB, False, xlLeft, False
+    m_cv.Txt "pb_np_state", 300, 572, 92, 16, "", 10, C_KEY, False, xlRight, False
+    ' 入力面の内寸は PB_UNIT に依らない固定値にする。PB_UNIT 倍のインセットだと
+    ' 同じ設計でも 1px / 2px だけ最終行が半分描かれて切れる。
+    m_cv.Fill 28, 592, 364, 124, C_LINE2
+    m_cv.NameIt "pb_np_frame", m_cv.Cel(28, 592, 364, 124)
+    m_cv.Fill 28 + PB_UNIT, 592 + PB_UNIT, 364 - PB_UNIT * 2, 124 - PB_UNIT * 2, C_BODY
+    Set rg = m_cv.Txt("pb_np_text", 40, 600, 340, 108, "", 11, C_TEXT, False, xlLeft, False)
+    With rg
+        .ShrinkToFit = False
+        .WrapText = True
+        .VerticalAlignment = xlTop
+        .Interior.Color = C_BODY
+        ' 既定の書式のままだと「1-2」が日付、「007」が 7 に化け、次のティックが
+        ' 「セルが編集された」と誤読して、化けた文字列を相手へ書き戻す。
+        .NumberFormat = "@"
+    End With
+    m_frameOn = C_LINE2
+
+    m_cv.Txt "pb_get", 28, 724, 132, 16, "← GetValue --:--:--", 10, C_SUB, False, xlLeft, True
+    BuildDots
+End Sub
+
+Private Sub BuildDots()
+    Dim i As Long
+    For i = 0 To PB_DOTS - 1
+        m_cv.Fill 166 + i * 29, 726, 27, 8, C_LINE
+    Next i
+    m_cv.NameIt "pb_dots", m_cv.Cel(166, 726, PB_DOTS * 29 - 2, 8)
+    m_dotShown = -1
+End Sub
+
+' 円周率ベンチのカード。FE / BE / 表示用 Excel の状態、Temp のレーン、桁の盤、
+' 経過と桁数、実行ボタン 1 つ。
+Private Sub BuildBenchCard()
+    Dim i As Long
+    Dim lx As Long
+    Dim ly As Long
+
+    m_cv.CardBox 418, 528, 380, 224
+    m_cv.Txt "", 432, 540, 120, 20, "円周率ベンチ", 11, C_KEY, True, xlLeft, True
+    ' 桁の色見本。盤のランプ 1 つが 1 桁で、桁の値がそのまま色になる。
+    m_cv.Txt "", 580, 541, 12, 13, "0", 9, C_SUB, False, xlLeft, True
+    For i = 0 To 9
+        m_cv.Fill 596 + i * 6, 544, 6, 8, LampColor(i)
+    Next i
+    m_cv.Txt "", 660, 541, 12, 13, "9", 9, C_SUB, False, xlLeft, True
+    m_cv.Txt "", 676, 541, 108, 13, "%TEMP%\pixelbridge\", 9, C_SUB, False, xlRight, True
+
+    m_cv.ProcBox "fe", 432, 564, 116, 32, "FE"
+    m_cv.ProcBox "be", 552, 564, 116, 32, "BE"
+    m_cv.ProcBox "disp", 672, 564, 112, 32, "表示"
+
+    m_cv.Txt "", 432, 604, 80, 13, "command.json", 9, C_SUB, False, xlLeft, True
+    m_cv.Fill 512, 610, 74, 2, C_LINE
+    m_cv.NameIt "pb_lane_out", m_cv.Cel(512, 610, 74, 2)
+    m_cv.Txt "", 588, 604, 12, 13, "→", 9, C_SUB, False, xlLeft, True
+    m_cv.Txt "", 612, 604, 12, 13, "←", 9, C_SUB, False, xlLeft, True
+    m_cv.Fill 626, 610, 74, 2, C_LINE
+    m_cv.NameIt "pb_lane_in", m_cv.Cel(626, 610, 74, 2)
+    m_cv.Txt "", 704, 604, 80, 13, "progress.json", 9, C_SUB, False, xlRight, True
+
+    ' 桁の盤。枠と札は行を分ける（結合セルは 1 セル塗られただけで全体が潰れる）。
+    m_cv.Fill 432, 624, 352, 64, C_PANEL
+    lx = 432 + (352 - LAMP_COLS * LAMP_PX) \ 2
+    ly = 624 + (64 - LAMP_ROWS * LAMP_PX) \ 2
+    m_cv.Fill lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX, C_BODY
+    m_cv.NameIt "pb_lamps", m_cv.Cel(lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX)
+    m_cv.Txt "pb_jobstat", 432, 692, 352, 16, "待機", 10, C_SUB, False, xlLeft, True
+
+    RegisterButton "runpi", m_cv.Button("runpi", 432, 712, 352, 28, "円周率計算", _
+        "非表示の別プロセス Excel が 15 秒だけ円周率を計算し、その桁を表示用 Excel へ流します（Ctrl+Shift+P）", 1, 11)
+End Sub
+
+Private Sub BuildFooter()
+    m_cv.Fill 2, 764, 808, 46, C_BODY
+    m_cv.Fill 2, 764, 808, PB_UNIT, C_LINE
+    m_cv.Txt "", 14, 780, 40, 16, "ONKEY", 10, C_SUB, False, xlLeft, True
+    ' 札の幅は中身の実寸から取る。狭いと末尾の字が枠の外で切れる。
+    m_cv.Chip 56, 776, 124, "^+M 同期 入 / 切"
+    m_cv.Chip 184, 776, 116, "^+P 円周率計算"
+    m_cv.Txt "pb_meta1", 420, 780, 240, 16, "", 10, C_SUB, False, xlRight, True
+    m_cv.Txt "pb_meta2", 668, 780, 130, 16, "", 10, C_SUB, False, xlRight, True
+End Sub
+
+'==============================================================================
+' ボタンの台帳
+'==============================================================================
+Private Sub RegisterButton(ByVal key As String, ByVal rg As Range)
+    If m_btnN >= PB_MAXBTN Then Exit Sub
+    m_btnKey(m_btnN) = key
+    m_btnCell(m_btnN) = rg.Cells(1, 1).Address
+    m_btnN = m_btnN + 1
+End Sub
+
+' 選択されたセルがボタンなら、その識別子。違えば空。
+Public Function ButtonKeyAt(ByVal addr As String) As String
+    Dim i As Long
+    For i = 0 To m_btnN - 1
+        If m_btnCell(i) = addr Then
+            ButtonKeyAt = m_btnKey(i)
+            Exit Function
+        End If
+    Next i
+End Function
+
+Public Function InMap(ByVal c As Range) As Boolean
+    Dim mp As Range
+    On Error Resume Next
+    Set mp = m_cv.RangeOf("pb_map")
+    If mp Is Nothing Then Exit Function
+    If c.Row >= mp.Row And c.Row < mp.Row + mp.Rows.Count Then
+        If c.Column >= mp.Column And c.Column < mp.Column + mp.Columns.Count Then
+            InMap = True
+        End If
+    End If
+End Function
+
+'==============================================================================
+' 毎ティックの塗り替え
+'==============================================================================
+Public Sub PaintHeader(ByVal syncOn As Boolean, ByVal startAt As Double, ByVal polls As Long)
+    Dim s As Double
+    Dim mm As Long
+
+    If syncOn Then
+        m_cv.SetFillOf "pb_lamp", C_LAMP
+    Else
+        m_cv.SetFillOf "pb_lamp", C_OFFLAMP
+    End If
+    s = ElapsedSince(startAt)
+    mm = Int(s) \ 60
+    m_cv.SetTxt "pb_uptime", Format$(mm, "00") & ":" & Format$(Int(s) Mod 60, "00")
+    If syncOn Then
+        m_cv.SetTxt "pb_status", "同期中 poll " & polls
+    Else
+        m_cv.SetTxt "pb_status", "停止中"
+    End If
+End Sub
+
+Public Sub PaintFooter()
+    m_cv.SetTxt "pb_meta1", "1 セル = " & PB_UNIT & "px ･ " & _
+        IIf(PB_UNIT >= 4, "角丸なし", "角丸 " & (8 \ PB_UNIT) & " セル")
+    m_cv.SetTxt "pb_meta2", "進捗盤 = " & (LAMP_COLS * LAMP_PX \ PB_UNIT) & "×" & _
+        (LAMP_ROWS * LAMP_PX \ PB_UNIT) & " セル"
+End Sub
+
+' ドット列は「同期が生きている」表示。毎ティック 1 つ進む。
+Public Sub PaintDots(ByVal syncOn As Boolean)
+    Dim rg As Range
+    Dim i As Long
+    Dim x As Long
+    Dim y As Long
+
+    If Not syncOn Then Exit Sub
+    m_dotAt = (m_dotAt + 1) Mod PB_DOTS
+    If m_dotAt = m_dotShown Then Exit Sub
+    On Error Resume Next
+    Set rg = m_cv.RangeOf("pb_dots")
+    If rg Is Nothing Then Exit Sub
+    x = PxOfCol(rg.Column)
+    y = PxOfRow(rg.Row)
+    For i = 0 To PB_DOTS - 1
+        m_cv.Fill x + i * 29, y, 27, 8, IIf(i <= m_dotAt, C_OK, C_LINE)
+    Next i
+    m_dotShown = m_dotAt
+End Sub
+
+' 入力面の枠。フォーカスが相手にあるときだけ色を変える。帯だけ塗り替え、
+' 変わっていなければ何もしない。
+Public Sub SetFrameFocused(ByVal focused As Boolean)
+    Dim c As Long
+    Dim rg As Range
+    Dim x As Long, y As Long, w As Long, h As Long
+    c = IIf(focused, C_KEY, C_LINE2)
+    If m_frameOn = c Then Exit Sub
+    m_frameOn = c
+    On Error Resume Next
+    Set rg = m_cv.RangeOf("pb_np_frame")
+    If rg Is Nothing Then Exit Sub
+    x = PxOfCol(rg.Column): y = PxOfRow(rg.Row)
+    w = rg.Columns.Count * PB_UNIT: h = rg.Rows.Count * PB_UNIT
+    m_cv.Fill x, y, w, PB_UNIT, c
+    m_cv.Fill x, y + h - PB_UNIT, w, PB_UNIT, c
+    m_cv.Fill x, y, PB_UNIT, h, c
+    m_cv.Fill x + w - PB_UNIT, y, PB_UNIT, h, c
+End Sub
+
+Public Sub SetText(ByVal nm As String, ByVal s As String)
+    m_cv.SetTxt nm, s
+End Sub
+
+Public Sub Note(ByVal s As String)
+    m_cv.SetTxt "pb_drag", s
+End Sub
+
+Public Sub Flash(ByVal nm As String)
+    m_cv.SetFillOf nm, C_KEY
+End Sub
+
+Public Sub Unflash(ByVal nm As String)
+    m_cv.SetFillOf nm, C_LINE
+End Sub
+
+Public Sub InvalidateMap()
+    m_mapSig = ""
+End Sub
+
+'==============================================================================
+' ミニマップ
+'==============================================================================
+' 盤の中のミニマップの矩形と、画面 → ミニマップの縮尺。
+Public Sub MapGeom(ByRef mx As Long, ByRef my As Long, ByRef mw As Long, ByRef mh As Long, _
+                   ByRef sc As Double, ByRef ox As Long, ByRef oy As Long, _
+                   ByVal scrW As Long, ByVal scrH As Long)
+    Dim mp As Range
+    sc = 0
+    On Error Resume Next
+    Set mp = m_cv.RangeOf("pb_map")
+    If mp Is Nothing Then Exit Sub
+    mx = PxOfCol(mp.Column): my = PxOfRow(mp.Row)
+    mw = mp.Columns.Count * PB_UNIT: mh = mp.Rows.Count * PB_UNIT
+    If scrW <= 0 Or scrH <= 0 Then Exit Sub
+    sc = mw / scrW
+    If mh / scrH < sc Then sc = mh / scrH
+    ox = mx + (mw - CLng(scrW * sc)) \ 2
+    oy = my + (mh - CLng(scrH * sc)) \ 2
+End Sub
+
+Public Sub PaintMiniMap(ByVal wins As PbWindows, ByVal uia As PbUia)
+    Dim mx As Long, my As Long, mw As Long, mh As Long
+    Dim ox As Long, oy As Long
+    Dim sc As Double
+    Dim sig As String
+    Dim i As Long
+    Dim x1 As Long, y1 As Long, x2 As Long, y2 As Long
+    Dim edge As Long, face As Long, barC As Long
+    Dim cx1 As Long, cy1 As Long, cx2 As Long, cy2 As Long
+
+    On Error Resume Next
+    If wins.Count = 0 Then Exit Sub
+    sig = wins.Signature
+    If sig = m_mapSig Then Exit Sub
+    m_mapSig = sig
+
+    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    If sc <= 0 Then Exit Sub
+
+    m_cv.SetTxt "pb_res", uia.ScreenWidth & "×" & uia.ScreenHeight & " 自動判定"
+    m_cv.SetTxt "pb_scale", "×" & Format$(sc, "0.00") & " ･ " & _
+        CLng(uia.ScreenWidth * sc) & "×" & CLng(uia.ScreenHeight * sc)
+
+    m_cv.Fill mx, my, mw, mh, C_PANEL
+    cx1 = ox: cy1 = oy
+    cx2 = ox + CLng(uia.ScreenWidth * sc)
+    cy2 = oy + CLng(uia.ScreenHeight * sc)
+    m_cv.Fill cx1, cy1, cx2 - cx1, cy2 - cy1, C_BODY
+
+    For i = wins.Count - 1 To 0 Step -1
+        x1 = ox + CLng((wins.L(i) - uia.ScreenLeft) * sc)
+        y1 = oy + CLng((wins.T(i) - uia.ScreenTop) * sc)
+        x2 = ox + CLng((wins.R(i) - uia.ScreenLeft) * sc)
+        y2 = oy + CLng((wins.B(i) - uia.ScreenTop) * sc)
+        ' 画面の外へ出ている分は切り取る（切らないと隣のカードまで塗る）
+        If x1 < cx1 Then x1 = cx1
+        If y1 < cy1 Then y1 = cy1
+        If x2 > cx2 Then x2 = cx2
+        If y2 > cy2 Then y2 = cy2
+        If x2 - x1 > 20 And y2 - y1 > 20 Then
+            ' 操作できる窓（メモ帳）を強調する。Excel は固定なので添え物。
+            If wins.IsNotepad(i) Then
+                edge = C_KEY: face = C_SOFT: barC = C_KEY
+            Else
+                edge = C_WINOTHER: face = C_BODY: barC = C_SUB
+            End If
+            m_cv.Fill x1, y1, x2 - x1, y2 - y1, edge
+            m_cv.Fill x1 + PB_UNIT, y1 + PB_UNIT, x2 - x1 - PB_UNIT * 2, y2 - y1 - PB_UNIT * 2, face
+            m_cv.Fill x1 + PB_UNIT, y1 + PB_UNIT, x2 - x1 - PB_UNIT * 2, 14, barC
+        End If
+    Next i
+End Sub
+
+' ミニマップのセル → 画面の点。
+Public Sub CellToScreen(ByVal c As Range, ByRef px As Long, ByRef py As Long, ByVal uia As PbUia)
+    Dim mx As Long, my As Long, mw As Long, mh As Long
+    Dim ox As Long, oy As Long
+    Dim sc As Double
+    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    If sc <= 0 Then Exit Sub
+    px = uia.ScreenLeft + CLng((PxOfCol(c.Column) - ox) / sc)
+    py = uia.ScreenTop + CLng((PxOfRow(c.Row) - oy) / sc)
+End Sub
+
+' ミニマップの選択範囲 → 画面の矩形。
+Public Function RangeToScreen(ByVal rg As Range, ByRef x1 As Long, ByRef y1 As Long, _
+                              ByRef x2 As Long, ByRef y2 As Long, ByVal uia As PbUia) As Boolean
+    Dim mx As Long, my As Long, mw As Long, mh As Long
+    Dim ox As Long, oy As Long
+    Dim sc As Double
+    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    If sc <= 0 Then Exit Function
+    x1 = uia.ScreenLeft + CLng((PxOfCol(rg.Column) - ox) / sc)
+    y1 = uia.ScreenTop + CLng((PxOfRow(rg.Row) - oy) / sc)
+    x2 = uia.ScreenLeft + CLng((PxOfCol(rg.Column + rg.Columns.Count) - ox) / sc)
+    y2 = uia.ScreenTop + CLng((PxOfRow(rg.Row + rg.Rows.Count) - oy) / sc)
+    RangeToScreen = True
+End Function
+
+' ElementFromPoint の実演。その点にある窓の素性を出すだけで、動かす相手を
+' 選ぶ操作ではない（相手は常につないだメモ帳 1 枚）。
+Public Sub ShowPointInfo(ByVal idx As Long, ByVal wins As PbWindows, ByVal np As PbNotepad)
+    Dim tp As UIAutomationClient.IUIAutomationTransformPattern
+    Dim canMove As String
+    On Error GoTo Failed
+    If idx < 0 Then
+        m_cv.SetTxt "pb_pt_win", "その点に窓はありません"
+        m_cv.SetTxt "pb_pt_rect", "―"
+        Exit Sub
+    End If
+    m_cv.SetTxt "pb_pt_win", Left$(wins.Label(idx), 30) & " ･ " & _
+        IIf(wins.IsNotepad(idx), "Notepad", "XLMAIN") & " ･ pid " & wins.PidOf(idx)
+    canMove = "―"
+    If Not wins.IsNotepad(idx) Then
+        canMove = "固定（起動時に画面の左半分へ配置）"
+    ElseIf Not np.Element Is Nothing Then
+        Set tp = np.Element.GetCurrentPattern(UIA_TransformPatternId)
+        If tp Is Nothing Then
+            canMove = "False（TransformPattern なし）"
+        Else
+            canMove = "Move " & CStr(CBool(tp.CurrentCanMove)) & _
+                      " / Resize " & CStr(CBool(tp.CurrentCanResize))
+        End If
+    End If
+    m_cv.SetTxt "pb_pt_rect", wins.L(idx) & ", " & wins.T(idx) & " ･ " & _
+        (wins.R(idx) - wins.L(idx)) & "×" & (wins.B(idx) - wins.T(idx)) & " ･ " & canMove
+    Exit Sub
+Failed:
+    m_cv.SetTxt "pb_pt_rect", "―"
+End Sub
+
+Public Sub ShowPointXY(ByVal px As Long, ByVal py As Long)
+    m_cv.SetTxt "pb_pt_xy", "PT " & px & ", " & py
+End Sub
+
+'==============================================================================
+' 桁の盤
+'==============================================================================
+Public Sub ClearLamps()
+    Dim rg As Range
+    On Error Resume Next
+    Set rg = m_cv.RangeOf("pb_lamps")
+    If rg Is Nothing Then Exit Sub
+    m_cv.Fill PxOfCol(rg.Column), PxOfRow(rg.Row), _
+              LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX, C_BODY
+    m_lampShown = 0
+End Sub
+
+' ランプ 1 つが 1 桁。桁の値がそのまま色になる（0 = 薄い、9 = 濃い）。
+' 既に塗ったところは触らない（毎ティック全部塗ると 1 秒に収まらない）。
+Public Sub PaintDigits(ByVal dec As String, ByVal shown As Long)
+    Dim rg As Range
+    Dim lx As Long
+    Dim ly As Long
+    Dim i As Long
+    Dim want As Long
+
+    On Error Resume Next
+    Set rg = m_cv.RangeOf("pb_lamps")
+    If rg Is Nothing Then Exit Sub
+    lx = PxOfCol(rg.Column)
+    ly = PxOfRow(rg.Row)
+    want = shown
+    If want > LAMP_N Then want = LAMP_N
+    For i = m_lampShown To want - 1
+        m_cv.Fill lx + (i Mod LAMP_COLS) * LAMP_PX, ly + (i \ LAMP_COLS) * LAMP_PX, _
+                  LAMP_PX, LAMP_PX, LampColor(Val(Mid$(dec, i + 1, 1)))
+    Next i
+    If want > m_lampShown Then m_lampShown = want
+End Sub
