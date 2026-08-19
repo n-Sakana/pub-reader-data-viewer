@@ -30,6 +30,12 @@ Attribute VB_Exposed = False
 ' 3. **BE 用のコピーは画面を作る前に取る。** 組み上がった盤面ごと複製すると
 '    94KB が 557KB になり、その読み込みで FE が詰まる。
 '
+' 4. **状態の文字列は 3 文字まで。** 盤面の状態欄（ProcBox の右側）は幅 54 設計
+'    px の結合セルで、右揃え。溢れた分は隣へ流れず **先頭から** 切れる。実測：
+'    「待機 非表示」は先頭の「待」が欠けて「寺機 非表示」に見えていた（3 文字の
+'    「動作中」は余裕をもって収まる）。詳しい事情は記録・ScreenTip・ジョブの行が
+'    持つので、ここは短い名札に徹する。
+'
 ' 終わらせるときは quit をファイルで送るだけ。プロセスは殺さない。返事（bye）
 ' は次のティック以降で待つ。ここでブロックすると FE が数秒固まる。
 '
@@ -108,12 +114,12 @@ Public Function Start(Optional ByVal reuseCopy As Boolean = False) As Boolean
     Set beApp = Nothing
     m_started = True
     m_stopping = False
-    m_status = "待機 非表示"
+    m_status = "待機"
     Start = True
     Exit Function
 Failed:
     m_started = False
-    m_status = "失敗 " & Err.Number
+    m_status = "失敗"
     m_log.Note "be: FAILED " & Err.Number & " " & Err.Description
     Start = False
 End Function
@@ -142,7 +148,7 @@ Public Function PumpIdle() As Boolean
         ' 次のベンチで起こし直せるようにこちら側の印も倒す。
         If JVal(js, "state") = "bye" Then
             m_started = False
-            If Not m_stopping Then m_status = "自動終了"
+            If Not m_stopping Then m_status = "終了"
         End If
     End If
 

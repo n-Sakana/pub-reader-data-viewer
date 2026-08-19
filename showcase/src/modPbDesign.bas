@@ -98,7 +98,6 @@ Public Const C_OK As Long = &H4B7A19
 Public Const C_LAMP As Long = &HA0E069
 Public Const C_OFFLAMP As Long = &HB3B3B3
 Public Const C_ERR As Long = &H2F2FD3
-Public Const C_ERRBG As Long = &HECECFD
 Public Const C_WINOTHER As Long = &H999999
 
 ' 計器の 2 色。**緑 = FE の時間（1 秒ごとの拍と経過）、青 = BE の成果（届いた
@@ -108,6 +107,11 @@ Public Const C_WINOTHER As Long = &H999999
 ' 読めるようになる。
 Public Const C_TICK As Long = C_OK
 Public Const C_DIGIT As Long = C_KEY
+
+' 同期の入 / 切のボタンだけが使う朱。エラーの色と同じ値をそのまま使う
+' （画面に出ている色は変えない、が owner の指示）。名前を分けてあるのは、
+' ここが「異常」ではなく「止める操作」を指しているため。
+Public Const C_SYNC As Long = C_ERR
 
 '--- セル番号 → 設計 px
 Public Function PxOfCol(ByVal colIdx As Long) As Long

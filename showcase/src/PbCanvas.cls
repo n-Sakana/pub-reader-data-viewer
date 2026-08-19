@@ -586,6 +586,18 @@ End Sub
 ' 押されたことは「そのセルが選択された」で知る。選択を戻すことはしない
 ' （1 回 2.4 秒かかるうえ、利用者のカーソルを勝手に動かすことになる）。
 ' 戻り値は札のセル範囲。押下の判定に使う住所は呼び出し側が控える。
+'
+' 形は 2 つだけ。
+'
+'   塗り（角丸）… 実行するボタン（円周率計算・同期の入 / 切）。**角丸 1 枚で
+'                  描く。** 以前は「縁の角丸」と「面の角丸」を重ねていたが、
+'                  それだと曲線が外と内に 2 本並び、粒度によってはそのあいだが
+'                  途切れて見える。塗りなら曲線は 1 本で、角のセルは下地と
+'                  混色されるので 1 / 2 / 4px のどれでも滑らかに閉じる。
+'   枠（直角）  … 窓を動かすボタン（最大化・最小化）。**角を丸めない。**
+'                  半径 6 設計 px は 1 セル 4px では 1.5 セルしか無く、細い枠と
+'                  組み合わせると角が欠けて見える。直角なら Fill がそのまま
+'                  セル境界に載るので、どの粒度でも隙間なく閉じる。
 Public Function Button(ByVal key As String, ByVal x As Long, ByVal y As Long, _
                        ByVal w As Long, ByVal h As Long, ByVal caption As String, _
                        ByVal tip As String, ByVal style As Long, _
@@ -593,16 +605,22 @@ Public Function Button(ByVal key As String, ByVal x As Long, ByVal y As Long, _
     Dim rg As Range
     Dim faceC As Long
     Dim textC As Long
-    Dim edgeC As Long
 
     Select Case style
-        Case 1: faceC = C_KEY: textC = C_ONBAND: edgeC = C_KEY        ' 主
-        Case 2: faceC = C_ERRBG: textC = C_ERR: edgeC = C_ERR         ' 停止
-        Case Else: faceC = C_BODY: textC = C_KEY: edgeC = C_KEY       ' 副
+        Case 1                              ' 実行：青の塗り＋白抜き
+            faceC = C_KEY
+            textC = C_ONBAND
+            RoundRect x, y, w, h, 6, faceC, C_BODY
+        Case 2                              ' 同期の入 / 切：朱の塗り＋白抜き
+            faceC = C_SYNC
+            textC = C_ONBAND
+            RoundRect x, y, w, h, 6, faceC, C_BODY
+        Case Else                           ' 窓の操作：枠だけの直角
+            faceC = C_BODY
+            textC = C_KEY
+            Fill x, y, w, h, C_KEY
+            Fill x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, faceC
     End Select
-    RoundRect x, y, w, h, 6, edgeC, C_BODY
-    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, _
-              6 - PB_UNIT, faceC, edgeC
     Set rg = Txt("pb_btn_" & key, x + PB_UNIT * 2, y + PB_UNIT, _
                  w - PB_UNIT * 4, h - PB_UNIT * 2, caption, fs, textC, True, xlCenter, False)
     ' 小さいピッチでは名目のポイント数より実描画が広くなり、中央揃えの札は
