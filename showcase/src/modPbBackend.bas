@@ -138,7 +138,12 @@ Private Sub BePiRun(ByVal secs As Double, ByVal stopSeq As Long)
     nines = 0
     first = True
     out = ""
-    chunk = n \ 60
+    ' 何桁ごとに桁と進捗を置くか。**FE は 1 秒に 1 回しか読まないので、ここが
+    ' 1 秒あたり 2 回を割ると、FE から見た「その 1 秒に届いた桁」が 1 回ぶんか
+    ' 2 回ぶんかで揺れる。** 実測：n\60（1 秒あたり 1.7 回）だと計器の目盛が
+    ' 高い・低いを交互に繰り返した。1 秒あたり 5 回まで上げるとその折り返しは
+    ' 消え、増えた書き込みの損は 30 秒のうち 1% 未満で済む。
+    chunk = n \ 180
     If chunk < 5 Then chunk = 5
     t0 = Timer
     lastDv = t0

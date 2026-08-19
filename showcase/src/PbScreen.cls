@@ -40,7 +40,13 @@ Private m_mapSig As String
 Private m_dotAt As Long
 Private m_dotShown As Long
 Private m_frameOn As Long
-Private m_lampShown As Long
+
+'--- 30 秒の計器の途中経過
+Private m_tlDone As Long          ' 確定させた目盛の番号（-1 = まだ無い）
+Private m_tlHead As Long          ' 走査点がいまいる目盛
+Private m_tlStub As Long          ' 根だけ立てた目盛
+Private m_tlShown As Long         ' 直前の目盛の切れ目で数えた表示済み桁
+Private m_tlBase As Long          ' 下線の長さ（設計 px）
 
 Public Sub Init(ByVal canvas As PbCanvas, ByVal logger As PbLog)
     Set m_cv = canvas
@@ -164,18 +170,8 @@ End Sub
 ' 円周率ベンチのカード。FE / BE / 表示用 Excel の状態、Temp のレーン、桁の盤、
 ' 経過と桁数、実行ボタン 1 つ。
 Private Sub BuildBenchCard()
-    Dim i As Long
-    Dim lx As Long
-    Dim ly As Long
-
     m_cv.CardBox 418, 528, 380, 224
     m_cv.Txt "", 432, 540, 120, 20, "円周率ベンチ", 11, C_KEY, True, xlLeft, True
-    ' 桁の色見本。盤のランプ 1 つが 1 桁で、桁の値がそのまま色になる。
-    m_cv.Txt "", 580, 541, 12, 13, "0", 9, C_SUB, False, xlLeft, True
-    For i = 0 To 9
-        m_cv.Fill 596 + i * 6, 544, 6, 8, LampColor(i)
-    Next i
-    m_cv.Txt "", 660, 541, 12, 13, "9", 9, C_SUB, False, xlLeft, True
     m_cv.Txt "", 676, 541, 108, 13, "%TEMP%\pixelbridge\", 9, C_SUB, False, xlRight, True
 
     m_cv.ProcBox "fe", 432, 564, 116, 32, "FE"
@@ -191,16 +187,13 @@ Private Sub BuildBenchCard()
     m_cv.NameIt "pb_lane_in", m_cv.Cel(626, 610, 74, 2)
     m_cv.Txt "", 704, 604, 80, 13, "progress.json", 9, C_SUB, False, xlRight, True
 
-    ' 桁の盤。枠と札は行を分ける（結合セルは 1 セル塗られただけで全体が潰れる）。
-    m_cv.Fill 432, 624, 352, 64, C_PANEL
-    lx = 432 + (352 - LAMP_COLS * LAMP_PX) \ 2
-    ly = 624 + (64 - LAMP_ROWS * LAMP_PX) \ 2
-    m_cv.Fill lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX, C_BODY
-    m_cv.NameIt "pb_lamps", m_cv.Cel(lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX)
-    m_cv.Txt "pb_jobstat", 432, 692, 352, 16, "待機", 10, C_SUB, False, xlLeft, True
+    ' 30 秒の計器。枠と札は行を分ける（結合セルは 1 セル塗られただけで全体が潰れる）。
+    BuildTimeline
+    m_cv.Txt "pb_jobstat", 432, 692, 352, 16, _
+        "待機 ･ 円周率計算を押すと " & CLng(PB_BENCHSECS) & " 秒", 10, C_SUB, False, xlLeft, True
 
     RegisterButton "runpi", m_cv.Button("runpi", 432, 712, 352, 28, "円周率計算", _
-        "非表示の別プロセス Excel が 15 秒だけ円周率を計算し、その桁を表示用 Excel へ流します（Ctrl+Shift+P）", 1, 11)
+        "非表示の別プロセス Excel が 30 秒だけ円周率を計算し、その桁を表示用 Excel へ流します（Ctrl+Shift+P）", 1, 11)
 End Sub
 
 Private Sub BuildFooter()
@@ -210,8 +203,8 @@ Private Sub BuildFooter()
     ' 札の幅は中身の実寸から取る。狭いと末尾の字が枠の外で切れる。
     m_cv.Chip 56, 776, 124, "^+M 同期 入 / 切"
     m_cv.Chip 184, 776, 116, "^+P 円周率計算"
-    m_cv.Txt "pb_meta1", 420, 780, 240, 16, "", 10, C_SUB, False, xlRight, True
-    m_cv.Txt "pb_meta2", 668, 780, 130, 16, "", 10, C_SUB, False, xlRight, True
+    m_cv.Txt "pb_meta1", 400, 780, 236, 16, "", 10, C_SUB, False, xlRight, True
+    m_cv.Txt "pb_meta2", 644, 780, 154, 16, "", 10, C_SUB, False, xlRight, True
 End Sub
 
 '==============================================================================
@@ -270,10 +263,10 @@ Public Sub PaintHeader(ByVal syncOn As Boolean, ByVal startAt As Double, ByVal p
 End Sub
 
 Public Sub PaintFooter()
-    m_cv.SetTxt "pb_meta1", "1 セル = " & PB_UNIT & "px ･ " & _
-        IIf(PB_UNIT >= 4, "角丸なし", "角丸 " & (8 \ PB_UNIT) & " セル")
-    m_cv.SetTxt "pb_meta2", "進捗盤 = " & (LAMP_COLS * LAMP_PX \ PB_UNIT) & "×" & _
-        (LAMP_ROWS * LAMP_PX \ PB_UNIT) & " セル"
+    m_cv.SetTxt "pb_meta1", "1 セル = " & PB_UNIT & "px ･ 角丸 8px = " & _
+        (8 \ PB_UNIT) & " セル（混色）"
+    m_cv.SetTxt "pb_meta2", "計器 = " & TL_COLS & " 列 ･ 高さ " & _
+        (TL_TALL \ PB_UNIT) & " セル"
 End Sub
 
 ' ドット列は「同期が生きている」表示。毎ティック 1 つ進む。
@@ -474,37 +467,137 @@ Public Sub ShowPointXY(ByVal px As Long, ByVal py As Long)
 End Sub
 
 '==============================================================================
-' 桁の盤
+' 30 秒の計器
+'
+' ここがこのショーケースの主張そのものを描く。**BE が計算に潜っているあいだも
+' FE は 1 秒ごとに目を覚まし、桁を運び、画面を描き替えている。** それを 3 つの
+' 図で見せる。
+'
+'   帯 30 列    1 列が 1 秒。**床（緑）はその秒に FE がティックした証拠で、
+'               その上に積む山（青）がその秒に表示用 Excel まで届いた桁。**
+'               1 桁も届かなかった秒でも床は立つので、緑は途切れない。列は
+'               隙間なく接して並べる（離すと稜線ではなく粒の集まりに見える）。
+'   走査点      いま塗っている列の真上に出て、1 秒ごとに右へ 1 列動く（緑）。
+'   下線        経過 / 全体（緑）。待機は空、実行で伸び、完了で満ちる。
+'
+' 色は 2 つだけ。**緑 = FE の時間、青 = BE の成果。** BE が計算に潜っている
+' あいだも緑が 1 秒ごとに進み続けることが、このショーケースの主張そのもの。
+'
+' 前の版はここに円周率の桁の値を色にした 67×12 のランプ盤を置いていた。実測で
+' 5,000 桁級が届くので **先頭 804 桁で埋まりきり、開始 2～3 秒で静止していた**。
+' 残りの時間はただのモザイクで、動いていないので「FE が生きている」ことも
+' 伝わらない。数える対象（届いた桁）は同じまま、見せ方だけを入れ替えてある。
+'
+' 毎ティックで塗り替えるのは、確定した目盛 1 本・走査点・下線の先端だけ。
+' 盤ぜんぶを塗り直さない（1 秒に収めるための約束）。
 '==============================================================================
-Public Sub ClearLamps()
-    Dim rg As Range
-    On Error Resume Next
-    Set rg = m_cv.RangeOf("pb_lamps")
-    If rg Is Nothing Then Exit Sub
-    m_cv.Fill PxOfCol(rg.Column), PxOfRow(rg.Row), _
-              LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX, C_BODY
-    m_lampShown = 0
+Private Sub BuildTimeline()
+    m_cv.Fill TL_X, TL_Y, TL_W, TL_H, C_PANEL
+    m_cv.NameIt "pb_tl", m_cv.Cel(TL_X, TL_Y, TL_W, TL_H)
+    ResetTimeline
 End Sub
 
-' ランプ 1 つが 1 桁。桁の値がそのまま色になる（0 = 薄い、9 = 濃い）。
-' 既に塗ったところは触らない（毎ティック全部塗ると 1 秒に収まらない）。
-Public Sub PaintDigits(ByVal dec As String, ByVal shown As Long)
-    Dim rg As Range
-    Dim lx As Long
-    Dim ly As Long
+' 待機の姿へ戻す。帯は空のまま、走査点も下線も消す。
+Public Sub ResetTimeline()
+    On Error Resume Next
+    m_cv.Fill TL_X, TL_HEADY, TL_W, TL_HEADH, C_PANEL
+    m_cv.Fill TL_X, TL_TOP, TL_W, TL_TALL, C_LINE
+    m_cv.Fill TL_X, TL_BASEY, TL_W, TL_BASEH, C_LINE2
+    m_tlDone = -1
+    m_tlHead = -1
+    m_tlStub = -1
+    m_tlShown = 0
+    m_tlBase = 0
+End Sub
+
+Public Sub PaintTimeline(ByVal el As Double, ByVal shown As Long, ByVal target As Long)
+    Advance el, shown, target, False
+End Sub
+
+' 走り終わり。いまの目盛まで確定させ、走査点を消し、下線を結果の色にする。
+Public Sub FinishTimeline(ByVal el As Double, ByVal shown As Long, _
+                          ByVal target As Long, ByVal ok As Boolean)
+    On Error Resume Next
+    Advance el, shown, target, True
+    m_cv.Fill TL_X, TL_HEADY, TL_W, TL_HEADH, C_PANEL
+    m_tlHead = -1
+    m_tlBase = 0
+    PaintBase el, IIf(ok, C_TICK, C_ERR)
+End Sub
+
+Private Sub Advance(ByVal el As Double, ByVal shown As Long, ByVal target As Long, _
+                    ByVal closing As Boolean)
+    Dim cur As Long
+    Dim last As Long
     Dim i As Long
-    Dim want As Long
+    Dim d As Long
+    Dim n As Long
 
     On Error Resume Next
-    Set rg = m_cv.RangeOf("pb_lamps")
-    If rg Is Nothing Then Exit Sub
-    lx = PxOfCol(rg.Column)
-    ly = PxOfRow(rg.Row)
-    want = shown
-    If want > LAMP_N Then want = LAMP_N
-    For i = m_lampShown To want - 1
-        m_cv.Fill lx + (i Mod LAMP_COLS) * LAMP_PX, ly + (i \ LAMP_COLS) * LAMP_PX, _
-                  LAMP_PX, LAMP_PX, LampColor(Val(Mid$(dec, i + 1, 1)))
-    Next i
-    If want > m_lampShown Then m_lampShown = want
+    cur = Int(el)
+    If cur < 0 Then cur = 0
+    If cur > TL_COLS - 1 Then cur = TL_COLS - 1
+    ' 確定させるのは「終わった秒」まで。閉じるときだけ、いまの秒も確定させる。
+    last = cur - 1
+    If closing Then last = cur
+    n = last - m_tlDone
+    If n > 0 Then
+        d = shown - m_tlShown
+        If d < 0 Then d = 0
+        ' ティックが 1 秒より遅れて 2 目盛ぶん進むことがある。その間に届いた
+        ' 桁は目盛でならす（遅れた側だけ高くは見せない）。
+        For i = m_tlDone + 1 To last
+            DrawSlot i, d \ n, target
+        Next i
+        m_tlDone = last
+        m_tlShown = shown
+    End If
+    If Not closing Then
+        If cur > m_tlDone And cur <> m_tlStub Then
+            DrawSlot cur, 0, target        ' いまの秒は、まず根だけ
+            m_tlStub = cur
+        End If
+        MoveHead cur
+        PaintBase el, C_TICK
+    End If
+End Sub
+
+' 1 列ぶん。床（緑）は必ず置き、その上に「その 1 秒に届いた桁」の山（青）を
+' 積む。満杯の目安はベンチ全体の目標桁数を秒で割った値で、超えたぶんは頭打ち。
+' 隣の列と接しているので、床はつながって途切れない 1 本の線になる。
+Private Sub DrawSlot(ByVal i As Long, ByVal digits As Long, ByVal target As Long)
+    Dim h As Long
+    Dim w As Long
+    Dim nom As Double
+
+    If i < 0 Or i > TL_COLS - 1 Then Exit Sub
+    w = TlSlotW(i)
+    m_cv.Fill TlSlotX(i), TL_TOP + TL_TALL - TL_STUB, w, TL_STUB, C_TICK
+    If target <= 0 Then Exit Sub
+    nom = target / TL_COLS
+    If nom <= 0 Then Exit Sub
+    h = SnapGrid(CLng((TL_TALL - TL_STUB) * MinD(1, digits / nom)))
+    If h > TL_TALL - TL_STUB Then h = TL_TALL - TL_STUB
+    If h > 0 Then m_cv.Fill TlSlotX(i), TL_TOP + TL_TALL - TL_STUB - h, w, h, C_DIGIT
+End Sub
+
+' 走査点。いま塗っている列の真上に、その列と同じ幅で出る。1 秒ごとに右へ
+' 1 列動くので、動いていること自体が FE が生きている証拠になる。
+Private Sub MoveHead(ByVal i As Long)
+    If i = m_tlHead Then Exit Sub
+    If m_tlHead >= 0 Then
+        m_cv.Fill TlSlotX(m_tlHead), TL_HEADY, TlSlotW(m_tlHead), TL_HEADH, C_PANEL
+    End If
+    m_cv.Fill TlSlotX(i), TL_HEADY, TlSlotW(i), TL_HEADH, C_TICK
+    m_tlHead = i
+End Sub
+
+' 下線は経過そのもの。待機は空、実行で伸び、完了で満ちる。
+Private Sub PaintBase(ByVal el As Double, ByVal c As Long)
+    Dim w As Long
+    w = SnapGrid(CLng(TL_W * MinD(1, el / PB_BENCHSECS)))
+    If w > TL_W Then w = TL_W
+    If w <= m_tlBase Then Exit Sub
+    m_cv.Fill TL_X, TL_BASEY, w, TL_BASEH, c
+    m_tlBase = w
 End Sub

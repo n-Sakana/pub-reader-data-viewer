@@ -381,28 +381,128 @@ Public Sub Fill(ByVal x As Long, ByVal y As Long, ByVal w As Long, _
     m_log.Span "fill " & x & "," & y & " " & w & "x" & h, t0
 End Sub
 
+' 角丸。**セルは 1 つの色しか持てないので、角は「被覆率で混ぜる」＝セル格子の
+' アンチエイリアスで作る。** 角にかかるセル 1 つずつについて「その面積のうち
+' 何割が図形の内側か」を出し、下地の色と前景の色をその比で混ぜて書く。だから
+' 下地の色を引数で受け取る（何の上に置くのかを知らないと混ぜられない）。
+'
+' 1px ビルドでは 1 セル = 1 デバイス px なので、これはそのまま本物のピクセル
+' アンチエイリアスになる。4px ビルドでも角の 2×2 セルに 32% と 92% の中間色が
+' 出るので、落とせる画素が残らない粒度でも角は丸く見える。
+'
+' 直線部分は 3 枚の Fill で埋め、角の r × r だけをセル単位で見る。完全に内側の
+' セルは行ごとにまとめて 1 回で塗り、完全に外側のセルは触らない（下地がその
+' まま残るので書く必要がない）。1 セルずつ書くのは境目だけ。
 Public Sub RoundRect(ByVal x As Long, ByVal y As Long, ByVal w As Long, _
-                     ByVal h As Long, ByVal r As Long, ByVal c As Long)
-    Dim dy As Long
-    Dim ins As Long
-    r = RadFor(r)
+                     ByVal h As Long, ByVal r As Long, ByVal c As Long, _
+                     ByVal bg As Long)
+    Dim x2 As Long
+    Dim y2 As Long
+    If w <= 0 Or h <= 0 Then Exit Sub
+    ' 図形の縁をセルの境界へ寄せる。直線部分の Fill（Cel）と同じ丸め方でないと、
+    ' 角だけ別の位置で切れて縦の辺と食い違う（1 セルが 4 設計 px のとき顕著）。
+    x2 = ((x + w - 1) \ PB_UNIT + 1) * PB_UNIT
+    y2 = ((y + h - 1) \ PB_UNIT + 1) * PB_UNIT
+    x = (x \ PB_UNIT) * PB_UNIT
+    y = (y \ PB_UNIT) * PB_UNIT
+    w = x2 - x
+    h = y2 - y
     If r * 2 > h Then r = h \ 2
     If r * 2 > w Then r = w \ 2
     If r <= 0 Then
         Fill x, y, w, h, c
         Exit Sub
     End If
-    For dy = 0 To r - 1
-        ins = RadInset(r, dy)
-        Fill x + ins, y + dy, w - 2 * ins, 1, c
-        Fill x + ins, y + h - 1 - dy, w - 2 * ins, 1, c
-    Next dy
     Fill x, y + r, w, h - 2 * r, c
+    Fill x + r, y, w - 2 * r, r, c
+    Fill x + r, y + h - r, w - 2 * r, r, c
+    Corner x, y, w, h, r, c, bg, x, y
+    Corner x, y, w, h, r, c, bg, x + w - r, y
+    Corner x, y, w, h, r, c, bg, x, y + h - r
+    Corner x, y, w, h, r, c, bg, x + w - r, y + h - r
+End Sub
+
+' 角 1 つ。bx, by はその角の r × r の箱の左上。
+Private Sub Corner(ByVal x As Long, ByVal y As Long, ByVal w As Long, ByVal h As Long, _
+                   ByVal r As Long, ByVal c As Long, ByVal bg As Long, _
+                   ByVal bx As Long, ByVal by As Long)
+    Dim c1 As Long, c2 As Long, r1 As Long, r2 As Long
+    Dim ci As Long, ri As Long
+    Dim cov As Double
+    Dim runFrom As Long
+
+    c1 = bx \ PB_UNIT
+    c2 = (bx + r - 1) \ PB_UNIT
+    r1 = by \ PB_UNIT
+    r2 = (by + r - 1) \ PB_UNIT
+    For ri = r1 To r2
+        runFrom = -1
+        For ci = c1 To c2
+            cov = Coverage(ci * PB_UNIT, ri * PB_UNIT, x, y, w, h, r)
+            If cov > 0.999 Then
+                If runFrom < 0 Then runFrom = ci
+            Else
+                If runFrom >= 0 Then
+                    CellFill runFrom, ri, ci - 1, ri, c
+                    runFrom = -1
+                End If
+                If cov > 0.001 Then CellFill ci, ri, ci, ri, Blend(bg, c, cov)
+            End If
+        Next ci
+        If runFrom >= 0 Then CellFill runFrom, ri, c2, ri, c
+    Next ri
+End Sub
+
+' セル 1 つの面積のうち、角丸の内側にある割合（0～1）。y を細かく刻み、刻み
+' ごとに図形が占める x の区間をそのまま求めて足す（x 方向は近似しない）。
+Private Function Coverage(ByVal cx As Long, ByVal cy As Long, _
+                          ByVal x As Long, ByVal y As Long, _
+                          ByVal w As Long, ByVal h As Long, ByVal r As Long) As Double
+    Const NS As Long = 8
+    Dim i As Long
+    Dim py As Double
+    Dim dy As Double
+    Dim dx As Double
+    Dim q As Double
+    Dim a As Double
+    Dim b As Double
+    Dim acc As Double
+
+    For i = 0 To NS - 1
+        py = cy + (i + 0.5) * PB_UNIT / NS
+        If py >= y And py <= y + h Then
+            dy = 0
+            If py < y + r Then
+                dy = (y + r) - py
+            ElseIf py > y + h - r Then
+                dy = py - (y + h - r)
+            End If
+            If dy > r Then dy = r
+            q = r * r - dy * dy
+            If q < 0 Then q = 0
+            dx = r - Sqr(q)
+            a = x + dx
+            If cx > a Then a = cx
+            b = x + w - dx
+            If cx + PB_UNIT < b Then b = cx + PB_UNIT
+            If b > a Then acc = acc + (b - a)
+        End If
+    Next i
+    Coverage = acc / (NS * PB_UNIT)
+End Function
+
+' セル番号（0 起点）で直に塗る。角の混色は 1 セル単位なので、設計 px を
+' 経由するとそこでもう一度丸めが入って隣のセルへ漏れる。
+Private Sub CellFill(ByVal c1 As Long, ByVal r1 As Long, ByVal c2 As Long, _
+                     ByVal r2 As Long, ByVal c As Long)
+    m_dirty = True
+    m_ws.Range(m_ws.Cells(r1 + 1, c1 + 1), m_ws.Cells(r2 + 1, c2 + 1)).Interior.Color = c
 End Sub
 
 Public Sub CardBox(ByVal x As Long, ByVal y As Long, ByVal w As Long, ByVal h As Long)
-    RoundRect x, y, w, h, 8, C_LINE
-    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, 8 - PB_UNIT, C_BODY
+    RoundRect x, y, w, h, 8, C_LINE, C_BODY
+    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, _
+              8 - PB_UNIT, C_BODY, C_LINE
 End Sub
 
 ' 文字は結合セルで置く。結合セルは溢れた分を隣へ流さずそこで切るので、
@@ -500,8 +600,9 @@ Public Function Button(ByVal key As String, ByVal x As Long, ByVal y As Long, _
         Case 2: faceC = C_ERRBG: textC = C_ERR: edgeC = C_ERR         ' 停止
         Case Else: faceC = C_BODY: textC = C_KEY: edgeC = C_KEY       ' 副
     End Select
-    RoundRect x, y, w, h, 6, edgeC
-    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, 6 - PB_UNIT, faceC
+    RoundRect x, y, w, h, 6, edgeC, C_BODY
+    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, _
+              6 - PB_UNIT, faceC, edgeC
     Set rg = Txt("pb_btn_" & key, x + PB_UNIT * 2, y + PB_UNIT, _
                  w - PB_UNIT * 4, h - PB_UNIT * 2, caption, fs, textC, True, xlCenter, False)
     ' 小さいピッチでは名目のポイント数より実描画が広くなり、中央揃えの札は
@@ -531,8 +632,9 @@ End Sub
 
 Public Sub ProcBox(ByVal side As String, ByVal x As Long, ByVal y As Long, _
                    ByVal w As Long, ByVal h As Long, ByVal caption As String)
-    RoundRect x, y, w, h, 6, C_LINE
-    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, 6 - PB_UNIT, C_BODY
+    RoundRect x, y, w, h, 6, C_LINE, C_BODY
+    RoundRect x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, h - PB_UNIT * 2, _
+              6 - PB_UNIT, C_BODY, C_LINE
     Txt "", x + 10, y + 10, 40, 13, caption, 10, C_KEY, True, xlLeft, True
     Txt "pb_" & side & "_state", x + 52, y + 9, w - 62, 14, "待機", 10, C_SUB, False, xlRight, True
 End Sub

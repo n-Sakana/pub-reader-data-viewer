@@ -8,9 +8,9 @@ Attribute VB_Creatable = False
 Attribute VB_PredeclaredId = False
 Attribute VB_Exposed = False
 '==============================================================================
-' PbBenchmarkRun - 円周率ベンチ 1 回ぶん（15 秒）
+' PbBenchmarkRun - 円周率ベンチ 1 回ぶん（30 秒）
 '
-' 責務：配置と準備、15 秒の計測、桁の受け渡し、そして後始末。指示を送る口
+' 責務：配置と準備、30 秒の計測、桁の受け渡し、そして後始末。指示を送る口
 ' （Temp の JSON）、桁を映す表示用 Excel、数え方のどれもが「1 回の run」と
 ' 同じ寿命・同じ状態を共有するので、まとめて持つ。計算そのものは BE 側
 ' （modPbBackend）で、このクラスは 1 桁も計算しない。
@@ -21,15 +21,15 @@ Attribute VB_Exposed = False
 '
 ' 登場人物
 '   FE Excel     … 疑似ピクセルアプリ。1 秒ポンプで全部を回す
-'   BE Excel     … 別プロセス・非表示。15 秒だけ円周率を実際に計算する
+'   BE Excel     … 別プロセス・非表示。30 秒だけ円周率を実際に計算する
 '   表示用 Excel … BE とは別の、保存しない一時ブック。書くのは FE
 '   メモ帳       … つないでいる 1 枚
 '
 ' 数え方の約束
 '   「計算できた桁」と「表示できた桁」は別に数える。**正式な結果は後者。**
 '   内部で何桁進んでいても、表示用 Excel まで届いていない桁は数えない。
-'   そして 15 秒を越えたティックでは表示を足さない。終わりを見張るのは 1 秒
-'   ポンプなので、最後に数えられるのは 14 秒台のティックまでになる。
+'   そして 30 秒を越えたティックでは表示を足さない。終わりを見張るのは 1 秒
+'   ポンプなので、最後に数えられるのは 29 秒台のティックまでになる。
 '
 ' このクラスは BE のプロセスの中でも作られる。BE が使うのは Temp のやりとりの
 ' 部分だけなので、Init は記録係だけでも呼べるようにしてある。
@@ -49,11 +49,13 @@ Private m_seq As Long
 Private m_dispApp As Object
 Private m_dispBook As Object
 Private m_dispSheet As Object
+Private m_dispRow As Long        ' いちばん新しく書いた行（送りの判断に使う）
 
 '--- 走っている 1 回
 Private m_running As Boolean
 Private m_t0 As Double
 Private m_calc As Long           ' BE が計算した桁数（先頭の 3 を含む）
+Private m_target As Long         ' BE が「この秒数で届く」と決めた桁数（計器の目安）
 Private m_shown As Long          ' 表示用 Excel へ実際に書いた小数以下の桁数
 Private m_lastProg As String
 
@@ -279,6 +281,15 @@ Private Sub PrepareDisplaySheet()
         .Columns("A:J").ColumnWidth = 12
         .Rows(1).RowHeight = 24
     End With
+    ' 見出しの 3 行は凍らせる。桁は下へ伸びていくので、送ったときに何の画面
+    ' なのかが分からなくなるのを防ぐ。
+    With m_dispApp.ActiveWindow
+        .FreezePanes = False
+        .SplitColumn = 0
+        .SplitRow = PI_FREEZE
+        .FreezePanes = True
+    End With
+    m_dispRow = 0
     ' 桁は文字列で書くので「数値が文字列として保存されています」の緑三角が
     ' 全セルに出る。使い捨ての別プロセスなので、その Excel のチェックだけ切る
     ' （利用者の Excel の設定には触っていない）。
@@ -306,6 +317,30 @@ Public Sub WriteDisplayGroup(ByVal r As Long, ByVal c As Long, ByVal piece As St
     m_dispSheet.Cells(r, c).Value = "'" & piece
 End Sub
 
+' 書いた先を窓の中に保つ。**これが無いと、行は 1 秒に 2～3 行ずつ増えている
+' のに窓は最初の数行を映したままで、「何も起きていない」ようにしか見えない。**
+' いちばん新しい行が下端へ来るまで送るので、桁が届くたびに画面が上へ流れる。
+' 送るのは下のペインだけ（上の 3 行は凍らせてある）。
+Public Sub FollowDisplay(ByVal r As Long, ByVal shown As Long)
+    Dim pn As Object
+    Dim vis As Long
+    Dim topRow As Long
+
+    On Error Resume Next
+    If m_dispApp Is Nothing Then Exit Sub
+    If r <= m_dispRow Then Exit Sub
+    m_dispRow = r
+    m_dispSheet.Range("A2").Value = "小数点以下 " & PI_PERCELL & " 桁ずつ ･ 1 行 " & _
+        (PI_PERCELL * PI_PERROW) & " 桁 ･ ここまで " & shown & " 桁"
+    Set pn = m_dispApp.ActiveWindow.Panes(m_dispApp.ActiveWindow.Panes.Count)
+    If pn Is Nothing Then Exit Sub
+    vis = pn.VisibleRange.Rows.Count
+    If vis < 4 Then vis = 8
+    topRow = r - vis + 1
+    If topRow < PI_ROW0 Then topRow = PI_ROW0
+    pn.ScrollRow = topRow
+End Sub
+
 ' 保存せずに閉じる。順序を変えない（上のコメントを参照）。
 Public Sub CloseDisplay()
     On Error Resume Next
@@ -323,7 +358,7 @@ Public Sub CloseDisplay()
 End Sub
 
 '==============================================================================
-' 15 秒の計測
+' 30 秒の計測
 '==============================================================================
 Public Property Get IsRunning() As Boolean
     IsRunning = m_running
@@ -333,8 +368,9 @@ Public Sub Start()
     If m_running Then Exit Sub
     On Error GoTo Failed
     m_screen.SetText "pb_jobstat", "用意しています ･ 表示用 Excel を作成中"
-    m_screen.ClearLamps
+    m_screen.ResetTimeline
     m_calc = 0
+    m_target = 0
     m_shown = 0
     m_lastProg = ""
 
@@ -355,7 +391,7 @@ Public Sub Start()
     m_screen.SetText "pb_disp_state", "作成"
     Layout
 
-    ' ここまでが「配置と準備」。15 秒はこの下から測る。
+    ' ここまでが「配置と準備」。30 秒はこの下から測る。
     m_t0 = Timer
     m_running = True
     SendCommand "pi", """secs"":" & CLng(PB_BENCHSECS)
@@ -402,7 +438,7 @@ Public Sub Pump()
     If Not m_running Then Exit Sub
     On Error GoTo Failed
     el = ElapsedSince(m_t0)
-    ' 15 秒を過ぎたティックでは、もう表示しない（上の「数え方の約束」を参照）。
+    ' 30 秒を過ぎたティックでは、もう表示しない（上の「数え方の約束」を参照）。
     If el >= PB_BENCHSECS Then
         Finish
         Exit Sub
@@ -414,6 +450,7 @@ Public Sub Pump()
         m_screen.Flash "pb_lane_in"
         m_screen.Unflash "pb_lane_out"
         m_calc = CLng(Val(JVal(js, "n")))
+        If Val(JVal(js, "target")) > 0 Then m_target = CLng(Val(JVal(js, "target")))
         If JVal(js, "state") = "error" Then
             m_screen.SetText "pb_jobstat", "BE エラー " & JVal(js, "msg")
             Finish
@@ -424,6 +461,7 @@ Public Sub Pump()
     End If
 
     ShowDigits ReadDigits()
+    m_screen.PaintTimeline el, m_shown, m_target
 
     m_screen.SetText "pb_jobstat", "計算中 ･ 経過 " & Format$(el, "0.0") & " 秒 ･ 計算 " & _
         Decimals(m_calc) & " 桁 ･ 表示 " & m_shown & " 桁"
@@ -447,12 +485,12 @@ Private Sub ShowDigits(ByVal digits As String)
     groups = Len(dec) \ PI_PERCELL              ' 埋まりきった 10 桁だけ出す
     g = m_shown \ PI_PERCELL
     Do While g < groups
-        WriteDisplayGroup 4 + g \ PI_PERROW, 1 + (g Mod PI_PERROW), _
+        WriteDisplayGroup PI_ROW0 + g \ PI_PERROW, 1 + (g Mod PI_PERROW), _
                           Mid$(dec, g * PI_PERCELL + 1, PI_PERCELL)
         g = g + 1
         m_shown = g * PI_PERCELL
     Loop
-    m_screen.PaintDigits dec, m_shown
+    If g > 0 Then FollowDisplay PI_ROW0 + (g - 1) \ PI_PERROW, m_shown
     Exit Sub
 Failed:
     m_log.Note "bench: show err " & Err.Number & " " & Err.Description
@@ -464,7 +502,7 @@ Private Function Decimals(ByVal n As Long) As Long
 End Function
 
 '--- 終了 ---------------------------------------------------------------------
-' 15 秒で自動終了。BE を止め、表示用 Excel を保存せずに閉じる。Temp の掃除は
+' 30 秒で自動終了。BE を止め、表示用 Excel を保存せずに閉じる。Temp の掃除は
 ' BE の bye を見てから（PbBeSession.PumpIdle）。例外や途中終了、閉じる操作から
 ' も同じ道を通す。
 Public Sub Finish()
@@ -477,6 +515,7 @@ Public Sub Finish()
 
     m_be.RequestQuit
     CloseDisplay
+    m_screen.FinishTimeline el, m_shown, m_target, (el >= PB_BENCHSECS)
     m_screen.SetText "pb_disp_state", "終了"
     KillQuiet PiPath()
     m_screen.Unflash "pb_lane_in"
