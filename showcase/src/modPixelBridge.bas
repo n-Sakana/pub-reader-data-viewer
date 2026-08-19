@@ -70,8 +70,15 @@ Private Const UIA_ClassNamePropertyId As Long = 30012
 Private Const UIA_NativeWindowHandlePropertyId As Long = 30020
 Private Const UIA_IsValuePatternAvailablePropertyId As Long = 30043
 Private Const UIA_ValuePatternId As Long = 10002
-Private Const UIA_TransformPatternId As Long = 10003
+' TransformPattern は 10016。ここが 10003（= RangeValuePattern）だったせいで、
+' メモ帳の窓に GetCurrentPattern を投げても常に Nothing が返り、整列もドラッグ
+' 配置も毎回 "movewin: no transform" で落ちていた。同じ窓を .NET の管理 UIA で
+' 見ると CanMove=True が取れる、という食い違いの正体はプラットフォームの差では
+' なくこの定数の取り違え（2026-08-19 実測。この端末のメモ帳 11.2606 は窓要素で
+' 10016 と 10009 の 2 つを公開している）。
+Private Const UIA_TransformPatternId As Long = 10016
 Private Const UIA_WindowPatternId As Long = 10009
+Private Const UIA_IsTransformPatternAvailablePropertyId As Long = 30042
 Private Const UIA_DocumentControlTypeId As Long = 50030
 Private Const UIA_EditControlTypeId As Long = 50004
 Private Const WindowVisualState_Normal As Long = 0
@@ -134,7 +141,11 @@ Private m_winApp(0 To PB_MAXWIN - 1) As String
 Private m_winPid(0 To PB_MAXWIN - 1) As String
 Private m_winNp(0 To PB_MAXWIN - 1) As Long    ' -1 = Excel、0.. = メモ帳スロット
 Private m_mapSig As String
-Private m_picked As Long
+' 選択は「並びの何番目か」ではなく相手そのもので覚える。m_win* の並びは Z 順で、
+' 利用者がメモ帳をクリックしただけで入れ替わる。添字で覚えると「選んだ窓」と
+' 「ドラッグで動かす窓」が食い違う。-2 = まだ選んでいない、-1 = この Excel、
+' 0.. = メモ帳スロット。
+Private m_pickNp As Long
 
 ' メモ帳スロット
 Private m_npWin(0 To PB_MAXNP - 1) As UIAutomationClient.IUIAutomationElement
@@ -219,7 +230,7 @@ Public Sub PbShow()
     m_ticks = 0
     m_polls = 0
     m_syncOn = True
-    m_picked = 0
+    m_pickNp = -2
     PbLog "show: begin"
     Hold
     PickFonts
@@ -231,12 +242,11 @@ Public Sub PbShow()
     PbLog "show: sheet pitch=" & m_pitch & " pid=" & m_myPid
     ' 盤面を前に出すのは、組み終わってから一度だけ。組む前に出すと 1px では
     ' 表示設定の変更で再配置が走り続けて戻ってこない（実測：CPU 478 秒）。
-    PbFitCoarse
     PbBuildScreen
     PbLog "show: built"
     PbScrollHome
     PbLog "show: sheet shown"
-    PbFitRefine
+    PbCheckFit
     PbLog "show: fitted"
     Release
     PbBindKeys
@@ -295,15 +305,18 @@ End Sub
 ' 疑似ピクセルの寸法
 '==============================================================================
 Private Sub PbMakeSheet()
-    On Error Resume Next
-    Application.WindowState = xlMaximized
-    On Error GoTo 0
     Set m_ws = EnsureSheet()
     ' 幅を詰める前に表示設定を済ませる（PbSheetChrome の説明を参照）
     PbSheetChrome
     ResetSheet
-    PbCalibrate
+    ' 刻みを選ぶ前に、窓を最終の置き場所（画面の左半分）へ置いてしまう。
+    ' UsableWidth / UsableHeight は「いまの窓」の広さなので、最大化したまま
+    ' 測って刻みを選ぶと、左半分に収まらない盤面を作ってしまう。
+    MeasureDevPt
     MeasurePxPerPt
+    PbReadScreen
+    PbPlaceExcel
+    PbCalibrate
 End Sub
 
 ' 疑似ピクセルのシートは開くたびに新しく作る。寸法を持ったまま保存したものを
@@ -354,9 +367,61 @@ End Sub
 
 ' シートは裏にあり描画も止まっている。その条件なら行高 812 行が 2ms、
 ' 列幅が 0ms で済む。前に出したままだと 12.1 秒 / 26.7 秒（実測）。
+' 1 デバイスピクセルが何ポイントか。行高は表示 DPI の 1 デバイスピクセルへ
+' 丸められるので、丸められずに残る最小の高さがそのまま 1 デバイス px になる。
+Private Sub MeasureDevPt()
+    Dim t As Double
+    m_devPt = 0
+    t = 0.05
+    Do While t <= 2#
+        m_ws.Rows(1).RowHeight = t
+        If m_ws.Rows(1).Height > 0 Then
+            m_devPt = m_ws.Rows(1).Height
+            Exit Do
+        End If
+        t = t + 0.05
+    Loop
+    If m_devPt <= 0 Then m_devPt = 0.75
+End Sub
+
+' 画面の大きさ（デバイス px）。UIA の root の矩形がそのまま画面全体になる。
+' 取れない端末では、最大化した窓の大きさで代用する。
+Private Sub PbReadScreen()
+    Dim rc As UIAutomationClient.tagRECT
+    On Error GoTo Fallback
+    If Not EnsureUia() Then GoTo Fallback
+    rc = m_root.CurrentBoundingRectangle
+    If rc.Right - rc.Left < 320 Or rc.Bottom - rc.Top < 240 Then GoTo Fallback
+    m_scrL = rc.Left: m_scrT = rc.Top: m_scrR = rc.Right: m_scrB = rc.Bottom
+    Exit Sub
+Fallback:
+    On Error Resume Next
+    Application.WindowState = xlMaximized
+    m_scrL = 0: m_scrT = 0
+    m_scrR = CLng(Application.Width * m_pxPerPt)
+    m_scrB = CLng(Application.Height * m_pxPerPt)
+    If m_scrR < 320 Then m_scrR = 1280
+    If m_scrB < 240 Then m_scrB = 720
+End Sub
+
+' 起動時に一度だけ、この Excel を画面の左半分へ合わせる。**以後この窓は
+' 位置も大きさも変えない**（owner 指示）。ミニマップのドラッグ配置も
+' 左右 / 上下 2 分割も、動かすのは起動済みのメモ帳だけ。
+Private Sub PbPlaceExcel()
+    On Error Resume Next
+    If m_pxPerPt <= 0 Then Exit Sub
+    If Application.WindowState <> xlNormal Then Application.WindowState = xlNormal
+    Application.Left = m_scrL / m_pxPerPt
+    Application.Top = m_scrT / m_pxPerPt
+    Application.Width = ((m_scrR - m_scrL) \ 2) / m_pxPerPt
+    Application.Height = (m_scrB - m_scrT) / m_pxPerPt
+    PbLog "  place: screen " & (m_scrR - m_scrL) & "x" & (m_scrB - m_scrT) & _
+        " app " & Application.Left & "," & Application.Top & " " & _
+        Application.Width & "x" & Application.Height
+End Sub
+
 Private Sub PbCalibrate()
     Dim devPt As Double
-    Dim t As Double
     Dim k As Long
     Dim best As Long
     Dim bestErr As Double
@@ -365,20 +430,11 @@ Private Sub PbCalibrate()
     Dim kFit As Long
     Dim kf As Long
 
-    ' 1 デバイスピクセルが何ポイントか。MeasurePxPerPt もこの値を使うので、
-    ' グリッドが既にあっても測ってから返る。
-    devPt = 0
-    t = 0.05
-    Do While t <= 2#
-        m_ws.Rows(1).RowHeight = t
-        If m_ws.Rows(1).Height > 0 Then
-            devPt = m_ws.Rows(1).Height
-            Exit Do
-        End If
-        t = t + 0.05
-    Loop
-    If devPt <= 0 Then devPt = 0.75
-    m_devPt = devPt
+    devPt = m_devPt
+    If devPt <= 0 Then
+        MeasureDevPt
+        devPt = m_devPt
+    End If
 
     If GridAlreadyOk() Then Exit Sub
     cells = PB_W \ PB_UNIT
@@ -395,22 +451,22 @@ Private Sub PbCalibrate()
         End If
     Next k
 
-    ' ただし、その寸法で盤面がこの画面に収まらないなら意味がない。この端末
+    ' ただし、その寸法で盤面がこの窓に収まらないなら意味がない。この端末
     ' （1920x1080 / 125%）では 0.75pt どおりだと盤面が 1015～1218 デバイス px に
     ' なり、下 4 割（実行ボタンとフッタ）が最初から画面の外だった（実測：
-    ' fit visible 204x158 / need 203x203）。だから「画面に入る最大の整数
-    ' デバイス px」を上限にする。窓は最大化済み・見出しもタブも消した後
-    ' なので、UsableHeight / UsableWidth がそのままシートの見える広さになる。
-    ' 端の列を半分だけ見せないための「必要数 + 1」（PbFitRefine と同じ）まで
-    ' 入る大きさを選ぶ。
+    ' fit visible 204x158 / need 203x203）。だから「窓に入る最大の整数
+    ' デバイス px」を上限にする。窓はもう最終の場所（左半分）に置いてあり、
+    ' 見出しもタブも横スクロールバーも消した後なので、UsableHeight /
+    ' UsableWidth がそのままシートの見える広さになる。端の列を半分だけ
+    ' 見せないための「必要数 + 1」まで入る大きさを選ぶ。
     '
-    ' 縦には 48 デバイス px の「沈み」を足す。通常状態の窓は作業領域の下端を
-    ' 越えて広げられ、Excel のステータスバーごと少し沈めても、盤面の実content
-    ' （フッタの文字は設計 y=799 まで）はタスクバーの上に残る（この端末で
-    ' 実測：812 行の盤で確認）。これを見ないと 1080p では 1 セル 1 デバイス px
-    ' しか選べず、盤面が 406px まで縮んで文字が潰れる。
-    kFit = Int((ActiveWindow.UsableHeight / devPt + 48) / (cells + 1))
-    kf = Int((ActiveWindow.UsableWidth / devPt) / (cells + 1))
+    ' 以前はここで縦に 48 デバイス px の「沈み」を足していた。最大化した
+    ' 作業領域（1020 デバイス px）で測ると 812 行が入らず、窓を画面の下へ
+    ' はみ出させる前提だったから。いまは窓自身を画面の高さいっぱい（1080）に
+    ' 置くので下駄は要らない。幅からは縦スクロールバーぶん（UsableWidth は
+    ' これを含む。実測）の 24 デバイス px を引いておく。
+    kFit = Int((ActiveWindow.UsableHeight / devPt) / (cells + 1))
+    kf = Int((ActiveWindow.UsableWidth / devPt - 24) / (cells + 1))
     If kf < kFit Then kFit = kf
     If kFit < 1 Then kFit = 1
     If best > kFit Then best = kFit
@@ -473,67 +529,52 @@ Private Sub MeasurePxPerPt()
     If m_devPt > 0 Then m_pxPerPt = 1# / m_devPt
 End Sub
 
-' 窓合わせは 2 段。
+' 窓の大きさは起動時に一度決めたきり動かさない（PbPlaceExcel）。ここは
+' 「入っているか」を見て記録するだけ。足りないときに窓を広げる（旧
+' PbFitRefine）のは owner 指示の「初期配置後は Excel を一切動かさない」に
+' 反するのでやらない。入る刻みを選ぶのは PbCalibrate の仕事で、そちらは
+' 置いたあとの窓の実寸（UsableWidth / UsableHeight）で決めている。
 '
-' 粗合わせ（PbFitCoarse）は盤面を作った直後、まだ前に出す前にやる。設計の
-' 実寸から一息で寄せるだけなので、シートには触らない。
-' 仕上げ（PbFitRefine）は盤面を組んで前に出したあと。実際に見えているセルの
-' 数を見て、足りなければ広げる。
-'
-' 分けている理由：仕上げには ActiveWindow が要るが、そのために盤面を先に前へ
-' 出すと、1px（812x812 = 659,344 セル）では表示設定の変更で再配置が何度も
-' 走って戻ってこない。実測：1px で CPU 478 秒、応答なしのまま。4px では
-' 起きないので気づきにくい。盤面を前に出すのは、組み終わってから一度だけ。
-Private Sub PbFitCoarse()
-    On Error Resume Next
-    If Application.WindowState <> xlNormal Then Application.WindowState = xlNormal
-    Application.Left = 0
-    Application.Top = 0
-    Application.Width = PB_W * PxPt() + 40
-    Application.Height = PB_H * PxPt() + 220
-    PbLog "  fit coarse: app " & Application.Width & "x" & Application.Height
-End Sub
-
-Private Sub PbFitRefine()
-    Dim i As Long
+' 見る値は UsableWidth / UsableHeight ではなく ActiveWindow.VisibleRange。
+' UsableWidth は縦スクロールバーを含み、UsableHeight はシート見出しと横
+' スクロールバーを含むので、そのまま信じると設計の右端と下端が窓の外へ出る
+' （実測：右下のボタンが切れ、横スクロールバーが出た）。VisibleRange なら、
+' そのとき本当に見えている範囲そのもの。
+Private Sub PbCheckFit()
     Dim needC As Long
     Dim needR As Long
-    Dim cellPt As Double
     Dim vis As Range
-    Dim dc As Long
-    Dim dr As Long
 
     On Error Resume Next
     needC = PB_W \ PB_UNIT
     needR = PB_H \ PB_UNIT
-    cellPt = PxPt() * PB_UNIT
-
-    ' UsableWidth / UsableHeight には合わせない。UsableWidth は縦スクロール
-    ' バーの幅を含み、UsableHeight はシート見出しと横スクロールバーの高さを
-    ' 含む。そこへ合わせると、その分だけ設計の右端と下端が窓の外へ出る。
-    ' 実測では右下の「BE で清書」ボタンが切れ、横スクロールバーが出た。
-    ' VisibleRange なら、そのとき本当に見えている範囲そのもの。端の列が半分
-    ' だけ見えている状態を数えないよう、必要数より 1 つ多く見えるまで広げる
-    ' （modRdv3Ui の CardIsVisible と同じ考え方）。
-    For i = 1 To 8
-        Set vis = ActiveWindow.VisibleRange
-        If vis Is Nothing Then Exit For
-        dc = needC + 1 - vis.Columns.Count
-        dr = needR + 1 - vis.Rows.Count
-        If dc <= 0 And dr <= 0 Then Exit For
-        If dc > 0 Then Application.Width = Application.Width + dc * cellPt
-        If dr > 0 Then Application.Height = Application.Height + dr * cellPt
-        ActiveWindow.ScrollRow = 1
-        ActiveWindow.ScrollColumn = 1
-    Next i
-    ' 内側のブックウィンドウには触らない。現行の Excel は SDI で、それはアプリ
-    ' の窓そのものだから。幅と高さを直接与えると枠が増えて UsableHeight が
-    ' 609 から 420.5 に縮み、最大化すると画面全体に広がる（どちらも実測）。
     Set vis = ActiveWindow.VisibleRange
-    If Not vis Is Nothing Then
-        PbLog "  fit: visible " & vis.Columns.Count & "x" & vis.Rows.Count & _
-            " need " & needC & "x" & needR & " passes=" & i
+    If vis Is Nothing Then Exit Sub
+    PbLog "  fit: visible " & vis.Columns.Count & "x" & vis.Rows.Count & _
+        " need " & needC & "x" & needR
+    PaintMargin vis, needC, needR
+End Sub
+
+' 盤面は 812x812 だが、窓のほうが少し広い。その余白（塗っていないセル）に、
+' 1px ビルドだけ細い黒線が何本か描かれる。行が 0.6pt まで潰れた盤で、
+' 結合セルのある行の帯が余白側にはみ出して描かれるためで、セルの値・書式・
+' 結合・図形のどれを問い合わせても空のまま出る（実測。この線は変更前の版にも
+' 同じように出ていた）。塗りのあるセルの上には出ないので、見えている余白を
+' 地の色で塗って隠す。盤の外なので設計には触れていない。
+Private Sub PaintMargin(ByVal vis As Range, ByVal needC As Long, ByVal needR As Long)
+    Dim lastC As Long
+    Dim lastR As Long
+
+    On Error Resume Next
+    lastC = vis.Column + vis.Columns.Count - 1
+    lastR = vis.Row + vis.Rows.Count - 1
+    If lastC > needC Then
+        m_ws.Range(m_ws.Cells(1, needC + 1), m_ws.Cells(lastR, lastC)).Interior.Color = C_BODY
     End If
+    If lastR > needR Then
+        m_ws.Range(m_ws.Cells(needR + 1, 1), m_ws.Cells(lastR, lastC)).Interior.Color = C_BODY
+    End If
+    PbLog "  margin: painted to " & lastC & "," & lastR
 End Sub
 
 ' 表示設定は、列幅を詰める前の軽いシートに対して変える。
@@ -661,6 +702,11 @@ Private Function Txt(ByVal nm As String, ByVal x As Long, ByVal y As Long, _
     Set rg = Cel(x, y, w, h)
     rg.Merge
     With rg
+        ' 文字列書式を先に敷く。既定のままだと "01:07" が時刻として取り込まれ、
+        ' 表示が "1:07" に化ける（実機で実測。稼働時間の先頭の 0 が消えていた）。
+        ' しかも読み返した値が書いた値と一致しなくなるので、SetTxt が毎ティック
+        ' 書き直して無駄に描画する。
+        .NumberFormat = "@"
         .Value = s
         .Font.Name = IIf(mono, m_fontMono, m_fontJp)
         .Font.Size = RoundFont(sizePx * PxPt())
@@ -670,6 +716,15 @@ Private Function Txt(ByVal nm As String, ByVal x As Long, ByVal y As Long, _
         .VerticalAlignment = xlCenter
         .WrapText = False
     End With
+    ' 文字列書式にした結果、"0" や "9" のような札に Excel の
+    ' 「数値が文字列として保存されています」の緑三角が出る（実機で実測）。
+    ' 見た目の汚れなので、このセルに限ってそのチェックを黙らせる。
+    ' 利用者の Excel 全体の設定（ErrorCheckingOptions）には触らない。
+    ' Range.Errors は 1 セルにしか無い。結合した範囲のまま呼ぶと落ちるので
+    ' （On Error で握り潰されて効いていなかった。実機で実測）左上のセルへ。
+    On Error Resume Next
+    rg.Cells(1, 1).Errors(xlNumberAsText).Ignore = True
+    On Error GoTo 0
     If Len(nm) > 0 Then NameIt nm, rg
     Set Txt = rg
 End Function
@@ -779,15 +834,17 @@ End Sub
 '------------------------------------------------------------------ ヘッダー
 Private Sub BuildHeader()
     Fill 2, 2, 808, 52, C_BAND
-    Txt "", 14, 16, 130, 25, PB_APP, 19, C_ONBAND, True, xlLeft, False
-    Txt "", 149, 21, 170, 13, PB_SUB, 10, C_ONBAND, False, xlLeft, True
+    Txt "", 14, 16, 152, 25, PB_APP, 19, C_ONBAND, True, xlLeft, False
+    ' 副題は等幅 37 字ぶん（約 222 設計 px）。170px の枠では "⇔ BE" が枠の外で
+    ' 切れていた（実機で実測）。結合セルは溢れた分を隣へ流さず、そこで切る。
+    Txt "", 172, 21, 300, 13, PB_SUB, 10, C_ONBAND, False, xlLeft, True
 
     ' アニメーションは常時 1 秒。速さの切替は置かない（切替ボタンは廃止）。
 
-    Txt "pb_uptime", 619, 18, 56, 21, "00:00", 15, C_ONBAND, True, xlLeft, True
-    Fill 686, 24, 10, 10, C_LAMP
-    NameIt "pb_lamp", Cel(686, 24, 10, 10)
-    Txt "pb_status", 702, 18, 96, 21, "同期中 poll 0", 11, C_ONBAND, False, xlLeft, True
+    Txt "pb_uptime", 596, 18, 56, 21, "00:00", 15, C_ONBAND, True, xlLeft, True
+    Fill 660, 24, 10, 10, C_LAMP
+    NameIt "pb_lamp", Cel(660, 24, 10, 10)
+    Txt "pb_status", 676, 18, 122, 21, "同期中 poll 0", 11, C_ONBAND, False, xlLeft, True
 End Sub
 
 '------------------------------------------------------------------ ミニマップ
@@ -799,10 +856,13 @@ Private Sub BuildMiniMapCard()
     Txt "pb_scale", 254, 83, 200, 13, "―", 10, C_SUB, False, xlLeft, True
     ' セル 3 デバイス px（この端末の 4px ビルド）でも文字が欠けないよう、
     ' 幅は 108px・文字は 10px にしてある（91px / 11px では両端が欠けた。実測）。
+    ' Excel は起動時に画面の左半分へ置いたきり動かさない（owner 指示）。この
+    ' 2 つが動かすのは起動済みのメモ帳だけで、Excel の右に残っている空きを
+    ' 左右 / 上下に分けて割り当てる。
     Button "arrL", 560, 76, 108, 28, "左右 2 分割", _
-        "TransformPattern.Move / Resize で左右 2 分割にします", 0, 10
+        "Excel の右の空きを左右に分け、メモ帳を TransformPattern.Move / Resize で並べます", 0, 10
     Button "arrT", 676, 76, 108, 28, "上下 2 分割", _
-        "上下 2 分割。最大化中は CanMove=False のため先に通常表示へ戻します", 0, 10
+        "同じ空きを上下に分けます。最大化中は CanMove=False なので先に通常表示へ戻します", 0, 10
 
     ' 要素情報はカードをやめ、ミニマップ直下の 2 行ストリップに畳む（v3）
     Fill 16, 116, 780, 40, C_PANEL
@@ -810,8 +870,10 @@ Private Sub BuildMiniMapCard()
     Txt "pb_pt_win", 138, 120, 540, 14, "―", 10, C_TEXT, False, xlLeft, True
     Txt "pb_pt_xy", 680, 120, 104, 14, "PT ―", 10, C_SUB, False, xlRight, True
     Txt "", 28, 136, 100, 14, "Rect ･ CanMove", 10, C_SUB, False, xlLeft, True
-    Txt "pb_pt_rect", 136, 136, 520, 14, "―", 10, C_TEXT, False, xlLeft, True
-    Txt "pb_drag", 664, 136, 120, 14, "ドラッグで移動先を指定", 10, C_SUB, False, xlRight, False
+    Txt "pb_pt_rect", 136, 136, 396, 14, "―", 10, C_TEXT, False, xlLeft, True
+    ' 操作の結果はここに出る。"メモ帳 1 を移動 ･ 960,0 960×540" のように長く、
+    ' 120px の枠では最後まで出せなかった（実機で実測）。
+    Txt "pb_drag", 540, 136, 244, 14, "メモ帳を 1 セルで選び、範囲で置く", 10, C_SUB, False, xlRight, False
 
     Fill 16, 156, 780, 358, C_PANEL
     NameIt "pb_map", Cel(16, 156, 780, 358)
@@ -821,27 +883,40 @@ End Sub
 '------------------------------------------------------------------ 同期カード
 Private Sub BuildValueCard()
     CardBox 14, 528, 392, 224
-    Txt "", 28, 546, 90, 15, "ValuePattern", 11, C_KEY, True, xlLeft, True
-    Txt "pb_focus", 120, 547, 177, 13, "focus ―", 10, C_SUB, False, xlLeft, True
-    Button "sync", 305, 540, 87, 28, "同期を停止", _
+    Txt "", 28, 544, 92, 16, "ValuePattern", 11, C_KEY, True, xlLeft, True
+    Txt "pb_focus", 124, 546, 176, 14, "focus ―", 10, C_SUB, False, xlLeft, True
+    Button "sync", 304, 540, 88, 28, "同期を停止", _
         "1 秒ごとに本文を取得し、差分があれば SetValue で書き戻します（Ctrl+Shift+M）", 2
 
-    BuildSlot 0, 577, 594
-    BuildSlot 1, 633, 650
+    ' 札と枠は 4 設計 px の格子に載せ、隣り合う要素が同じセルを共有しないように
+    ' する。旧版はスロット 1 の札（y=633）がスロット 0 の枠（594..640）と同じ行に
+    ' 落ちていた。結合セルは 1 セル塗られただけで全体が塗り潰されるので、枠の帯を
+    ' 塗った瞬間にスロット 1 の札が灰色（フォーカス時は青）のベタ塗りになり、
+    ' スロット 0 の本文の下半分ごと消えた（実機で実測。owner 報告の
+    ' 「片方が灰色に塗り潰される」はこれ）。
+    BuildSlot 0, 572, 592
+    BuildSlot 1, 652, 672
 
-    Txt "pb_get", 28, 723, 130, 13, "← GetValue --:--:--", 10, C_SUB, False, xlLeft, True
+    Txt "pb_get", 28, 732, 132, 16, "← GetValue --:--:--", 10, C_SUB, False, xlLeft, True
     BuildDots
 End Sub
 
 Private Sub BuildSlot(ByVal idx As Long, ByVal labelY As Long, ByVal boxY As Long)
-    Txt "pb_np" & idx & "_title", 28, labelY, 250, 13, "―", 10, C_SUB, False, xlLeft, False
-    Txt "pb_np" & idx & "_state", 280, labelY, 112, 13, "", 10, C_KEY, False, xlRight, False
+    Txt "pb_np" & idx & "_title", 28, labelY, 268, 16, "―", 10, C_SUB, False, xlLeft, False
+    Txt "pb_np" & idx & "_state", 300, labelY, 92, 16, "", 10, C_KEY, False, xlRight, False
     ' 入力面は結合セルそのもの。ここに直接書いた内容がメモ帳へ流れる。
-    Fill 28, boxY, 364, 46, C_LINE2
-    NameIt "pb_np" & idx & "_frame", Cel(28, boxY, 364, 46)
-    Fill 28 + PB_UNIT, boxY + PB_UNIT, 364 - PB_UNIT * 2, 46 - PB_UNIT * 2, C_BODY
-    With Txt("pb_np" & idx & "_text", 28 + PB_UNIT * 3, boxY + PB_UNIT * 2, _
-             364 - PB_UNIT * 6, 46 - PB_UNIT * 4, "", 11, C_TEXT, False, xlLeft, False)
+    ' 高さは 46 → 56 px。46px（内寸 30px）では 2 行目が縦に半分だけ描かれて
+    ' 切れていた（実機で実測。この端末の実描画は 1 行約 18 デバイス px）。
+    Fill 28, boxY, 364, 56, C_LINE2
+    NameIt "pb_np" & idx & "_frame", Cel(28, boxY, 364, 56)
+    Fill 28 + PB_UNIT, boxY + PB_UNIT, 364 - PB_UNIT * 2, 56 - PB_UNIT * 2, C_BODY
+    ' 入力面の内寸は PB_UNIT に依らない固定値にする。PB_UNIT 倍のインセットで
+    ' 決めていたときは、同じ設計なのに 4px は高さ 40px・2px は 48px・1px は 52px
+    ' になり、1 行 18 デバイス px の和文に対して 2px / 1px だけ 3 行目が半分だけ
+    ' 描かれて切れて見えた（実機で実測）。40px = ちょうど 2 行分に固定する。
+    With Txt("pb_np" & idx & "_text", 40, boxY + 8, 340, 40, _
+             "", 11, C_TEXT, False, xlLeft, False)
+        .ShrinkToFit = False
         .WrapText = True
         .VerticalAlignment = xlTop
         .Interior.Color = C_BODY
@@ -856,9 +931,9 @@ End Sub
 Private Sub BuildDots()
     Dim i As Long
     For i = 0 To PB_DOTS - 1
-        Fill 166 + i * 29, 726, 27, 8, C_LINE
+        Fill 166 + i * 29, 734, 27, 8, C_LINE
     Next i
-    NameIt "pb_dots", Cel(166, 726, PB_DOTS * 29 - 2, 8)
+    NameIt "pb_dots", Cel(166, 734, PB_DOTS * 29 - 2, 8)
     m_dotShown = -1
 End Sub
 
@@ -870,14 +945,16 @@ Private Sub BuildInfoCard()
     Dim ly As Long
 
     CardBox 418, 528, 380, 224
-    Txt "", 432, 540, 92, 16, "校正・清書", 11, C_KEY, True, xlLeft, True
-    ' ランプの色見本。清書した文字そのものから色が決まる。
-    Txt "", 584, 541, 10, 13, "0", 9, C_SUB, False, xlLeft, True
+    Txt "", 432, 540, 92, 20, "校正・清書", 11, C_KEY, True, xlLeft, True
+    ' ランプの色見本。清書した文字そのものから色が決まる。見本の 1 つ目
+    ' （旧 x=593）は "0" の札（584..594）と同じセルに載っていて、塗ると札ごと
+    ' 色で潰れた。4 設計 px の格子で分ける。
+    Txt "", 580, 541, 12, 13, "0", 9, C_SUB, False, xlLeft, True
     For i = 0 To 9
-        Fill 593 + i * 6, 544, 6, 8, LampColor(i)
+        Fill 596 + i * 6, 544, 6, 8, LampColor(i)
     Next i
-    Txt "", 655, 541, 10, 13, "9", 9, C_SUB, False, xlLeft, True
-    Txt "", 670, 541, 114, 13, "%TEMP%\pixelbridge\", 9, C_SUB, False, xlRight, True
+    Txt "", 660, 541, 12, 13, "9", 9, C_SUB, False, xlLeft, True
+    Txt "", 676, 541, 108, 13, "%TEMP%\pixelbridge\", 9, C_SUB, False, xlRight, True
 
     ProcBox "fe", 432, 564, 172, 32, "FE"
     ProcBox "be", 612, 564, 172, 32, "BE"
@@ -891,14 +968,16 @@ Private Sub BuildInfoCard()
     NameIt "pb_lane_in", Cel(626, 610, 74, 2)
     Txt "", 704, 604, 80, 13, "progress.json", 9, C_SUB, False, xlRight, True
 
-    ' 進捗の盤。67 x 12 のランプを 432,625 352x77 の枠の中に置く。原稿を
+    ' 進捗の盤。67 x 12 のランプを 432,624 352x64 の枠の中に置く。原稿を
     ' 左上から右下へ割り当て、清書できたところまで点いていく。
-    Fill 432, 625, 352, 77, C_PANEL
+    ' 枠と「待機」の札は行を分ける。旧版は盤の下端（687）と札（686..699）が
+    ' 同じ行に落ちていて、ランプを塗ると結合セルの札ごと塗り潰された。
+    Fill 432, 624, 352, 64, C_PANEL
     lx = 432 + (352 - LAMP_COLS * LAMP_PX) \ 2
-    ly = 625 + (77 - LAMP_ROWS * LAMP_PX) \ 2
+    ly = 624 + (64 - LAMP_ROWS * LAMP_PX) \ 2
     Fill lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX, C_BODY
     NameIt "pb_lamps", Cel(lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX)
-    Txt "pb_jobstat", 432, 686, 352, 14, "待機", 10, C_SUB, False, xlLeft, True
+    Txt "pb_jobstat", 432, 692, 352, 16, "待機", 10, C_SUB, False, xlLeft, True
 
     ' 2 つの札の長さが違うので、幅も 172 / 172 の等分ではなく中身に合わせる。
     ' 等分だと「BE で実行（固まらない）」が内寸（172 - 16 = 156px ≒ 117pt）に
@@ -940,18 +1019,23 @@ End Sub
 Private Sub BuildFooter()
     Fill 2, 764, 808, 46, C_BODY
     Fill 2, 764, 808, PB_UNIT, C_LINE
-    Txt "", 14, 781, 40, 13, "ONKEY", 10, C_SUB, False, xlLeft, True
-    Chip 56, 777, 104, "^+M 同期 入 / 切"
-    Chip 166, 777, 92, "^+F FE で清書"
-    Chip 264, 777, 92, "^+B BE で清書"
-    Txt "pb_meta1", 420, 781, 240, 13, "", 10, C_SUB, False, xlRight, True
-    Txt "pb_meta2", 668, 781, 130, 13, "", 10, C_SUB, False, xlRight, True
+    Txt "", 14, 780, 40, 16, "ONKEY", 10, C_SUB, False, xlLeft, True
+    ' 札の幅は中身の実寸から取る。104 / 92 px の枠では「切」「書」が枠の外で
+    ' 切れていた（実機で実測）。
+    Chip 56, 776, 124, "^+M 同期 入 / 切"
+    Chip 184, 776, 100, "^+F FE で清書"
+    Chip 288, 776, 100, "^+B BE で清書"
+    Txt "pb_meta1", 420, 780, 240, 16, "", 10, C_SUB, False, xlRight, True
+    Txt "pb_meta2", 668, 780, 130, 16, "", 10, C_SUB, False, xlRight, True
 End Sub
 
+' 札の中の文字は、枠の内寸いっぱいの高さで置く。旧版は上下に PB_UNIT*2 ずつ
+' 空けていたので、4px ビルドでは文字の入る高さが 8 デバイス px しかなく、
+' 10px の和文が縦に切れ、「同期」の下半分が欠けて別の字に見えた（実機で実測）。
 Private Sub Chip(ByVal x As Long, ByVal y As Long, ByVal w As Long, ByVal s As String)
-    Fill x, y, w, 22, C_PANEL
-    Fill x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, 22 - PB_UNIT * 2, C_BODY
-    Txt "", x + PB_UNIT * 2, y + PB_UNIT * 2, w - PB_UNIT * 4, 22 - PB_UNIT * 4, _
+    Fill x, y, w, 24, C_PANEL
+    Fill x + PB_UNIT, y + PB_UNIT, w - PB_UNIT * 2, 24 - PB_UNIT * 2, C_BODY
+    Txt "", x + PB_UNIT * 2, y + PB_UNIT, w - PB_UNIT * 4, 24 - PB_UNIT * 2, _
         s, 10, C_TEXT, False, xlCenter, True
 End Sub
 
@@ -1321,6 +1405,21 @@ Private Sub ScanWindows()
             AddWin rc, m_npTitle(fSlot(i)), "notepad.exe", m_npPid(fSlot(i)), fSlot(i)
         End If
     Next i
+
+    ' 選んでいた相手が居なくなった、またはまだ何も選んでいないなら、見えて
+    ' いるメモ帳を 1 つ選んでおく。ドラッグ配置は「1 セルで選んでから範囲」だが、
+    ' 起動直後にいきなり範囲を引いても行き先が無い、にはしない。
+    If m_pickNp >= 0 Then
+        If Not m_npBound(m_pickNp) Then m_pickNp = -2
+    End If
+    If m_pickNp = -2 Then
+        For s = 0 To PB_MAXNP - 1
+            If m_npBound(s) Then
+                m_pickNp = s
+                Exit For
+            End If
+        Next s
+    End If
     m_uiaNote = "メモ帳 " & n & " 窓"
     Exit Sub
 Failed:
@@ -1543,6 +1642,8 @@ Private Sub PaintMiniMap()
     Dim edge As Long
     Dim face As Long
     Dim barC As Long
+    Dim pk As Long
+    Dim cx1 As Long, cy1 As Long, cx2 As Long, cy2 As Long
 
     On Error Resume Next
     If m_winN = 0 Then Exit Sub
@@ -1550,9 +1651,10 @@ Private Sub PaintMiniMap()
     For i = 0 To m_winN - 1
         sig = sig & m_winL(i) & "," & m_winT(i) & "," & m_winR(i) & "," & m_winB(i) & ";"
     Next i
-    sig = sig & "|" & m_picked & "|" & m_winN
+    sig = sig & "|" & m_pickNp & "|" & m_winN
     If sig = m_mapSig Then Exit Sub
     m_mapSig = sig
+    pk = PickedIdx()
 
     MapGeom mx, my, mw, mh, sc, ox, oy
     If sc <= 0 Then Exit Sub
@@ -1566,15 +1668,27 @@ Private Sub PaintMiniMap()
     ' 窓の名前は下の対象バーに出す。塗りは直書き。個々の Fill は汚した矩形
     ' だけの再描画で済み、1 ティック内の連続塗りは 1 回の描き直しに畳まれる。
     Fill mx, my, mw, mh, C_PANEL
-    Fill ox, oy, CLng((m_scrR - m_scrL) * sc), CLng((m_scrB - m_scrT) * sc), C_BODY
+    cx1 = ox: cy1 = oy
+    cx2 = ox + CLng((m_scrR - m_scrL) * sc)
+    cy2 = oy + CLng((m_scrB - m_scrT) * sc)
+    Fill cx1, cy1, cx2 - cx1, cy2 - cy1, C_BODY
 
+    ' 窓の矩形は画面の外へ出ていることがある（メモ帳を画面の端に置く、Excel の
+    ' 窓がタスクバーの下へ沈む、など）。それをそのまま描くと、ミニマップの枠を
+    ' 越えて隣のカードの上まで塗ってしまう。実機で「青がミニマップの外へはみ出す」
+    ' 「下のカードが灰色で塗り潰される」として見えていたのがこれ。画面の矩形
+    ' （＝ミニマップの白い面）で必ず切り取る。
     For i = m_winN - 1 To 0 Step -1
         x1 = ox + CLng((m_winL(i) - m_scrL) * sc)
         y1 = oy + CLng((m_winT(i) - m_scrT) * sc)
         x2 = ox + CLng((m_winR(i) - m_scrL) * sc)
         y2 = oy + CLng((m_winB(i) - m_scrT) * sc)
+        If x1 < cx1 Then x1 = cx1
+        If y1 < cy1 Then y1 = cy1
+        If x2 > cx2 Then x2 = cx2
+        If y2 > cy2 Then y2 = cy2
         If x2 - x1 > 20 And y2 - y1 > 20 Then
-            If i = m_picked Then
+            If i = pk Then
                 edge = C_KEY: face = C_SOFT: barC = C_KEY
             Else
                 edge = C_WINOTHER: face = C_BODY: barC = C_SUB
@@ -1585,6 +1699,19 @@ Private Sub PaintMiniMap()
         End If
     Next i
 End Sub
+
+' 選んでいる相手（m_pickNp）が、いまの並びの何番目にいるか。並びは Z 順で
+' 変わるので、描くたびに引き直す。
+Private Function PickedIdx() As Long
+    Dim i As Long
+    PickedIdx = -1
+    For i = 0 To m_winN - 1
+        If m_winNp(i) = m_pickNp Then
+            PickedIdx = i
+            Exit Function
+        End If
+    Next i
+End Function
 
 ' ミニマップのセル → 画面座標を逆算して、その点にある窓を選ぶ
 Private Sub PickAt(ByVal c As Range)
@@ -1603,7 +1730,7 @@ Private Sub PickAt(ByVal c As Range)
 
     For i = 0 To m_winN - 1
         If px >= m_winL(i) And px < m_winR(i) And py >= m_winT(i) And py < m_winB(i) Then
-            m_picked = i
+            m_pickNp = m_winNp(i)              ' 添字ではなく相手そのものを覚える
             m_mapSig = ""                      ' 選択が変わったので描き直す
             FillPointPanel i
             Exit Sub
@@ -1622,7 +1749,7 @@ Private Sub FillPointPanel(ByVal idx As Long)
         IIf(m_winNp(idx) < 0, "XLMAIN", "Notepad") & " ･ pid " & m_winPid(idx)
     canMove = "―"
     If m_winNp(idx) < 0 Then
-        canMove = "True（Excel 自身）"
+        canMove = "固定（起動時に画面の左半分へ配置）"
     Else
         Set el = m_npWin(m_winNp(idx))
         If Not el Is Nothing Then
@@ -1630,7 +1757,8 @@ Private Sub FillPointPanel(ByVal idx As Long)
             If tp Is Nothing Then
                 canMove = "False（TransformPattern なし）"
             Else
-                canMove = CStr(CBool(tp.CurrentCanMove))
+                canMove = "Move " & CStr(CBool(tp.CurrentCanMove)) & _
+                          " / Resize " & CStr(CBool(tp.CurrentCanResize))
             End If
         End If
     End If
@@ -1641,7 +1769,11 @@ Failed:
     SetTxt "pb_pt_rect", "―"
 End Sub
 
-' ドラッグで選ばれた矩形へ、選択中の窓を一発で Move / Resize する
+' ドラッグで選ばれた矩形へ、選んであるメモ帳を一発で Move / Resize する。
+'
+' 動かすのは **メモ帳だけ**。この Excel は起動時に画面の左半分へ置いたきり、
+' 位置も大きさも変えない（owner 指示）。相手は m_pickNp（1 セル選択で決めた
+' 相手そのもの）で持つので、途中で Z 順が入れ替わっても取り違えない。
 Private Sub PlaceAt(ByVal rg As Range)
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
@@ -1649,6 +1781,18 @@ Private Sub PlaceAt(ByVal rg As Range)
     Dim x1 As Long, y1 As Long, x2 As Long, y2 As Long
 
     On Error GoTo Failed
+    If m_pickNp = -1 Then
+        Note "Excel は起動時の配置で固定です ･ メモ帳を選んでください"
+        Exit Sub
+    End If
+    If m_pickNp < 0 Then
+        Note "先にミニマップでメモ帳を 1 セル選んでください"
+        Exit Sub
+    End If
+    If Not m_npBound(m_pickNp) Then
+        Note "選んだメモ帳が見つかりません"
+        Exit Sub
+    End If
     MapGeom mx, my, mw, mh, sc, ox, oy
     If sc <= 0 Then Exit Sub
     x1 = m_scrL + CLng((PxOfCol(rg.Column) - ox) / sc)
@@ -1659,12 +1803,13 @@ Private Sub PlaceAt(ByVal rg As Range)
         Note "小さすぎます（160×120 未満）"
         Exit Sub
     End If
-    If MoveOne(m_picked, x1, y1, x2 - x1, y2 - y1) Then
-        Note "Move / Resize 完了 ･ " & (x2 - x1) & "×" & (y2 - y1)
+    If MoveWin(m_npWin(m_pickNp), x1, y1, x2 - x1, y2 - y1) Then
+        Note "メモ帳 " & (m_pickNp + 1) & " を移動 ･ " & x1 & "," & y1 & " " & _
+             (x2 - x1) & "×" & (y2 - y1)
         m_mapSig = ""
         ScanWindows
     Else
-        Note "動かせません（この窓は UIA Transform を公開していません）"
+        Note "動かせません（Transform が取れませんでした）"
     End If
     Exit Sub
 Failed:
@@ -1679,48 +1824,50 @@ End Sub
 ' ウィンドウ整列（Win32 なし）
 '==============================================================================
 Private Sub ArrangeWindows(ByVal leftRight As Boolean)
-    Dim halfW As Long, halfH As Long
     Dim nNp As Long
     Dim i As Long
+    Dim sl As Long
     Dim moved As Long
+    Dim fx As Long, fy As Long, fw As Long, fh As Long
     Dim step1 As Long
+    Dim slot(0 To PB_MAXNP - 1) As Long
 
     On Error GoTo Failed
     If m_winN = 0 Then ScanWindows
     nNp = 0
-    For i = 0 To PB_MAXNP - 1
-        If m_npBound(i) Then nNp = nNp + 1
-    Next i
-    halfW = (m_scrR - m_scrL) \ 2
-    halfH = (m_scrB - m_scrT) \ 2
-    PbLog "arrange: winN=" & m_winN & " nNp=" & nNp & " lr=" & leftRight
+    For sl = 0 To PB_MAXNP - 1
+        If m_npBound(sl) Then
+            slot(nNp) = sl
+            nNp = nNp + 1
+        End If
+    Next sl
+    If nNp = 0 Then
+        Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：開いているメモ帳がありません"
+        Exit Sub
+    End If
+
+    ' Excel は起動時に画面の左半分へ置いたきり動かさない（owner 指示）。だから
+    ' 並べるのは「その右に残っている空き」で、そこを起動済みのメモ帳で分ける。
+    ' 左右 2 分割ならメモ帳が縦に細く 2 本、上下 2 分割なら横に広く 2 段になる。
+    fx = m_scrL + (m_scrR - m_scrL) \ 2
+    fy = m_scrT
+    fw = m_scrR - fx
+    fh = m_scrB - m_scrT
+    PbLog "arrange: winN=" & m_winN & " nNp=" & nNp & " lr=" & leftRight & _
+        " free=" & fx & "," & fy & " " & fw & "x" & fh
 
     If leftRight Then
-        If MoveOne(0, m_scrL, m_scrT, halfW, m_scrB - m_scrT) Then moved = moved + 1
-        If nNp > 0 Then
-            step1 = (m_scrB - m_scrT) \ nNp
-            For i = 0 To nNp - 1
-                If MoveOne(i + 1, m_scrL + halfW, m_scrT + i * step1, halfW, step1) Then moved = moved + 1
-            Next i
-        End If
+        step1 = fw \ nNp
+        For i = 0 To nNp - 1
+            If MoveWin(m_npWin(slot(i)), fx + i * step1, fy, step1, fh) Then moved = moved + 1
+        Next i
     Else
-        If MoveOne(0, m_scrL, m_scrT, m_scrR - m_scrL, halfH) Then moved = moved + 1
-        If nNp > 0 Then
-            step1 = (m_scrR - m_scrL) \ nNp
-            For i = 0 To nNp - 1
-                If MoveOne(i + 1, m_scrL + i * step1, m_scrT + halfH, step1, halfH) Then moved = moved + 1
-            Next i
-        End If
+        step1 = fh \ nNp
+        For i = 0 To nNp - 1
+            If MoveWin(m_npWin(slot(i)), fx, fy + i * step1, fw, step1) Then moved = moved + 1
+        Next i
     End If
-    ' この端末（メモ帳 11.2606 / Windows 26200）では、メモ帳のどの UIA 要素も
-    ' TransformPattern を公開しない（実測：窓・子孫とも IsTransformPattern
-    ' Available=False。managed UIA だけが旧プロキシで合成する）。その場合
-    ' Excel（自分の窓、Application 座標で動く）だけが並ぶので、正直にそう言う。
-    If moved > 0 And nNp > 0 And moved <= 1 Then
-        Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：Excel のみ ･ メモ帳は Transform 非公開"
-    Else
-        Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：" & moved & " 窓"
-    End If
+    Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：メモ帳 " & moved & " / " & nNp & " 窓"
     m_mapSig = ""
     ScanWindows
     Exit Sub
@@ -1728,41 +1875,22 @@ Failed:
     Note "整列に失敗 " & Err.Number
 End Sub
 
-Private Function MoveOne(ByVal idx As Long, ByVal x As Long, ByVal y As Long, _
-                         ByVal w As Long, ByVal h As Long) As Boolean
-    If idx < 0 Or idx >= m_winN Then Exit Function
-    If m_winNp(idx) < 0 Then
-        MoveOne = MoveExcel(x, y, w, h)
-    Else
-        MoveOne = MoveWin(m_npWin(m_winNp(idx)), x, y, w, h)
-    End If
-End Function
-
-' Excel 自身。UIA のピクセルで受け取り、実測した比でポイントへ戻す。
-Private Function MoveExcel(ByVal x As Long, ByVal y As Long, _
-                           ByVal w As Long, ByVal h As Long) As Boolean
-    On Error GoTo Failed
-    If m_pxPerPt <= 0 Then MeasurePxPerPt
-    If m_pxPerPt <= 0 Then Exit Function
-    If Application.WindowState <> xlNormal Then Application.WindowState = xlNormal
-    Application.Left = x / m_pxPerPt
-    Application.Top = y / m_pxPerPt
-    Application.Width = w / m_pxPerPt
-    Application.Height = h / m_pxPerPt
-    MoveExcel = True
-    Exit Function
-Failed:
-    MoveExcel = False
-End Function
-
 ' ほかの窓は UIA のパターンで動かす。最大化されていると CanMove が False に
 ' なるので、先に WindowPattern で通常表示へ戻す。
 '
 ' パターンは必ず型どおりに受ける（IUIAutomationWindowPattern /
 ' IUIAutomationTransformPattern）。UIA のパターンは IUnknown 系で IDispatch を
 ' 持たないため、As Object（遅延バインディング）で受けると Set の時点で失敗し、
-' 「整列ボタンを押しても 1 窓（Excel）しか動かない」になる（この実機で実測。
-' 同じ理由で ValuePattern も最初から早期バインディングで受けてある）。
+' 「整列ボタンを押してもメモ帳が動かない」になる（この実機で実測。同じ理由で
+' ValuePattern も最初から早期バインディングで受けてある）。
+'
+' そして、それを直してもまだ動かなかった本当の原因は **パターン ID の
+' 取り違え**だった。UIA_TransformPatternId は 10016 で、10003 は
+' RangeValuePattern。10003 を渡すと GetCurrentPattern は例外も出さずに
+' Nothing を返すので、ログには "no transform" とだけ出て、あたかも
+' 「このメモ帳は Transform を公開していない」ように見える。実際にはこの端末の
+' メモ帳 11.2606 は窓要素で 10016（Transform）と 10009（Window）を公開して
+' いて、CanMove / CanResize とも True（2026-08-19 実測）。
 Private Function MoveWin(ByVal el As UIAutomationClient.IUIAutomationElement, _
                          ByVal x As Long, ByVal y As Long, _
                          ByVal w As Long, ByVal h As Long) As Boolean
@@ -1782,7 +1910,11 @@ Private Function MoveWin(ByVal el As UIAutomationClient.IUIAutomationElement, _
     End If
     Set tp = el.GetCurrentPattern(UIA_TransformPatternId)
     If tp Is Nothing Then
-        PbLog "  movewin: no transform"
+        ' 取れなかったときは「相手が公開していない」のか「こちらの訊き方が
+        ' 悪い」のかをログで分ける。IsTransformPatternAvailable が True なのに
+        ' パターンが Nothing なら、それは訊き方（ID・受け型）の側の問題。
+        PbLog "  movewin: no transform (avail=" & _
+            CStr(el.GetCurrentPropertyValue(UIA_IsTransformPatternAvailablePropertyId)) & ")"
         Exit Function
     End If
     If Not CBool(tp.CurrentCanMove) Then

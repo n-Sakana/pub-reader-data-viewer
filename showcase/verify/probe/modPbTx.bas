@@ -66,8 +66,8 @@ Private Sub ScanDescendants()
         Say "scan: no notepad"
         Exit Sub
     End If
-    ' 30025 = IsTransformPatternAvailable
-    Set cond = uia.CreatePropertyCondition(30025, True)
+    ' 30042 = IsTransformPatternAvailable
+    Set cond = uia.CreatePropertyCondition(30042, True)
     Set arr = win.FindAll(4, cond)          ' TreeScope_Descendants
     Say "scan: descendants with Transform = " & arr.Length
     n = arr.Length
@@ -81,7 +81,7 @@ Private Sub ScanDescendants()
     Set cond = uia.CreatePropertyCondition(30012, "XLMAIN")
     Set win = root.FindFirst(2, cond)
     If Not win Is Nothing Then
-        Say "scan: XLMAIN IsTransformAvailable=" & CStr(win.GetCurrentPropertyValue(30025))
+        Say "scan: XLMAIN IsTransformAvailable=" & CStr(win.GetCurrentPropertyValue(30042))
     End If
     Exit Sub
 Failed:
@@ -111,10 +111,10 @@ Private Sub TryClient(ByVal label As String, ByVal uia As UIAutomationClient.IUI
         Exit Sub
     End If
     Set el = arr.GetElement(0)
-    avail = el.GetCurrentPropertyValue(30025)          ' IsTransformPatternAvailable
+    avail = el.GetCurrentPropertyValue(30042)          ' IsTransformPatternAvailable
     Say label & ": IsTransformAvailable=" & CStr(avail)
     Err.Clear
-    Set tp = el.GetCurrentPattern(10003)
+    Set tp = el.GetCurrentPattern(10016)
     Say label & ": GetCurrentPattern(Transform) nothing=" & (tp Is Nothing) & " err=" & Err.Number
     If Not tp Is Nothing Then
         Say label & ": CanMove=" & tp.CurrentCanMove
