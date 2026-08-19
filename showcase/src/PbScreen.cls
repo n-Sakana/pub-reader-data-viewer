@@ -358,7 +358,7 @@ Public Sub MapGeom(ByRef mx As Long, ByRef my As Long, ByRef mw As Long, ByRef m
     oy = my + (mh - CLng(scrH * sc)) \ 2
 End Sub
 
-Public Sub PaintMiniMap(ByVal wins As PbWindows, ByVal uia As PbUia)
+Public Sub PaintMiniMap(ByVal ws As PbWorkspace)
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
     Dim sc As Double
@@ -369,29 +369,29 @@ Public Sub PaintMiniMap(ByVal wins As PbWindows, ByVal uia As PbUia)
     Dim cx1 As Long, cy1 As Long, cx2 As Long, cy2 As Long
 
     On Error Resume Next
-    If wins.Count = 0 Then Exit Sub
-    sig = wins.Signature
+    If ws.Count = 0 Then Exit Sub
+    sig = ws.Signature
     If sig = m_mapSig Then Exit Sub
     m_mapSig = sig
 
-    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    MapGeom mx, my, mw, mh, sc, ox, oy, ws.ScreenWidth, ws.ScreenHeight
     If sc <= 0 Then Exit Sub
 
-    m_cv.SetTxt "pb_res", uia.ScreenWidth & "×" & uia.ScreenHeight & " 自動判定"
+    m_cv.SetTxt "pb_res", ws.ScreenWidth & "×" & ws.ScreenHeight & " 自動判定"
     m_cv.SetTxt "pb_scale", "×" & Format$(sc, "0.00") & " ･ " & _
-        CLng(uia.ScreenWidth * sc) & "×" & CLng(uia.ScreenHeight * sc)
+        CLng(ws.ScreenWidth * sc) & "×" & CLng(ws.ScreenHeight * sc)
 
     m_cv.Fill mx, my, mw, mh, C_PANEL
     cx1 = ox: cy1 = oy
-    cx2 = ox + CLng(uia.ScreenWidth * sc)
-    cy2 = oy + CLng(uia.ScreenHeight * sc)
+    cx2 = ox + CLng(ws.ScreenWidth * sc)
+    cy2 = oy + CLng(ws.ScreenHeight * sc)
     m_cv.Fill cx1, cy1, cx2 - cx1, cy2 - cy1, C_BODY
 
-    For i = wins.Count - 1 To 0 Step -1
-        x1 = ox + CLng((wins.L(i) - uia.ScreenLeft) * sc)
-        y1 = oy + CLng((wins.T(i) - uia.ScreenTop) * sc)
-        x2 = ox + CLng((wins.R(i) - uia.ScreenLeft) * sc)
-        y2 = oy + CLng((wins.B(i) - uia.ScreenTop) * sc)
+    For i = ws.Count - 1 To 0 Step -1
+        x1 = ox + CLng((ws.L(i) - ws.ScreenLeft) * sc)
+        y1 = oy + CLng((ws.T(i) - ws.ScreenTop) * sc)
+        x2 = ox + CLng((ws.R(i) - ws.ScreenLeft) * sc)
+        y2 = oy + CLng((ws.B(i) - ws.ScreenTop) * sc)
         ' 画面の外へ出ている分は切り取る（切らないと隣のカードまで塗る）
         If x1 < cx1 Then x1 = cx1
         If y1 < cy1 Then y1 = cy1
@@ -399,7 +399,7 @@ Public Sub PaintMiniMap(ByVal wins As PbWindows, ByVal uia As PbUia)
         If y2 > cy2 Then y2 = cy2
         If x2 - x1 > 20 And y2 - y1 > 20 Then
             ' 操作できる窓（メモ帳）を強調する。Excel は固定なので添え物。
-            If wins.IsNotepad(i) Then
+            If ws.IsNotepad(i) Then
                 edge = C_KEY: face = C_SOFT: barC = C_KEY
             Else
                 edge = C_WINOTHER: face = C_BODY: barC = C_SUB
@@ -412,34 +412,34 @@ Public Sub PaintMiniMap(ByVal wins As PbWindows, ByVal uia As PbUia)
 End Sub
 
 ' ミニマップのセル → 画面の点。
-Public Sub CellToScreen(ByVal c As Range, ByRef px As Long, ByRef py As Long, ByVal uia As PbUia)
+Public Sub CellToScreen(ByVal c As Range, ByRef px As Long, ByRef py As Long, ByVal ws As PbWorkspace)
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
     Dim sc As Double
-    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    MapGeom mx, my, mw, mh, sc, ox, oy, ws.ScreenWidth, ws.ScreenHeight
     If sc <= 0 Then Exit Sub
-    px = uia.ScreenLeft + CLng((PxOfCol(c.Column) - ox) / sc)
-    py = uia.ScreenTop + CLng((PxOfRow(c.Row) - oy) / sc)
+    px = ws.ScreenLeft + CLng((PxOfCol(c.Column) - ox) / sc)
+    py = ws.ScreenTop + CLng((PxOfRow(c.Row) - oy) / sc)
 End Sub
 
 ' ミニマップの選択範囲 → 画面の矩形。
 Public Function RangeToScreen(ByVal rg As Range, ByRef x1 As Long, ByRef y1 As Long, _
-                              ByRef x2 As Long, ByRef y2 As Long, ByVal uia As PbUia) As Boolean
+                              ByRef x2 As Long, ByRef y2 As Long, ByVal ws As PbWorkspace) As Boolean
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
     Dim sc As Double
-    MapGeom mx, my, mw, mh, sc, ox, oy, uia.ScreenWidth, uia.ScreenHeight
+    MapGeom mx, my, mw, mh, sc, ox, oy, ws.ScreenWidth, ws.ScreenHeight
     If sc <= 0 Then Exit Function
-    x1 = uia.ScreenLeft + CLng((PxOfCol(rg.Column) - ox) / sc)
-    y1 = uia.ScreenTop + CLng((PxOfRow(rg.Row) - oy) / sc)
-    x2 = uia.ScreenLeft + CLng((PxOfCol(rg.Column + rg.Columns.Count) - ox) / sc)
-    y2 = uia.ScreenTop + CLng((PxOfRow(rg.Row + rg.Rows.Count) - oy) / sc)
+    x1 = ws.ScreenLeft + CLng((PxOfCol(rg.Column) - ox) / sc)
+    y1 = ws.ScreenTop + CLng((PxOfRow(rg.Row) - oy) / sc)
+    x2 = ws.ScreenLeft + CLng((PxOfCol(rg.Column + rg.Columns.Count) - ox) / sc)
+    y2 = ws.ScreenTop + CLng((PxOfRow(rg.Row + rg.Rows.Count) - oy) / sc)
     RangeToScreen = True
 End Function
 
 ' ElementFromPoint の実演。その点にある窓の素性を出すだけで、動かす相手を
 ' 選ぶ操作ではない（相手は常につないだメモ帳 1 枚）。
-Public Sub ShowPointInfo(ByVal idx As Long, ByVal wins As PbWindows, ByVal np As PbNotepad)
+Public Sub ShowPointInfo(ByVal idx As Long, ByVal ws As PbWorkspace)
     Dim tp As UIAutomationClient.IUIAutomationTransformPattern
     Dim canMove As String
     On Error GoTo Failed
@@ -448,13 +448,13 @@ Public Sub ShowPointInfo(ByVal idx As Long, ByVal wins As PbWindows, ByVal np As
         m_cv.SetTxt "pb_pt_rect", "―"
         Exit Sub
     End If
-    m_cv.SetTxt "pb_pt_win", Left$(wins.Label(idx), 30) & " ･ " & _
-        IIf(wins.IsNotepad(idx), "Notepad", "XLMAIN") & " ･ pid " & wins.PidOf(idx)
+    m_cv.SetTxt "pb_pt_win", Left$(ws.Label(idx), 30) & " ･ " & _
+        IIf(ws.IsNotepad(idx), "Notepad", "XLMAIN") & " ･ pid " & ws.PidOf(idx)
     canMove = "―"
-    If Not wins.IsNotepad(idx) Then
+    If Not ws.IsNotepad(idx) Then
         canMove = "固定（起動時に画面の左半分へ配置）"
-    ElseIf Not np.Element Is Nothing Then
-        Set tp = np.Element.GetCurrentPattern(UIA_TransformPatternId)
+    ElseIf Not ws.Element Is Nothing Then
+        Set tp = ws.Element.GetCurrentPattern(UIA_TransformPatternId)
         If tp Is Nothing Then
             canMove = "False（TransformPattern なし）"
         Else
@@ -462,8 +462,8 @@ Public Sub ShowPointInfo(ByVal idx As Long, ByVal wins As PbWindows, ByVal np As
                       " / Resize " & CStr(CBool(tp.CurrentCanResize))
         End If
     End If
-    m_cv.SetTxt "pb_pt_rect", wins.L(idx) & ", " & wins.T(idx) & " ･ " & _
-        (wins.R(idx) - wins.L(idx)) & "×" & (wins.B(idx) - wins.T(idx)) & " ･ " & canMove
+    m_cv.SetTxt "pb_pt_rect", ws.L(idx) & ", " & ws.T(idx) & " ･ " & _
+        (ws.R(idx) - ws.L(idx)) & "×" & (ws.B(idx) - ws.T(idx)) & " ･ " & canMove
     Exit Sub
 Failed:
     m_cv.SetTxt "pb_pt_rect", "―"

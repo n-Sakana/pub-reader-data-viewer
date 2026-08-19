@@ -32,12 +32,16 @@ Attribute VB_Exposed = False
 '
 ' 終わらせるときは quit をファイルで送るだけ。プロセスは殺さない。返事（bye）
 ' は次のティック以降で待つ。ここでブロックすると FE が数秒固まる。
+'
+' Temp のやりとり（置き場所・読み書き・掃除）は PbBenchmarkRun が持っている。
+' 1 回の run と同じ寿命の資源だからで、BE の一生を見るこのクラスは、そこを
+' 通してだけファイルへ触る。
 '==============================================================================
 Option Explicit
 
 Private Const STOP_TICKS_MAX As Long = 8
 
-Private m_ch As PbChannel
+Private m_run As PbBenchmarkRun
 Private m_log As PbLog
 Private m_started As Boolean
 Private m_status As String
@@ -45,8 +49,8 @@ Private m_stopping As Boolean
 Private m_stopTicks As Long
 Private m_lastProg As String
 
-Public Sub Init(ByVal channel As PbChannel, ByVal logger As PbLog)
-    Set m_ch = channel
+Public Sub Init(ByVal run As PbBenchmarkRun, ByVal logger As PbLog)
+    Set m_run = run
     Set m_log = logger
     m_status = "待機"
 End Sub
@@ -75,15 +79,15 @@ Public Function Start(Optional ByVal reuseCopy As Boolean = False) As Boolean
     Dim copyPath As String
 
     On Error GoTo Failed
-    m_ch.EnsureFolder
-    m_ch.KillQuiet m_ch.CmdPath
-    m_ch.KillQuiet m_ch.PiPath
-    m_ch.KillQuiet m_ch.ProgPath
-    m_ch.Heartbeat
+    m_run.EnsureFolder
+    m_run.KillQuiet m_run.CmdPath
+    m_run.KillQuiet m_run.PiPath
+    m_run.KillQuiet m_run.ProgPath
+    m_run.Heartbeat
 
-    copyPath = m_ch.BeBookPath
+    copyPath = m_run.BeBookPath
     If Not (reuseCopy And Len(Dir$(copyPath)) > 0) Then
-        m_ch.KillQuiet copyPath
+        m_run.KillQuiet copyPath
         ThisWorkbook.SaveCopyAs copyPath
     End If
 
@@ -117,7 +121,7 @@ End Function
 ' 終われと言う。返事は待たない。
 Public Sub RequestQuit()
     If Not m_started Then Exit Sub
-    m_ch.SendCommand "quit", ""
+    m_run.SendCommand "quit", ""
     m_stopping = True
     m_stopTicks = 0
     m_status = "終了中"
@@ -129,9 +133,9 @@ Public Function PumpIdle() As Boolean
     Dim js As String
 
     On Error Resume Next
-    If m_started Then m_ch.Heartbeat
+    If m_started Then m_run.Heartbeat
 
-    js = m_ch.ReadProgress()
+    js = m_run.ReadProgress()
     If Len(js) > 0 And js <> m_lastProg Then
         m_lastProg = js
         ' BE は FE が黙って見えると自分から終わる（置き去り防止）。それを見たら、
@@ -148,7 +152,7 @@ Public Function PumpIdle() As Boolean
         If Not m_started Or m_stopTicks > STOP_TICKS_MAX Then
             m_stopping = False
             m_started = False
-            m_ch.CleanAll
+            m_run.CleanAll
             m_lastProg = ""
             m_status = "終了"
             PumpIdle = True
@@ -162,7 +166,7 @@ Public Sub WaitForBye(ByVal maxSeconds As Long)
     On Error Resume Next
     If Not m_started Then Exit Sub
     For k = 1 To maxSeconds
-        If InStr(1, m_ch.ReadProgress(), """bye""") > 0 Then Exit For
+        If InStr(1, m_run.ReadProgress(), """bye""") > 0 Then Exit For
         Application.Wait Now + TimeSerial(0, 0, 1)
     Next k
     m_log.Note "quit: be waited " & k

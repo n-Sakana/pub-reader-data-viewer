@@ -16,22 +16,18 @@ Attribute VB_Name = "modPixelBridge"
 ' cmd / WMI / 外部 helper / C# は製品の実行経路に一切持ち込まない。別 Excel の
 ' 起動は Excel COM のみ。図形もフォームコントロールも ActiveX も使わない。
 '
-' 構成（責務ごとに分けてある）
-'   modPbDesign    寸法・色・状態を持たない座標計算
-'   modPbCommon    UIA の識別子・文字列ユーティリティ
-'   modPbBackend   BE 側の入口と円周率の計算（コピーされたブックの中で動く）
-'   PbApp          本体。ポンプ、操作の割り振り、寿命
-'   PbCanvas       疑似ピクセルの画布（シートと描く道具）
-'   PbScreen       盤面の配置と差分描画
-'   PbUia          UI Automation クライアントと画面
-'   PbNotepad      つないでいるメモ帳 1 枚
-'   PbWindows      ミニマップに映す窓の一覧
-'   PbChannel      Temp のファイルだけで往復する FE ⇔ BE
-'   PbBeSession    非表示の別プロセス Excel の一生
-'   PbDisplayBook  表示用 Excel（保存しない一時ブック）
-'   PbBench        15 秒の円周率ベンチ
-'   PbLog          記録（イミディエイト / ファイル）
-'   PbError        例外の文脈
+' 構成（責務ごとに分けてある。標準モジュール 4 ＋ クラス 8）
+'   modPbDesign     寸法・色・状態を持たない座標計算
+'   modPbCommon     UIA の識別子・文字列ユーティリティ
+'   modPbBackend    BE 側の入口と円周率の計算（コピーされたブックの中で動く）
+'   PbApp           本体。ポンプ、操作の割り振り、寿命
+'   PbCanvas        疑似ピクセルの画布（シートと描く道具）
+'   PbScreen        盤面の配置と差分描画
+'   PbWorkspace     画面の外側。UIA クライアント、画面、メモ帳 1 枚、窓の一覧
+'   PbBeSession     非表示の別プロセス Excel の一生
+'   PbBenchmarkRun  円周率ベンチ 1 回ぶん。Temp のやりとりと表示用 Excel を含む
+'   PbLog           記録（イミディエイト / ファイル）
+'   PbError         例外の文脈
 '==============================================================================
 Option Explicit
 

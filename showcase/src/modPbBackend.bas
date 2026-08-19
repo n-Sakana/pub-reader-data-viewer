@@ -18,20 +18,23 @@ Attribute VB_Name = "modPbBackend"
 '==============================================================================
 Option Explicit
 
-Private m_ch As PbChannel
+Private m_comms As PbBenchmarkRun
 Private m_quit As Boolean
 Private m_lastSeq As Long
 Private m_feMissing As Long
 Private m_feSeen As String
 
-Private Function Channel() As PbChannel
+' やりとりの置き場所と読み書きは FE 側と同じ約束でなければ噛み合わないので、
+' 同じクラスをこちらでも作る。BE が使うのはその Temp のやりとりの部分だけで、
+' 表示用 Excel も計測も動かさない（Init に記録係だけ渡すのはそのため）。
+Private Function Comms() As PbBenchmarkRun
     Dim lg As PbLog
-    If m_ch Is Nothing Then
+    If m_comms Is Nothing Then
         Set lg = New PbLog
-        Set m_ch = New PbChannel
-        m_ch.Init lg
+        Set m_comms = New PbBenchmarkRun
+        m_comms.Init lg
     End If
-    Set Channel = m_ch
+    Set Comms = m_comms
 End Function
 
 '------------------------------------------------------------------ 入口
@@ -45,7 +48,7 @@ Public Function PbBeBootstrap() As String
     m_quit = False
     m_lastSeq = 0
     ' FE がまだフォルダを作っていないことがある。
-    Channel().EnsureFolder
+    Comms().EnsureFolder
     Application.OnTime Now, Qual("PbBeMain")
     PbBeBootstrap = "armed"
 End Function
@@ -57,11 +60,11 @@ Public Sub PbBeMain()
     Dim feNow As String
 
     On Error Resume Next
-    Channel().EnsureFolder
+    Comms().EnsureFolder
     BeWrite "{""state"":""idle"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
     Do
         If m_quit Then Exit Do
-        js = Channel().ReadAll(Channel().CmdPath)
+        js = Comms().ReadAll(Comms().CmdPath)
         seq = CLng(Val(JVal(js, "seq")))
         If seq > m_lastSeq Then
             m_lastSeq = seq
@@ -80,7 +83,7 @@ Public Sub PbBeMain()
         ' いるかで見る。待つ長さは長めに取る。FE は正常でも黙る時間があり
         ' （起動直後の最初の再描画は 1px なら数十秒）、短く見切ると、その間に
         ' BE が自分で終わってしまう。
-        feNow = Channel().ReadAll(Channel().FePath)
+        feNow = Comms().ReadAll(Comms().FePath)
         If Len(feNow) = 0 Or feNow = m_feSeen Then
             m_feMissing = m_feMissing + 1
             If m_feMissing > 90 Then Exit Do
@@ -186,18 +189,18 @@ Private Sub BePiRun(ByVal secs As Double, ByVal stopSeq As Long)
 
         If (j Mod chunk) = 0 Or j = n Then
             ms = ElapsedSince(t0) * 1000
-            Channel().WriteAll Channel().PiPath, out
+            Comms().WriteAll Comms().PiPath, out
             BeWrite "{""state"":""running"",""n"":" & Len(out) & ",""target"":" & n & _
                 ",""ms"":" & CLng(ms) & ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
             If ms >= secs * 1000 Then Exit For
             ' FE から新しい指示（quit）が来ていたら、そこで畳む。
-            js = Channel().ReadAll(Channel().CmdPath)
+            js = Comms().ReadAll(Comms().CmdPath)
             If CLng(Val(JVal(js, "seq"))) > stopSeq Then Exit For
         End If
     Next j
 
     ms = ElapsedSince(t0) * 1000
-    Channel().WriteAll Channel().PiPath, out
+    Comms().WriteAll Comms().PiPath, out
     BeWrite "{""state"":""done"",""n"":" & Len(out) & ",""target"":" & n & _
         ",""ms"":" & CLng(ms) & ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
     Exit Sub
@@ -245,10 +248,10 @@ Private Sub BeQuit()
     BeWrite "{""state"":""bye"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
     Application.DisplayAlerts = False
     ThisWorkbook.Saved = True
-    Set m_ch = Nothing
+    Set m_comms = Nothing
     Application.Quit
 End Sub
 
 Private Sub BeWrite(ByVal s As String)
-    Channel().WriteAll Channel().ProgPath, s
+    Comms().WriteAll Comms().ProgPath, s
 End Sub

@@ -46,13 +46,9 @@ Private m_log As PbLog
 Private m_err As PbError
 Private m_canvas As PbCanvas
 Private m_screen As PbScreen
-Private m_uia As PbUia
-Private m_np As PbNotepad
-Private m_wins As PbWindows
-Private m_ch As PbChannel
+Private m_ws As PbWorkspace
 Private m_be As PbBeSession
-Private m_disp As PbDisplayBook
-Private m_bench As PbBench
+Private m_run As PbBenchmarkRun
 
 Private m_running As Boolean
 Private m_armed As Boolean
@@ -73,23 +69,15 @@ Public Sub Startup()
     Set m_err = New PbError
     Set m_canvas = New PbCanvas
     Set m_screen = New PbScreen
-    Set m_uia = New PbUia
-    Set m_np = New PbNotepad
-    Set m_wins = New PbWindows
-    Set m_ch = New PbChannel
+    Set m_ws = New PbWorkspace
     Set m_be = New PbBeSession
-    Set m_disp = New PbDisplayBook
-    Set m_bench = New PbBench
+    Set m_run = New PbBenchmarkRun
 
     m_canvas.Init m_log
     m_screen.Init m_canvas, m_log
-    m_uia.Init m_log
-    m_np.Init m_uia, m_log
-    m_wins.Init m_uia, m_np, m_canvas
-    m_ch.Init m_log
-    m_be.Init m_ch, m_log
-    m_disp.Init m_log, m_canvas.FontMono
-    m_bench.Init m_screen, m_ch, m_be, m_disp, m_np, m_uia, m_canvas, m_log
+    m_ws.Init m_log, m_canvas
+    m_run.Init m_log, m_screen, m_be, m_ws, m_canvas
+    m_be.Init m_run, m_log
 
     m_startAt = Timer
     m_ticks = 0
@@ -107,12 +95,12 @@ Public Sub Startup()
     ' UsableWidth / UsableHeight は「いまの窓」の広さなので、最大化したまま
     ' 測って刻みを選ぶと、左半分に収まらない盤面を作ってしまう。
     m_canvas.Build
-    m_uia.ReadScreen m_canvas.PxPerPt
-    m_canvas.PlaceLeftHalf m_uia.ScreenLeft, m_uia.ScreenTop, _
-                           m_uia.ScreenRight, m_uia.ScreenBottom
+    m_ws.ReadScreen m_canvas.PxPerPt
+    m_canvas.PlaceLeftHalf m_ws.ScreenLeft, m_ws.ScreenTop, _
+                           m_ws.ScreenRight, m_ws.ScreenBottom
     m_canvas.Calibrate
-    m_uia.ReadOwnPid
-    m_log.Note "show: sheet pitch=" & m_canvas.Pitch & " pid=" & m_uia.OwnPidText
+    m_ws.ReadOwnPid
+    m_log.Note "show: sheet pitch=" & m_canvas.Pitch & " pid=" & m_ws.OwnPidText
 
     ' 盤面を前に出すのは、組み終わってから一度だけ。組む前に出すと 1px では
     ' 表示設定の変更で再配置が走り続けて戻ってこない（CPU 478 秒）。
@@ -196,11 +184,11 @@ Public Sub Tick()
 
     If m_syncOn Then
         m_polls = m_polls + 1
-        If m_wins.Count = 0 Or (m_ticks Mod PB_SCANEVERY) = 1 Then
+        If m_ws.Count = 0 Or (m_ticks Mod PB_SCANEVERY) = 1 Then
             t0 = m_log.Mark
-            m_uia.ReadScreen m_canvas.PxPerPt
-            m_np.Rescan
-            m_wins.Rebuild
+            m_ws.ReadScreen m_canvas.PxPerPt
+            m_ws.Rescan
+            m_ws.RebuildWindows
             m_log.Span "uia scan", t0
         End If
         t0 = m_log.Mark
@@ -209,7 +197,7 @@ Public Sub Tick()
     End If
 
     t0 = m_log.Mark
-    m_screen.PaintMiniMap m_wins, m_uia
+    m_screen.PaintMiniMap m_ws
     m_log.Span "minimap", t0
 
     t0 = m_log.Mark
@@ -258,30 +246,30 @@ Private Sub SyncNotepad()
     Dim rg As Range
 
     On Error GoTo Failed
-    If Not m_np.IsBound Then
+    If Not m_ws.IsBound Then
         m_screen.SetText "pb_np_title", "―"
         m_screen.SetText "pb_np_state", ""
         Exit Sub
     End If
-    m_screen.SetText "pb_np_title", Left$(m_np.Title, 40)
-    m_screen.SetText "pb_np_state", IIf(m_np.IsMinimized, "最小化中", "")
+    m_screen.SetText "pb_np_title", Left$(m_ws.Title, 40)
+    m_screen.SetText "pb_np_state", IIf(m_ws.IsMinimized, "最小化中", "")
 
     Set rg = m_canvas.RangeOf("pb_np_text")
     If rg Is Nothing Then Exit Sub
 
     ' 結んだ直後はメモ帳が正。セル側を合わせてから通常の同期に入る。
-    If m_np.IsFresh Then
-        MirrorToCell rg, m_np.ReadText()
+    If m_ws.IsFresh Then
+        MirrorToCell rg, m_ws.ReadText()
         m_screen.SetText "pb_get", "← GetValue " & Format$(Now, "hh:nn:ss")
         Exit Sub
     End If
 
     cur = CStr(rg.Cells(1, 1).Value)
-    If cur <> m_np.LastCell Then
+    If cur <> m_ws.LastCell Then
         ' 入力面が編集された → メモ帳へ書き戻す
         m_screen.SetText "pb_np_state", "SetValue 待ち"
-        If m_np.WriteText(cur) Then
-            m_screen.SetText "pb_np_state", IIf(m_np.IsMinimized, "最小化中", "")
+        If m_ws.WriteText(cur) Then
+            m_screen.SetText "pb_np_state", IIf(m_ws.IsMinimized, "最小化中", "")
             m_screen.SetText "pb_get", "→ SetValue " & Format$(Now, "hh:nn:ss")
         Else
             m_screen.SetText "pb_np_state", "切断"
@@ -289,23 +277,23 @@ Private Sub SyncNotepad()
         Exit Sub
     End If
 
-    np = m_np.ReadText()
-    If np <> m_np.LastText Then
+    np = m_ws.ReadText()
+    If np <> m_ws.LastText Then
         MirrorToCell rg, np
         m_screen.SetText "pb_get", "← GetValue " & Format$(Now, "hh:nn:ss")
     End If
     Exit Sub
 Failed:
-    m_np.MarkDisconnected
+    m_ws.MarkDisconnected
     m_screen.SetText "pb_np_state", "切断 " & Err.Number
 End Sub
 
 Private Sub MirrorToCell(ByVal rg As Range, ByVal npText As String)
     m_canvas.Dirty = True
     rg.Cells(1, 1).Value = ToLf(npText)
-    ' 控えは「書いた値」ではなく「書いた結果セルが返す値」で持つ（PbNotepad
+    ' 控えは「書いた値」ではなく「書いた結果セルが返す値」で持つ（PbWorkspace
     ' の NoteMirrored を参照）。
-    m_np.NoteMirrored npText, CStr(rg.Cells(1, 1).Value)
+    m_ws.NoteMirrored npText, CStr(rg.Cells(1, 1).Value)
 End Sub
 
 ' フォーカスの見せ方。GetFocusedElement は使わない。フォーカスが Excel 自身に
@@ -315,10 +303,10 @@ End Sub
 Private Sub PaintFocusTail()
     Dim hf As Boolean
     If Not m_syncOn Then Exit Sub
-    hf = m_np.HasFocus()
+    hf = m_ws.HasFocus()
     m_screen.SetFrameFocused hf
     If hf Then
-        m_screen.SetText "pb_focus", "focus pid " & m_np.Pid & " ･ Len " & Len(m_np.LastText)
+        m_screen.SetText "pb_focus", "focus pid " & m_ws.Pid & " ･ Len " & Len(m_ws.LastText)
     Else
         m_screen.SetText "pb_focus", "focus ―"
     End If
@@ -327,9 +315,9 @@ End Sub
 ' Temp まわり。ベンチ中はベンチのポンプへ、そうでなければ BE の様子見へ。
 Private Sub PumpChannel()
     On Error Resume Next
-    If m_bench.IsRunning Then
-        m_ch.Heartbeat
-        m_bench.Pump
+    If m_run.IsRunning Then
+        m_run.Heartbeat
+        m_run.Pump
         Exit Sub
     End If
     m_be.PumpIdle
@@ -378,7 +366,7 @@ Public Sub DoAction(ByVal key As String)
         Case "sync": ToggleSync
         Case "npmax": NpMaximize
         Case "npmin": NpMinimize
-        Case "runpi": m_bench.Start
+        Case "runpi": m_run.Start
     End Select
 End Sub
 
@@ -391,9 +379,9 @@ End Sub
 Private Sub PickAt(ByVal c As Range)
     Dim px As Long, py As Long
     On Error Resume Next
-    m_screen.CellToScreen c, px, py, m_uia
+    m_screen.CellToScreen c, px, py, m_ws
     m_screen.ShowPointXY px, py
-    m_screen.ShowPointInfo m_wins.HitTest(px, py), m_wins, m_np
+    m_screen.ShowPointInfo m_ws.HitTest(px, py), m_ws
 End Sub
 
 ' ドラッグで選ばれた矩形へ、つないでいるメモ帳を移動・リサイズする。
@@ -403,16 +391,16 @@ Private Sub PlaceAt(ByVal rg As Range)
     Dim x1 As Long, y1 As Long, x2 As Long, y2 As Long
 
     On Error GoTo Failed
-    If Not m_np.IsBound Then
+    If Not m_ws.IsBound Then
         m_screen.Note "メモ帳が見つかりません"
         Exit Sub
     End If
-    If Not m_screen.RangeToScreen(rg, x1, y1, x2, y2, m_uia) Then Exit Sub
+    If Not m_screen.RangeToScreen(rg, x1, y1, x2, y2, m_ws) Then Exit Sub
     If x2 - x1 < 160 Or y2 - y1 < 120 Then
         m_screen.Note "小さすぎます（160×120 未満）"
         Exit Sub
     End If
-    If m_np.MoveResize(x1, y1, x2 - x1, y2 - y1) Then
+    If m_ws.MoveResize(x1, y1, x2 - x1, y2 - y1) Then
         m_screen.Note "メモ帳を移動 ･ " & x1 & "," & y1 & " " & (x2 - x1) & "×" & (y2 - y1)
         RefreshWindows
     Else
@@ -430,15 +418,15 @@ End Sub
 Private Sub NpMaximize()
     Dim fx As Long, fw As Long
     On Error GoTo Failed
-    If Not m_np.IsBound Then
+    If Not m_ws.IsBound Then
         m_screen.Note "最大化：メモ帳が見つかりません"
         Exit Sub
     End If
-    If Not m_uia.HasScreen Then m_uia.ReadScreen m_canvas.PxPerPt
-    fx = m_uia.ScreenLeft + m_uia.ScreenWidth \ 2
-    fw = m_uia.ScreenRight - fx
-    If m_np.MoveResize(fx, m_uia.ScreenTop, fw, m_uia.ScreenHeight) Then
-        m_screen.Note "最大化 ･ " & fx & "," & m_uia.ScreenTop & " " & fw & "×" & m_uia.ScreenHeight
+    If Not m_ws.HasScreen Then m_ws.ReadScreen m_canvas.PxPerPt
+    fx = m_ws.ScreenLeft + m_ws.ScreenWidth \ 2
+    fw = m_ws.ScreenRight - fx
+    If m_ws.MoveResize(fx, m_ws.ScreenTop, fw, m_ws.ScreenHeight) Then
+        m_screen.Note "最大化 ･ " & fx & "," & m_ws.ScreenTop & " " & fw & "×" & m_ws.ScreenHeight
     Else
         m_screen.Note "最大化できません（Transform が取れませんでした）"
     End If
@@ -451,11 +439,11 @@ End Sub
 
 Private Sub NpMinimize()
     On Error GoTo Failed
-    If Not m_np.IsBound Then
+    If Not m_ws.IsBound Then
         m_screen.Note "最小化：メモ帳が見つかりません"
         Exit Sub
     End If
-    If m_np.Minimize() Then
+    If m_ws.Minimize() Then
         m_screen.Note "最小化 ･ タスクバーへ格納しました"
     Else
         m_screen.Note "最小化できません（WindowPattern が取れませんでした）"
@@ -469,8 +457,8 @@ End Sub
 
 Private Sub RefreshWindows()
     m_screen.InvalidateMap
-    m_np.Rescan
-    m_wins.Rebuild
+    m_ws.Rescan
+    m_ws.RebuildWindows
 End Sub
 
 '==============================================================================
@@ -510,8 +498,8 @@ Public Sub PrepareClose()
     Disarm
     m_log.Note "quit: pump disarmed"
     UnbindKeys
-    If m_bench.IsRunning Then m_bench.Finish
-    m_disp.CloseQuiet
+    If m_run.IsRunning Then m_run.Finish
+    m_run.CloseDisplay
     If m_be.IsStarted And Not m_be.IsStopping Then m_be.RequestQuit
     m_log.Flush
 End Sub
@@ -523,7 +511,7 @@ Public Sub Shutdown()
     PrepareClose
 
     m_be.WaitForBye 8
-    m_ch.CleanAll
+    m_run.CleanAll
 
     ' 1px の盤面を前に出したまま表示設定を戻すと再配置が何度も走る。
     ' 先にふつうのシートへ移る。
@@ -533,9 +521,9 @@ Public Sub Shutdown()
     m_canvas.Unhold
     ThisWorkbook.Saved = True
 
-    ' 解放の順序（クラス冒頭のコメントを参照）。掴んだ要素 → UIA クライアント。
-    m_np.ReleaseAll
-    m_uia.ReleaseAll
+    ' 外の窓を掴んでいた COM 参照を手放す。順序（掴んだ要素 → UIA クライアント）
+    ' は PbWorkspace の中で守られる。
+    m_ws.ReleaseAll
     m_log.Note "quit: done"
     m_log.Flush
 End Sub
