@@ -1,6 +1,7 @@
 ﻿# check_forbidden.ps1
 #
-# 成果物に Win32 / Shell / 外部 helper が入っていないことを機械で確かめる。
+# 成果物に Win32 / Shell / PowerShell / cmd / WMI / 外部 helper / C# 埋込みが
+# 入っていないことを機械で確かめる。
 # 見るのは 2 つ:
 #   1. ソースと配布用の .bas
 #   2. 配布ブックの中に実際に入っている VBA（その場で書き出して読む）
@@ -24,7 +25,12 @@ $patterns = @(
     @{ name = 'ExecuteExcel4Macro';         rx = '(?i)ExecuteExcel4Macro' },
     @{ name = 'Shapes.Add / OLEObjects';    rx = '(?i)(Shapes\.Add|OLEObjects\.Add|AddOLEObject|Forms\.[A-Za-z]+\.1)' },
     @{ name = 'CreateObject other than Excel.Application';
-       rx   = '(?i)CreateObject\s*\(\s*"(?!Excel\.Application")' }
+       rx   = '(?i)CreateObject\s*\(\s*"(?!Excel\.Application")' },
+    @{ name = 'PowerShell';                 rx = '(?i)powershell' },
+    @{ name = 'cmd.exe / cmd /c';           rx = '(?i)(cmd\.exe|cmd\s*/c)' },
+    @{ name = 'other script hosts';         rx = '(?i)(mshta|rundll32|regsvr32|wscript\.exe|cscript)' },
+    @{ name = 'ScriptControl (script/C# hosting)'; rx = '(?i)(MSScriptControl|ScriptControl)' },
+    @{ name = 'CLR hosting';                rx = '(?i)(mscoree|CLRCreateInstance|System\.Reflection|Add-Type)' }
 )
 
 $fail = 0

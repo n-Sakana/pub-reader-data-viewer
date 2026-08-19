@@ -32,7 +32,7 @@ Option Explicit
 
 '------------------------------------------------------------------ identity
 Public Const PB_APP As String = "PIXEL BRIDGE"
-Public Const PB_SUB As String = "notepad.exe / UI Automation ･ FE ⇔ BE"
+Public Const PB_SUB As String = "notepad.exe / UI Automation ･ FE ⇔ BE ･ pi 15s"
 Private Const PB_SHEET As String = "PIXELBRIDGE"
 Private Const PB_BE_MARK As String = "_be"
 
@@ -41,25 +41,27 @@ Private Const PB_UNIT As Long = 4              ' ビルドが 1 / 2 / 4 で上�
 Private Const PB_W As Long = 812
 Private Const PB_H As Long = 812
 Private Const PB_DOTS As Long = 8
-Private Const PB_MAXNP As Long = 2
-Private Const PB_MAXWIN As Long = 3
+' 追う窓は 2 つ：この Excel と、つなぐメモ帳 1 枚。メモ帳は 1 枚だけを見る
+' （owner 指示 2026-08-19）。2 枚目のスロット・選択・切替は全部落としてある。
+Private Const PB_MAXWIN As Long = 2
 Private Const PB_SCANEVERY As Long = 4         ' 窓の探し直しは何ティックに 1 度か
 Private Const PB_MAXBTN As Long = 8
 
-' 進捗の盤。モックと同じ 67 x 12 = 804 ランプ。原稿を左上から右下へ割り当て、
-' 清書できたところまで点いていく。ランプ 1 つは PB_UNIT の倍数にしてあるので、
-' 1px でも 2px でも 4px でもセルに割り切れる。
+' 進捗の盤。モックと同じ 67 x 12 = 804 ランプ。円周率の桁を左上から右下へ
+' 1 桁 1 ランプで置き、桁の値（0～9）がそのままランプの色になる。ランプ 1 つは
+' PB_UNIT の倍数にしてあるので、1px でも 2px でも 4px でもセルに割り切れる。
 Private Const LAMP_COLS As Long = 67
 Private Const LAMP_ROWS As Long = 12
 Private Const LAMP_PX As Long = 4              ' ランプ 1 つの設計 px
 Private Const LAMP_N As Long = LAMP_COLS * LAMP_ROWS
 
-' 校正のねらい時間（秒）。原稿が短いと一瞬で終わって FE と BE の差が
-' 見えないので、「原稿を何周読み直すか」で総量をここへ揃える。回数を
-' 固定すると端末次第で長さが桁で変わる（開発機の定数 3 億回は、この
-' ノートでは 212 秒かかった。実測）。だから実行のたびに ProofFold の
-' 速さを 0.1 秒だけ測り、この秒数になる周回数を選ぶ。
-Private Const PB_JOBSECS As Double = 15#
+' ベンチの長さ（秒）。窓の配置と表示用 Excel の用意が終わってから測りはじめ、
+' この時間で自動的に終わる。
+Private Const PB_BENCHSECS As Double = 15#
+
+' 表示用 Excel の並べ方。1 セルに 10 桁、1 行に 10 セル＝ 100 桁。
+Private Const PI_PERCELL As Long = 10
+Private Const PI_PERROW As Long = 10
 
 '------------------------------------------------------------------ UIA ids
 Private Const TS_CHILDREN As Long = 2
@@ -82,6 +84,7 @@ Private Const UIA_IsTransformPatternAvailablePropertyId As Long = 30042
 Private Const UIA_DocumentControlTypeId As Long = 50030
 Private Const UIA_EditControlTypeId As Long = 50004
 Private Const WindowVisualState_Normal As Long = 0
+Private Const WindowVisualState_Minimized As Long = 2
 
 '------------------------------------------------------------------ palette
 ' デジタル庁デザインシステム（DADS β v2 系）。テーマは 1 つだけ。
@@ -130,7 +133,7 @@ Private m_uiaNote As String
 Private m_myPid As String                      ' 起動時に 1 回だけ読む（下記 ReadOwnPid）
 Private m_scrL As Long, m_scrT As Long, m_scrR As Long, m_scrB As Long
 
-' 追える窓：0 = この Excel、1.. = メモ帳
+' 追える窓：0 = この Excel、1 = メモ帳
 Private m_winN As Long
 Private m_winL(0 To PB_MAXWIN - 1) As Long
 Private m_winT(0 To PB_MAXWIN - 1) As Long
@@ -139,26 +142,24 @@ Private m_winB(0 To PB_MAXWIN - 1) As Long
 Private m_winLabel(0 To PB_MAXWIN - 1) As String
 Private m_winApp(0 To PB_MAXWIN - 1) As String
 Private m_winPid(0 To PB_MAXWIN - 1) As String
-Private m_winNp(0 To PB_MAXWIN - 1) As Long    ' -1 = Excel、0.. = メモ帳スロット
+Private m_winNp(0 To PB_MAXWIN - 1) As Long    ' -1 = Excel、0 = メモ帳
 Private m_mapSig As String
-' 選択は「並びの何番目か」ではなく相手そのもので覚える。m_win* の並びは Z 順で、
-' 利用者がメモ帳をクリックしただけで入れ替わる。添字で覚えると「選んだ窓」と
-' 「ドラッグで動かす窓」が食い違う。-2 = まだ選んでいない、-1 = この Excel、
-' 0.. = メモ帳スロット。
-Private m_pickNp As Long
 
-' メモ帳スロット
-Private m_npWin(0 To PB_MAXNP - 1) As UIAutomationClient.IUIAutomationElement
-Private m_npDoc(0 To PB_MAXNP - 1) As UIAutomationClient.IUIAutomationElement
-Private m_npVal(0 To PB_MAXNP - 1) As UIAutomationClient.IUIAutomationValuePattern
-Private m_npTitle(0 To PB_MAXNP - 1) As String
-Private m_npHwnd(0 To PB_MAXNP - 1) As Variant
-Private m_npPid(0 To PB_MAXNP - 1) As String
-Private m_npLastText(0 To PB_MAXNP - 1) As String
-Private m_npLastCell(0 To PB_MAXNP - 1) As String
-Private m_npBound(0 To PB_MAXNP - 1) As Boolean
-Private m_npFresh(0 To PB_MAXNP - 1) As Boolean ' 結んだ直後＝まずメモ帳から取り込む
-Private m_frameOn(0 To PB_MAXNP - 1) As Long
+' つなぐメモ帳。1 枚だけなので配列も選択状態も持たない。動かす相手は常にこれ。
+Private m_npWin As UIAutomationClient.IUIAutomationElement
+Private m_npDoc As UIAutomationClient.IUIAutomationElement
+Private m_npVal As UIAutomationClient.IUIAutomationValuePattern
+Private m_npTitle As String
+Private m_npHwnd As Variant
+Private m_npPid As String
+Private m_npLastText As String
+Private m_npLastCell As String
+Private m_npBound As Boolean
+Private m_npFresh As Boolean                   ' 結んだ直後＝まずメモ帳から取り込む
+' 最小化されている（矩形が画面の外へ飛ぶ）。掴んだ要素は手放さない。手放すと
+' 「最小化したら二度と戻せない」になる。
+Private m_npMin As Boolean
+Private m_frameOn As Long
 
 ' ボタン（セルで描いてあり、押下は選択セルで拾う）
 Private m_btnN As Long
@@ -169,24 +170,27 @@ Private m_btnCell(0 To PB_MAXBTN - 1) As String
 Private m_beStarted As Boolean
 Private m_beNote As String
 Private m_reqSeq As Long
-Private m_job As String                        ' "" / "FE" / "BE"
-Private m_jobT0 As Double
-Private m_lampShown As Long                    ' もう塗ったランプの数
-Private m_jobSrc As String                     ' 原稿（メモ帳 A から取った本文）
-Private m_jobRounds As Long                    ' 校正の周回数
-Private m_jobDone As Long                      ' 清書できた文字数
-Private m_cleanShown As String                 ' メモ帳 B へ最後に書いた内容
-Private m_srcSlot As Long                      ' 原稿にするスロット（中身で決める）
-Private m_dstSlot As Long                      ' 清書にするスロット
 Private m_repaints As Long                     ' 実際に描画を戻した回数
-Private m_doneMsg As String                    ' 保留中の完了ダイアログ（下記 PbShowPending）
 Private m_lastProg As String
 Private m_beMissing As Long
 Private m_beFeSeen As String                   ' 前に見た fe.json の中身
-Private m_beAlive As Boolean
 Private m_beLastSeq As Long
-Private m_beSaidIdle As Boolean
 Private m_beQuit As Boolean
+Private m_beStopping As Boolean                ' quit を送って bye 待ち
+Private m_beStopTicks As Long
+
+' 円周率ベンチ
+Private m_bench As Boolean                     ' 回っている最中か
+Private m_benchT0 As Double                    ' 15 秒の起点（配置と用意が済んだ時刻）
+Private m_benchMs As Double                    ' 終わったときの所要（表示に残す）
+Private m_piCalc As Long                       ' BE が計算した桁数
+Private m_piShown As Long                      ' 表示用 Excel へ実際に書いた桁数
+Private m_piText As String                     ' 受け取った桁（"3." のあとの小数部）
+Private m_lampShown As Long                    ' もう塗ったランプの数
+' 表示用 Excel。BE とは別プロセスの、保存しない一時ブック。FE がここへ書く。
+Private m_dispApp As Object
+Private m_dispBook As Object
+Private m_dispSheet As Object
 
 '==============================================================================
 ' 入口
@@ -230,7 +234,6 @@ Public Sub PbShow()
     m_ticks = 0
     m_polls = 0
     m_syncOn = True
-    m_pickNp = -2
     PbLog "show: begin"
     Hold
     PickFonts
@@ -249,6 +252,7 @@ Public Sub PbShow()
     PbCheckFit
     PbLog "show: fitted"
     Release
+    SetTxt "pb_fe_state", "動作中"
     PbBindKeys
     m_running = True
     PbLog "show: shown"
@@ -817,7 +821,7 @@ Public Sub PbBuildScreen()
     BuildHeader
     BuildMiniMapCard
     BuildValueCard
-    BuildInfoCard
+    BuildBenchCard
     BuildFooter
     PbLog "build: done"
 
@@ -857,12 +861,11 @@ Private Sub BuildMiniMapCard()
     ' セル 3 デバイス px（この端末の 4px ビルド）でも文字が欠けないよう、
     ' 幅は 108px・文字は 10px にしてある（91px / 11px では両端が欠けた。実測）。
     ' Excel は起動時に画面の左半分へ置いたきり動かさない（owner 指示）。この
-    ' 2 つが動かすのは起動済みのメモ帳だけで、Excel の右に残っている空きを
-    ' 左右 / 上下に分けて割り当てる。
-    Button "arrL", 560, 76, 108, 28, "左右 2 分割", _
-        "Excel の右の空きを左右に分け、メモ帳を TransformPattern.Move / Resize で並べます", 0, 10
-    Button "arrT", 676, 76, 108, 28, "上下 2 分割", _
-        "同じ空きを上下に分けます。最大化中は CanMove=False なので先に通常表示へ戻します", 0, 10
+    ' 2 つが動かすのは、つないでいるメモ帳 1 枚だけ。
+    Button "npmax", 560, 76, 108, 28, "最大化", _
+        "メモ帳を画面の右半分いっぱいへ移動・リサイズします（OS の最大化ではありません）", 0, 10
+    Button "npmin", 676, 76, 108, 28, "最小化", _
+        "メモ帳をタスクバーへ格納します。最大化か、ミニマップの範囲選択で戻せます", 0, 10
 
     ' 要素情報はカードをやめ、ミニマップ直下の 2 行ストリップに畳む（v3）
     Fill 16, 116, 780, 40, C_PANEL
@@ -873,7 +876,7 @@ Private Sub BuildMiniMapCard()
     Txt "pb_pt_rect", 136, 136, 396, 14, "―", 10, C_TEXT, False, xlLeft, True
     ' 操作の結果はここに出る。"メモ帳 1 を移動 ･ 960,0 960×540" のように長く、
     ' 120px の枠では最後まで出せなかった（実機で実測）。
-    Txt "pb_drag", 540, 136, 244, 14, "メモ帳を 1 セルで選び、範囲で置く", 10, C_SUB, False, xlRight, False
+    Txt "pb_drag", 540, 136, 244, 14, "ミニマップの範囲でメモ帳を置く", 10, C_SUB, False, xlRight, False
 
     Fill 16, 156, 780, 358, C_PANEL
     NameIt "pb_map", Cel(16, 156, 780, 358)
@@ -881,6 +884,8 @@ Private Sub BuildMiniMapCard()
 End Sub
 
 '------------------------------------------------------------------ 同期カード
+' つなぐメモ帳は 1 枚だけ。入力面もこの 1 つで、ここへ直接書いた内容がその窓へ
+' 流れ、その窓で打った文字がここへ返る。
 Private Sub BuildValueCard()
     CardBox 14, 528, 392, 224
     Txt "", 28, 544, 92, 16, "ValuePattern", 11, C_KEY, True, xlLeft, True
@@ -888,34 +893,14 @@ Private Sub BuildValueCard()
     Button "sync", 304, 540, 88, 28, "同期を停止", _
         "1 秒ごとに本文を取得し、差分があれば SetValue で書き戻します（Ctrl+Shift+M）", 2
 
-    ' 札と枠は 4 設計 px の格子に載せ、隣り合う要素が同じセルを共有しないように
-    ' する。旧版はスロット 1 の札（y=633）がスロット 0 の枠（594..640）と同じ行に
-    ' 落ちていた。結合セルは 1 セル塗られただけで全体が塗り潰されるので、枠の帯を
-    ' 塗った瞬間にスロット 1 の札が灰色（フォーカス時は青）のベタ塗りになり、
-    ' スロット 0 の本文の下半分ごと消えた（実機で実測。owner 報告の
-    ' 「片方が灰色に塗り潰される」はこれ）。
-    BuildSlot 0, 572, 592
-    BuildSlot 1, 652, 672
-
-    Txt "pb_get", 28, 732, 132, 16, "← GetValue --:--:--", 10, C_SUB, False, xlLeft, True
-    BuildDots
-End Sub
-
-Private Sub BuildSlot(ByVal idx As Long, ByVal labelY As Long, ByVal boxY As Long)
-    Txt "pb_np" & idx & "_title", 28, labelY, 268, 16, "―", 10, C_SUB, False, xlLeft, False
-    Txt "pb_np" & idx & "_state", 300, labelY, 92, 16, "", 10, C_KEY, False, xlRight, False
-    ' 入力面は結合セルそのもの。ここに直接書いた内容がメモ帳へ流れる。
-    ' 高さは 46 → 56 px。46px（内寸 30px）では 2 行目が縦に半分だけ描かれて
-    ' 切れていた（実機で実測。この端末の実描画は 1 行約 18 デバイス px）。
-    Fill 28, boxY, 364, 56, C_LINE2
-    NameIt "pb_np" & idx & "_frame", Cel(28, boxY, 364, 56)
-    Fill 28 + PB_UNIT, boxY + PB_UNIT, 364 - PB_UNIT * 2, 56 - PB_UNIT * 2, C_BODY
-    ' 入力面の内寸は PB_UNIT に依らない固定値にする。PB_UNIT 倍のインセットで
-    ' 決めていたときは、同じ設計なのに 4px は高さ 40px・2px は 48px・1px は 52px
-    ' になり、1 行 18 デバイス px の和文に対して 2px / 1px だけ 3 行目が半分だけ
-    ' 描かれて切れて見えた（実機で実測）。40px = ちょうど 2 行分に固定する。
-    With Txt("pb_np" & idx & "_text", 40, boxY + 8, 340, 40, _
-             "", 11, C_TEXT, False, xlLeft, False)
+    Txt "pb_np_title", 28, 572, 268, 16, "―", 10, C_SUB, False, xlLeft, False
+    Txt "pb_np_state", 300, 572, 92, 16, "", 10, C_KEY, False, xlRight, False
+    ' 入力面は結合セルそのもの。内寸は PB_UNIT に依らない固定値にする
+    ' （PB_UNIT 倍のインセットだと 1px / 2px だけ最終行が半分描かれて切れた）。
+    Fill 28, 592, 364, 124, C_LINE2
+    NameIt "pb_np_frame", Cel(28, 592, 364, 124)
+    Fill 28 + PB_UNIT, 592 + PB_UNIT, 364 - PB_UNIT * 2, 124 - PB_UNIT * 2, C_BODY
+    With Txt("pb_np_text", 40, 600, 340, 108, "", 11, C_TEXT, False, xlLeft, False)
         .ShrinkToFit = False
         .WrapText = True
         .VerticalAlignment = xlTop
@@ -925,30 +910,33 @@ Private Sub BuildSlot(ByVal idx As Long, ByVal labelY As Long, ByVal boxY As Lon
         ' 書き戻す（利用者が打った文字が勝手に変わって見える）。
         .NumberFormat = "@"
     End With
-    m_frameOn(idx) = C_LINE2
+    m_frameOn = C_LINE2
+
+    Txt "pb_get", 28, 724, 132, 16, "← GetValue --:--:--", 10, C_SUB, False, xlLeft, True
+    BuildDots
 End Sub
+
 
 Private Sub BuildDots()
     Dim i As Long
     For i = 0 To PB_DOTS - 1
-        Fill 166 + i * 29, 734, 27, 8, C_LINE
+        Fill 166 + i * 29, 726, 27, 8, C_LINE
     Next i
-    NameIt "pb_dots", Cel(166, 734, PB_DOTS * 29 - 2, 8)
+    NameIt "pb_dots", Cel(166, 726, PB_DOTS * 29 - 2, 8)
     m_dotShown = -1
 End Sub
 
-'------------------------------------------------------------------ 要素情報
-' 校正・清書カード。FE / BE の箱、Temp のレーン、進捗の盤、実行ボタン 2 つ。
-Private Sub BuildInfoCard()
+'------------------------------------------------------------------ ベンチ
+' 円周率ベンチのカード。FE / BE / 表示用 Excel の 3 つの状態、Temp のレーン、
+' 桁の盤、経過と桁数、実行ボタン 1 つ。
+Private Sub BuildBenchCard()
     Dim i As Long
     Dim lx As Long
     Dim ly As Long
 
     CardBox 418, 528, 380, 224
-    Txt "", 432, 540, 92, 20, "校正・清書", 11, C_KEY, True, xlLeft, True
-    ' ランプの色見本。清書した文字そのものから色が決まる。見本の 1 つ目
-    ' （旧 x=593）は "0" の札（584..594）と同じセルに載っていて、塗ると札ごと
-    ' 色で潰れた。4 設計 px の格子で分ける。
+    Txt "", 432, 540, 120, 20, "円周率ベンチ", 11, C_KEY, True, xlLeft, True
+    ' 桁の色見本。盤のランプ 1 つが 1 桁で、桁の値がそのまま色になる。
     Txt "", 580, 541, 12, 13, "0", 9, C_SUB, False, xlLeft, True
     For i = 0 To 9
         Fill 596 + i * 6, 544, 6, 8, LampColor(i)
@@ -956,8 +944,9 @@ Private Sub BuildInfoCard()
     Txt "", 660, 541, 12, 13, "9", 9, C_SUB, False, xlLeft, True
     Txt "", 676, 541, 108, 13, "%TEMP%\pixelbridge\", 9, C_SUB, False, xlRight, True
 
-    ProcBox "fe", 432, 564, 172, 32, "FE"
-    ProcBox "be", 612, 564, 172, 32, "BE"
+    ProcBox "fe", 432, 564, 116, 32, "FE"
+    ProcBox "be", 552, 564, 116, 32, "BE"
+    ProcBox "disp", 672, 564, 112, 32, "表示"
 
     Txt "", 432, 604, 80, 13, "command.json", 9, C_SUB, False, xlLeft, True
     Fill 512, 610, 74, 2, C_LINE
@@ -968,10 +957,8 @@ Private Sub BuildInfoCard()
     NameIt "pb_lane_in", Cel(626, 610, 74, 2)
     Txt "", 704, 604, 80, 13, "progress.json", 9, C_SUB, False, xlRight, True
 
-    ' 進捗の盤。67 x 12 のランプを 432,624 352x64 の枠の中に置く。原稿を
-    ' 左上から右下へ割り当て、清書できたところまで点いていく。
-    ' 枠と「待機」の札は行を分ける。旧版は盤の下端（687）と札（686..699）が
-    ' 同じ行に落ちていて、ランプを塗ると結合セルの札ごと塗り潰された。
+    ' 桁の盤。67 x 12 = 804 ランプを 432,624 352x64 の枠の中に置く。
+    ' 枠と札は行を分ける（結合セルは 1 セル塗られただけで全体が塗り潰される）。
     Fill 432, 624, 352, 64, C_PANEL
     lx = 432 + (352 - LAMP_COLS * LAMP_PX) \ 2
     ly = 624 + (64 - LAMP_ROWS * LAMP_PX) \ 2
@@ -979,14 +966,8 @@ Private Sub BuildInfoCard()
     NameIt "pb_lamps", Cel(lx, ly, LAMP_COLS * LAMP_PX, LAMP_ROWS * LAMP_PX)
     Txt "pb_jobstat", 432, 692, 352, 16, "待機", 10, C_SUB, False, xlLeft, True
 
-    ' 2 つの札の長さが違うので、幅も 172 / 172 の等分ではなく中身に合わせる。
-    ' 等分だと「BE で実行（固まらない）」が内寸（172 - 16 = 156px ≒ 117pt）に
-    ' 収まらず、実機で先頭の B が欠けた。この 2 つだけ 10pt にして幅も分ける。
-    ' FE 側の幅は 168px。160px ではセル 3 デバイス px の端末で両端が欠けた（実測）。
-    Button "runfe", 424, 710, 168, 28, "FE で清書（固まる）", _
-        "この Excel の中で校正します。終わるまで応答しなくなり、清書は最後にまとめて出ます", 0, 10
-    Button "runbe", 600, 710, 184, 28, "BE で清書（固まらない）", _
-        "非表示の別プロセス Excel に投げます。FE は動き続け、清書が少しずつ伸びます", 1, 10
+    Button "runpi", 432, 712, 352, 28, "円周率計算", _
+        "非表示の別プロセス Excel が 15 秒だけ円周率を計算し、その桁を表示用 Excel へ流します（Ctrl+Shift+P）", 1, 11
 End Sub
 
 ' 文字を青の 10 段階へ。モックの色並びをそのまま使う。
@@ -1020,11 +1001,9 @@ Private Sub BuildFooter()
     Fill 2, 764, 808, 46, C_BODY
     Fill 2, 764, 808, PB_UNIT, C_LINE
     Txt "", 14, 780, 40, 16, "ONKEY", 10, C_SUB, False, xlLeft, True
-    ' 札の幅は中身の実寸から取る。104 / 92 px の枠では「切」「書」が枠の外で
-    ' 切れていた（実機で実測）。
+    ' 札の幅は中身の実寸から取る。狭いと「切」「算」が枠の外で切れる（実測）。
     Chip 56, 776, 124, "^+M 同期 入 / 切"
-    Chip 184, 776, 100, "^+F FE で清書"
-    Chip 288, 776, 100, "^+B BE で清書"
+    Chip 184, 776, 116, "^+P 円周率計算"
     Txt "pb_meta1", 420, 780, 240, 16, "", 10, C_SUB, False, xlRight, True
     Txt "pb_meta2", 668, 780, 130, 16, "", 10, C_SUB, False, xlRight, True
 End Sub
@@ -1120,7 +1099,7 @@ Public Sub PbTick()
         m_polls = m_polls + 1
         If m_winN = 0 Or (m_ticks Mod PB_SCANEVERY) = 1 Then ScanWindows
         PbLog "  t: scan n=" & m_winN
-        SyncSlots
+        SyncNotepad
         PbLog "  t: sync"
     End If
     PaintMiniMap
@@ -1271,10 +1250,9 @@ End Function
 Public Sub DoAction(ByVal key As String)
     Select Case key
         Case "sync": ToggleSync
-        Case "arrL": ArrangeWindows True
-        Case "arrT": ArrangeWindows False
-        Case "runfe": RunJob "FE"
-        Case "runbe": RunJob "BE"
+        Case "npmax": NpMaximize
+        Case "npmin": NpMinimize
+        Case "runpi": StartBench
     End Select
 End Sub
 
@@ -1298,32 +1276,31 @@ Failed:
     EnsureUia = False
 End Function
 
-' 追う窓：この Excel と、メモ帳。
+' 追う窓：この Excel と、つなぐメモ帳 1 枚。
 '
 ' メモ帳の探索はデスクトップ直下の列挙だが、ClassName で絞り、しかも
 ' PB_SCANEVERY ティックに 1 度しか呼ばない。全列挙と条件付き列挙は速さがほぼ
 ' 同じ（118.1ms 対 118.8ms、実測）なので、得なのは速度ではなく「他人のプロバイダ
-' に触る数が 22 から 2 に減る」こと。UIA が Excel 自身にも尋ねる以上、詰まる
-' 危険は消えない（このリポジトリの測定記録）ので、回数そのものを減らしてある。
-' スロットは窓（hwnd）に貼り付ける。FindAll が返す並びは Z 順で、利用者が
-' 窓をクリックするたびに変わる。並び順でスロットを割ると、クリック 1 つで
-' スロット 0 と 1 が入れ替わり、入れ替わった先へ「前の窓の本文」を書き戻して
-' 利用者の文章を消す（この構図が実害として報告された）。だから並びではなく
-' hwnd で対応を取り、いた窓は同じスロットに居続け、新しい窓は空いている
-' スロットにだけ入る。
+' に触る数が 22 から 2 に減る」こと。
+'
+' 掴む相手は 1 枚だけ。**いま掴んでいる窓が残っていれば必ずそれを使い続ける**。
+' FindAll が返す並びは Z 順で、利用者のクリック 1 つで入れ替わる。並び順で選ぶと、
+' 入れ替わった先へ前の窓の本文を書き戻して利用者の文章を消す（この構図が実害と
+' して報告された）。掴んでいる窓が居なくなったときだけ選び直し、そのときは
+' 見えている窓を優先する。
+'
+' 最小化された窓も手放さない。矩形は (-32000,-32000) へ飛ぶがハンドルは生きて
+' いるので、掴んだままにしておけば「最大化」で戻せる。手放すと二度と戻せない。
 Private Sub ScanWindows()
     Dim el As UIAutomationClient.IUIAutomationElement
+    Dim keepEl As UIAutomationClient.IUIAutomationElement
     Dim arr As UIAutomationClient.IUIAutomationElementArray
     Dim cond As UIAutomationClient.IUIAutomationCondition
     Dim rc As UIAutomationClient.tagRECT
     Dim i As Long
-    Dim s As Long
     Dim n As Long
     Dim h As Variant
-    Dim fEl(0 To PB_MAXNP - 1) As UIAutomationClient.IUIAutomationElement
-    Dim fH(0 To PB_MAXNP - 1) As Variant
-    Dim fSlot(0 To PB_MAXNP - 1) As Long
-    Dim seen(0 To PB_MAXNP - 1) As Boolean
+    Dim keepH As Variant
 
     On Error GoTo Failed
     If Not EnsureUia() Then Exit Sub
@@ -1343,83 +1320,56 @@ Private Sub ScanWindows()
         AddWin rc, "この Excel", "EXCEL.EXE", PidText(), -1
     End If
 
-    ' 見えているメモ帳を集める（Z 順のまま、まだスロットは決めない）
     Set cond = m_uia.CreatePropertyCondition(UIA_ClassNamePropertyId, "Notepad")
     Set arr = m_root.FindAll(TS_CHILDREN, cond)
-    n = 0
-    For i = 0 To arr.Length - 1
-        If n >= PB_MAXNP Then Exit For
-        Set el = arr.GetElement(i)
-        rc = el.CurrentBoundingRectangle
-        ' 最小化した窓は矩形が (-32000,-32000) になるだけで、幅も高さも残る。
-        ' それを数えると、画面に出ていない窓が同期スロットを占める。見えて
-        ' いない窓は、このデモでは対象にしない。
-        If rc.Right > rc.Left And rc.Bottom > rc.Top _
-           And Not CBool(el.CurrentIsOffscreen) Then
-            Set fEl(n) = el
-            fH(n) = el.GetCurrentPropertyValue(UIA_NativeWindowHandlePropertyId)
-            fSlot(n) = -1
-            n = n + 1
-        End If
-    Next i
+    n = arr.Length
 
-    ' 1 巡目：既にその hwnd を持っているスロットへ（居場所を保つ）
-    For i = 0 To n - 1
-        For s = 0 To PB_MAXNP - 1
-            If m_npBound(s) And Not seen(s) Then
-                If CStr(m_npHwnd(s)) = CStr(fH(i)) Then
-                    fSlot(i) = s
-                    seen(s) = True
-                    Exit For
-                End If
-            End If
-        Next s
-    Next i
-    ' 消えた窓のスロットを先に解く（同じ走査で来た新顔がすぐ入れるように）
-    For s = 0 To PB_MAXNP - 1
-        If m_npBound(s) And Not seen(s) Then
-            m_npBound(s) = False
-            Set m_npWin(s) = Nothing
-            Set m_npDoc(s) = Nothing
-            Set m_npVal(s) = Nothing
-            m_npTitle(s) = ""
-        End If
-    Next s
-    ' 2 巡目：新顔は空いているスロットへ
-    For i = 0 To n - 1
-        If fSlot(i) < 0 Then
-            For s = 0 To PB_MAXNP - 1
-                If Not m_npBound(s) And Not seen(s) Then
-                    fSlot(i) = s
-                    seen(s) = True
-                    Exit For
-                End If
-            Next s
-        End If
-    Next i
-
-    For i = 0 To n - 1
-        If fSlot(i) >= 0 Then
-            BindNotepad fSlot(i), fEl(i), fH(i)
-            rc = fEl(i).CurrentBoundingRectangle
-            AddWin rc, m_npTitle(fSlot(i)), "notepad.exe", m_npPid(fSlot(i)), fSlot(i)
-        End If
-    Next i
-
-    ' 選んでいた相手が居なくなった、またはまだ何も選んでいないなら、見えて
-    ' いるメモ帳を 1 つ選んでおく。ドラッグ配置は「1 セルで選んでから範囲」だが、
-    ' 起動直後にいきなり範囲を引いても行き先が無い、にはしない。
-    If m_pickNp >= 0 Then
-        If Not m_npBound(m_pickNp) Then m_pickNp = -2
-    End If
-    If m_pickNp = -2 Then
-        For s = 0 To PB_MAXNP - 1
-            If m_npBound(s) Then
-                m_pickNp = s
+    ' 1 巡目：いま掴んでいる窓がまだ居るなら、それを使い続ける
+    If m_npBound Then
+        For i = 0 To n - 1
+            Set el = arr.GetElement(i)
+            h = el.GetCurrentPropertyValue(UIA_NativeWindowHandlePropertyId)
+            If CStr(m_npHwnd) = CStr(h) Then
+                Set keepEl = el
+                keepH = h
                 Exit For
             End If
-        Next s
+        Next i
     End If
+    ' 2 巡目：居なければ選び直す。見えている窓を優先し、無ければ先頭
+    If keepEl Is Nothing Then
+        For i = 0 To n - 1
+            Set el = arr.GetElement(i)
+            rc = el.CurrentBoundingRectangle
+            If rc.Right > rc.Left And rc.Bottom > rc.Top _
+               And rc.Left > -10000 And Not CBool(el.CurrentIsOffscreen) Then
+                Set keepEl = el
+                keepH = el.GetCurrentPropertyValue(UIA_NativeWindowHandlePropertyId)
+                Exit For
+            End If
+        Next i
+    End If
+    If keepEl Is Nothing And n > 0 Then
+        Set keepEl = arr.GetElement(0)
+        keepH = keepEl.GetCurrentPropertyValue(UIA_NativeWindowHandlePropertyId)
+    End If
+
+    If keepEl Is Nothing Then
+        m_npBound = False
+        m_npMin = False
+        Set m_npWin = Nothing
+        Set m_npDoc = Nothing
+        Set m_npVal = Nothing
+        m_npTitle = ""
+        m_uiaNote = "メモ帳 0 窓"
+        Exit Sub
+    End If
+
+    BindNotepad keepEl, keepH
+    rc = keepEl.CurrentBoundingRectangle
+    m_npMin = (rc.Right <= rc.Left) Or (rc.Bottom <= rc.Top) Or (rc.Left < -10000) _
+              Or CBool(keepEl.CurrentIsOffscreen)
+    If Not m_npMin Then AddWin rc, m_npTitle, "notepad.exe", m_npPid, 0
     m_uiaNote = "メモ帳 " & n & " 窓"
     Exit Sub
 Failed:
@@ -1440,43 +1390,42 @@ Private Sub AddWin(ByRef rc As UIAutomationClient.tagRECT, ByVal label As String
     m_winN = m_winN + 1
 End Sub
 
-Private Sub BindNotepad(ByVal slot As Long, _
-                        ByVal win As UIAutomationClient.IUIAutomationElement, _
+Private Sub BindNotepad(ByVal win As UIAutomationClient.IUIAutomationElement, _
                         ByVal h As Variant)
     Dim d As UIAutomationClient.IUIAutomationElement
     Dim c1 As UIAutomationClient.IUIAutomationCondition
     Dim c2 As UIAutomationClient.IUIAutomationCondition
 
     On Error GoTo Failed
-    Set m_npWin(slot) = win
-    m_npTitle(slot) = win.CurrentName
-    m_npPid(slot) = CStr(win.CurrentProcessId)
-    If m_npBound(slot) Then
-        If CStr(m_npHwnd(slot)) = CStr(h) Then Exit Sub      ' 同じ窓なら結び直さない
+    Set m_npWin = win
+    m_npTitle = win.CurrentName
+    m_npPid = CStr(win.CurrentProcessId)
+    If m_npBound Then
+        If CStr(m_npHwnd) = CStr(h) Then Exit Sub      ' 同じ窓なら結び直さない
     End If
     Set c1 = m_uia.CreatePropertyCondition(UIA_ControlTypePropertyId, UIA_DocumentControlTypeId)
     Set c2 = m_uia.CreatePropertyCondition(UIA_ControlTypePropertyId, UIA_EditControlTypeId)
     Set d = win.FindFirst(TS_DESCENDANTS, m_uia.CreateOrCondition(c1, c2))
     If d Is Nothing Then
-        m_npBound(slot) = False
+        m_npBound = False
         Exit Sub
     End If
-    Set m_npVal(slot) = d.GetCurrentPattern(UIA_ValuePatternId)
-    If m_npVal(slot) Is Nothing Then
-        m_npBound(slot) = False
+    Set m_npVal = d.GetCurrentPattern(UIA_ValuePatternId)
+    If m_npVal Is Nothing Then
+        m_npBound = False
         Exit Sub
     End If
-    Set m_npDoc(slot) = d
-    m_npHwnd(slot) = h
-    m_npBound(slot) = True
+    Set m_npDoc = d
+    m_npHwnd = h
+    m_npBound = True
     ' 結んだ直後の 1 回は必ずメモ帳 → セルの向きで揃える。ここで書き戻しの
     ' 向きに入ると、画面側に残っていた古い文字で相手の本文を潰す。
-    m_npFresh(slot) = True
-    m_npLastText(slot) = ""
-    m_npLastCell(slot) = ""
+    m_npFresh = True
+    m_npLastText = ""
+    m_npLastCell = ""
     Exit Sub
 Failed:
-    m_npBound(slot) = False
+    m_npBound = False
 End Sub
 
 '==============================================================================
@@ -1485,12 +1434,6 @@ End Sub
 ' 入力面が変わっていれば SetValue で書き戻し、変わっていなければ GetValue だけ。
 ' 窓ごとに独立。判定も 1 文字制限も送信ボタンもない。
 '==============================================================================
-Private Sub SyncSlots()
-    Dim i As Long
-    For i = 0 To PB_MAXNP - 1
-        SyncOne i
-    Next i
-End Sub
 
 ' フォーカスの見せ方。GetFocusedElement は使わない。フォーカスが Excel 自身に
 ' あるとき、それは「自分の窓の UIA 要素を作る」ことになり、Excel 自身の
@@ -1500,74 +1443,68 @@ End Sub
 ' 文書要素（外部プロセスの要素）に HasKeyboardFocus を尋ねる。自分の窓には
 ' 一切触らないので税が無い。フォーカスがメモ帳以外にあるときは「―」。
 Private Sub PaintFocusTail()
-    Dim i As Long
     Dim hf As Boolean
-    Dim who As Long
     If Not m_syncOn Then Exit Sub
-    who = -1
-    For i = 0 To PB_MAXNP - 1
-        hf = False
-        If m_npBound(i) Then
-            On Error Resume Next
-            hf = CBool(m_npDoc(i).GetCurrentPropertyValue(UIA_HasKeyboardFocusPropertyId))
-            On Error GoTo 0
-        End If
-        If hf Then who = i
-        FrameColor i, IIf(hf, C_KEY, C_LINE2)
-    Next i
-    If who >= 0 Then
-        SetTxt "pb_focus", "focus pid " & m_npPid(who) & " ･ Len " & Len(m_npLastText(who))
+    If m_npBound Then
+        On Error Resume Next
+        hf = CBool(m_npDoc.GetCurrentPropertyValue(UIA_HasKeyboardFocusPropertyId))
+        On Error GoTo 0
+    End If
+    FrameColor IIf(hf, C_KEY, C_LINE2)
+    If hf Then
+        SetTxt "pb_focus", "focus pid " & m_npPid & " ･ Len " & Len(m_npLastText)
     Else
         SetTxt "pb_focus", "focus ―"
     End If
 End Sub
 
-Private Sub SyncOne(ByVal slot As Long)
+Private Sub SyncNotepad()
     Dim cur As String
     Dim np As String
     Dim rg As Range
 
     On Error GoTo Failed
-    If Not m_npBound(slot) Then
-        SetTxt "pb_np" & slot & "_title", "―"
-        SetTxt "pb_np" & slot & "_state", ""
+    If Not m_npBound Then
+        SetTxt "pb_np_title", "―"
+        SetTxt "pb_np_state", ""
         Exit Sub
     End If
-    SetTxt "pb_np" & slot & "_title", Left$(m_npTitle(slot), 34)
+    SetTxt "pb_np_title", Left$(m_npTitle, 40)
+    SetTxt "pb_np_state", IIf(m_npMin, "最小化中", "")
 
-    Set rg = m_ws.Range("pb_np" & slot & "_text")
+    Set rg = m_ws.Range("pb_np_text")
     If rg Is Nothing Then Exit Sub
 
     ' 結んだ直後はメモ帳が正。セル側を合わせてから通常の同期に入る。
-    If m_npFresh(slot) Then
-        np = ToLf(CStr(m_npVal(slot).CurrentValue))
-        MirrorToCell slot, rg, np
-        m_npFresh(slot) = False
+    If m_npFresh Then
+        np = ToLf(CStr(m_npVal.CurrentValue))
+        MirrorToCell rg, np
+        m_npFresh = False
         SetTxt "pb_get", "← GetValue " & Format$(Now, "hh:nn:ss")
         Exit Sub
     End If
 
     cur = CStr(rg.Cells(1, 1).Value)
-    If cur <> m_npLastCell(slot) Then
+    If cur <> m_npLastCell Then
         ' Excel 側が編集された → メモ帳へ書き戻す
-        SetTxt "pb_np" & slot & "_state", "SetValue 待ち"
-        m_npVal(slot).SetValue ToCrLf(cur)
-        m_npLastCell(slot) = cur
-        m_npLastText(slot) = ToLf(cur)
-        SetTxt "pb_np" & slot & "_state", ""
-        SetTxt "pb_get", "← SetValue " & Format$(Now, "hh:nn:ss")
+        SetTxt "pb_np_state", "SetValue 待ち"
+        m_npVal.SetValue ToCrLf(cur)
+        m_npLastCell = cur
+        m_npLastText = ToLf(cur)
+        SetTxt "pb_np_state", IIf(m_npMin, "最小化中", "")
+        SetTxt "pb_get", "→ SetValue " & Format$(Now, "hh:nn:ss")
         Exit Sub
     End If
 
-    np = ToLf(CStr(m_npVal(slot).CurrentValue))
-    If np <> m_npLastText(slot) Then
-        MirrorToCell slot, rg, np
+    np = ToLf(CStr(m_npVal.CurrentValue))
+    If np <> m_npLastText Then
+        MirrorToCell rg, np
         SetTxt "pb_get", "← GetValue " & Format$(Now, "hh:nn:ss")
     End If
     Exit Sub
 Failed:
-    m_npBound(slot) = False
-    SetTxt "pb_np" & slot & "_state", "切断 " & Err.Number
+    m_npBound = False
+    SetTxt "pb_np_state", "切断 " & Err.Number
 End Sub
 
 ' メモ帳の本文をセルへ写し、控えを揃える。控えは 2 つの正規形で持つ。
@@ -1578,11 +1515,11 @@ End Sub
 '     Excel は代入で先頭の ' を落とすなど値を黙って直すことがあり、意図した
 '     値で控えると次のティックが「セルが編集された」と誤読して、直した後の
 '     文字列をメモ帳へ書き戻してしまう。
-Private Sub MirrorToCell(ByVal slot As Long, ByVal rg As Range, ByVal np As String)
+Private Sub MirrorToCell(ByVal rg As Range, ByVal np As String)
     m_dirty = True
     rg.Cells(1, 1).Value = ToLf(np)
-    m_npLastText(slot) = ToLf(np)
-    m_npLastCell(slot) = CStr(rg.Cells(1, 1).Value)
+    m_npLastText = ToLf(np)
+    m_npLastCell = CStr(rg.Cells(1, 1).Value)
 End Sub
 
 Private Function ToLf(ByVal s As String) As String
@@ -1594,13 +1531,13 @@ Private Function ToCrLf(ByVal s As String) As String
 End Function
 
 ' 枠の帯だけ塗り替える。変わっていなければ何もしない。
-Private Sub FrameColor(ByVal slot As Long, ByVal c As Long)
+Private Sub FrameColor(ByVal c As Long)
     Dim rg As Range
     Dim x As Long, y As Long, w As Long, h As Long
-    If m_frameOn(slot) = c Then Exit Sub
-    m_frameOn(slot) = c
+    If m_frameOn = c Then Exit Sub
+    m_frameOn = c
     On Error Resume Next
-    Set rg = m_ws.Range("pb_np" & slot & "_frame")
+    Set rg = m_ws.Range("pb_np_frame")
     If rg Is Nothing Then Exit Sub
     x = PxOfCol(rg.Column): y = PxOfRow(rg.Row)
     w = rg.Columns.Count * PB_UNIT: h = rg.Rows.Count * PB_UNIT
@@ -1642,7 +1579,6 @@ Private Sub PaintMiniMap()
     Dim edge As Long
     Dim face As Long
     Dim barC As Long
-    Dim pk As Long
     Dim cx1 As Long, cy1 As Long, cx2 As Long, cy2 As Long
 
     On Error Resume Next
@@ -1651,10 +1587,9 @@ Private Sub PaintMiniMap()
     For i = 0 To m_winN - 1
         sig = sig & m_winL(i) & "," & m_winT(i) & "," & m_winR(i) & "," & m_winB(i) & ";"
     Next i
-    sig = sig & "|" & m_pickNp & "|" & m_winN
+    sig = sig & "|" & m_winN
     If sig = m_mapSig Then Exit Sub
     m_mapSig = sig
-    pk = PickedIdx()
 
     MapGeom mx, my, mw, mh, sc, ox, oy
     If sc <= 0 Then Exit Sub
@@ -1688,7 +1623,8 @@ Private Sub PaintMiniMap()
         If x2 > cx2 Then x2 = cx2
         If y2 > cy2 Then y2 = cy2
         If x2 - x1 > 20 And y2 - y1 > 20 Then
-            If i = pk Then
+            ' 操作できる窓（メモ帳）を強調する。Excel は固定なので添え物。
+            If m_winNp(i) >= 0 Then
                 edge = C_KEY: face = C_SOFT: barC = C_KEY
             Else
                 edge = C_WINOTHER: face = C_BODY: barC = C_SUB
@@ -1700,20 +1636,10 @@ Private Sub PaintMiniMap()
     Next i
 End Sub
 
-' 選んでいる相手（m_pickNp）が、いまの並びの何番目にいるか。並びは Z 順で
-' 変わるので、描くたびに引き直す。
-Private Function PickedIdx() As Long
-    Dim i As Long
-    PickedIdx = -1
-    For i = 0 To m_winN - 1
-        If m_winNp(i) = m_pickNp Then
-            PickedIdx = i
-            Exit Function
-        End If
-    Next i
-End Function
 
-' ミニマップのセル → 画面座標を逆算して、その点にある窓を選ぶ
+' ミニマップのセル → 画面座標を逆算して、その点にある窓を調べる。
+' これは ElementFromPoint の実演で、動かす相手を選ぶ操作ではない。つなぐ
+' メモ帳は 1 枚だけなので、動かす相手は常にそれ。
 Private Sub PickAt(ByVal c As Range)
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
@@ -1730,8 +1656,6 @@ Private Sub PickAt(ByVal c As Range)
 
     For i = 0 To m_winN - 1
         If px >= m_winL(i) And px < m_winR(i) And py >= m_winT(i) And py < m_winB(i) Then
-            m_pickNp = m_winNp(i)              ' 添字ではなく相手そのものを覚える
-            m_mapSig = ""                      ' 選択が変わったので描き直す
             FillPointPanel i
             Exit Sub
         End If
@@ -1741,7 +1665,6 @@ Private Sub PickAt(ByVal c As Range)
 End Sub
 
 Private Sub FillPointPanel(ByVal idx As Long)
-    Dim el As UIAutomationClient.IUIAutomationElement
     Dim tp As UIAutomationClient.IUIAutomationTransformPattern
     Dim canMove As String
     On Error GoTo Failed
@@ -1750,16 +1673,13 @@ Private Sub FillPointPanel(ByVal idx As Long)
     canMove = "―"
     If m_winNp(idx) < 0 Then
         canMove = "固定（起動時に画面の左半分へ配置）"
-    Else
-        Set el = m_npWin(m_winNp(idx))
-        If Not el Is Nothing Then
-            Set tp = el.GetCurrentPattern(UIA_TransformPatternId)
-            If tp Is Nothing Then
-                canMove = "False（TransformPattern なし）"
-            Else
-                canMove = "Move " & CStr(CBool(tp.CurrentCanMove)) & _
-                          " / Resize " & CStr(CBool(tp.CurrentCanResize))
-            End If
+    ElseIf Not m_npWin Is Nothing Then
+        Set tp = m_npWin.GetCurrentPattern(UIA_TransformPatternId)
+        If tp Is Nothing Then
+            canMove = "False（TransformPattern なし）"
+        Else
+            canMove = "Move " & CStr(CBool(tp.CurrentCanMove)) & _
+                      " / Resize " & CStr(CBool(tp.CurrentCanResize))
         End If
     End If
     SetTxt "pb_pt_rect", m_winL(idx) & ", " & m_winT(idx) & " ･ " & _
@@ -1769,11 +1689,11 @@ Failed:
     SetTxt "pb_pt_rect", "―"
 End Sub
 
-' ドラッグで選ばれた矩形へ、選んであるメモ帳を一発で Move / Resize する。
+' ドラッグで選ばれた矩形へ、つないでいるメモ帳を Move / Resize する。
 '
 ' 動かすのは **メモ帳だけ**。この Excel は起動時に画面の左半分へ置いたきり、
-' 位置も大きさも変えない（owner 指示）。相手は m_pickNp（1 セル選択で決めた
-' 相手そのもの）で持つので、途中で Z 順が入れ替わっても取り違えない。
+' 位置も大きさも変えない（owner 指示）。最小化されていても掴んだ要素は
+' 残してあるので、ここから戻せる（MoveWin が先に通常表示へ戻す）。
 Private Sub PlaceAt(ByVal rg As Range)
     Dim mx As Long, my As Long, mw As Long, mh As Long
     Dim ox As Long, oy As Long
@@ -1781,16 +1701,8 @@ Private Sub PlaceAt(ByVal rg As Range)
     Dim x1 As Long, y1 As Long, x2 As Long, y2 As Long
 
     On Error GoTo Failed
-    If m_pickNp = -1 Then
-        Note "Excel は起動時の配置で固定です ･ メモ帳を選んでください"
-        Exit Sub
-    End If
-    If m_pickNp < 0 Then
-        Note "先にミニマップでメモ帳を 1 セル選んでください"
-        Exit Sub
-    End If
-    If Not m_npBound(m_pickNp) Then
-        Note "選んだメモ帳が見つかりません"
+    If Not m_npBound Then
+        Note "メモ帳が見つかりません"
         Exit Sub
     End If
     MapGeom mx, my, mw, mh, sc, ox, oy
@@ -1803,9 +1715,9 @@ Private Sub PlaceAt(ByVal rg As Range)
         Note "小さすぎます（160×120 未満）"
         Exit Sub
     End If
-    If MoveWin(m_npWin(m_pickNp), x1, y1, x2 - x1, y2 - y1) Then
-        Note "メモ帳 " & (m_pickNp + 1) & " を移動 ･ " & x1 & "," & y1 & " " & _
-             (x2 - x1) & "×" & (y2 - y1)
+    If MoveWin(m_npWin, x1, y1, x2 - x1, y2 - y1) Then
+        Note "メモ帳を移動 ･ " & x1 & "," & y1 & " " & (x2 - x1) & "×" & (y2 - y1)
+        m_npMin = False
         m_mapSig = ""
         ScanWindows
     Else
@@ -1821,59 +1733,61 @@ Private Sub Note(ByVal s As String)
 End Sub
 
 '==============================================================================
-' ウィンドウ整列（Win32 なし）
+' メモ帳の最大化 / 最小化（Win32 なし）
+'
+' 「最大化」は OS の全画面最大化ではない。FE Excel を画面の左半分に固定した
+' まま、メモ帳を右半分いっぱいへ合わせる（owner 指示）。だから使うのは
+' WindowPattern の Maximized ではなく TransformPattern の Move / Resize。
+' 「最小化」は WindowPattern.SetWindowVisualState(Minimized)。掴んだ要素は
+' 手放さないので、そのあと「最大化」でもミニマップの範囲選択でも戻せる。
 '==============================================================================
-Private Sub ArrangeWindows(ByVal leftRight As Boolean)
-    Dim nNp As Long
-    Dim i As Long
-    Dim sl As Long
-    Dim moved As Long
-    Dim fx As Long, fy As Long, fw As Long, fh As Long
-    Dim step1 As Long
-    Dim slot(0 To PB_MAXNP - 1) As Long
-
+Private Sub NpMaximize()
+    Dim fx As Long, fw As Long
     On Error GoTo Failed
-    If m_winN = 0 Then ScanWindows
-    nNp = 0
-    For sl = 0 To PB_MAXNP - 1
-        If m_npBound(sl) Then
-            slot(nNp) = sl
-            nNp = nNp + 1
-        End If
-    Next sl
-    If nNp = 0 Then
-        Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：開いているメモ帳がありません"
+    If Not m_npBound Then
+        Note "最大化：メモ帳が見つかりません"
         Exit Sub
     End If
-
-    ' Excel は起動時に画面の左半分へ置いたきり動かさない（owner 指示）。だから
-    ' 並べるのは「その右に残っている空き」で、そこを起動済みのメモ帳で分ける。
-    ' 左右 2 分割ならメモ帳が縦に細く 2 本、上下 2 分割なら横に広く 2 段になる。
+    If m_scrR <= m_scrL Then ScanWindows
     fx = m_scrL + (m_scrR - m_scrL) \ 2
-    fy = m_scrT
     fw = m_scrR - fx
-    fh = m_scrB - m_scrT
-    PbLog "arrange: winN=" & m_winN & " nNp=" & nNp & " lr=" & leftRight & _
-        " free=" & fx & "," & fy & " " & fw & "x" & fh
-
-    If leftRight Then
-        step1 = fw \ nNp
-        For i = 0 To nNp - 1
-            If MoveWin(m_npWin(slot(i)), fx + i * step1, fy, step1, fh) Then moved = moved + 1
-        Next i
+    PbLog "npmax: " & fx & ",0 " & fw & "x" & (m_scrB - m_scrT)
+    If MoveWin(m_npWin, fx, m_scrT, fw, m_scrB - m_scrT) Then
+        Note "最大化 ･ " & fx & "," & m_scrT & " " & fw & "×" & (m_scrB - m_scrT)
+        m_npMin = False
     Else
-        step1 = fh \ nNp
-        For i = 0 To nNp - 1
-            If MoveWin(m_npWin(slot(i)), fx, fy + i * step1, fw, step1) Then moved = moved + 1
-        Next i
+        Note "最大化できません（Transform が取れませんでした）"
     End If
-    Note IIf(leftRight, "左右 2 分割", "上下 2 分割") & "：メモ帳 " & moved & " / " & nNp & " 窓"
     m_mapSig = ""
     ScanWindows
     Exit Sub
 Failed:
-    Note "整列に失敗 " & Err.Number
+    Note "最大化に失敗 " & Err.Number
 End Sub
+
+Private Sub NpMinimize()
+    Dim wp As UIAutomationClient.IUIAutomationWindowPattern
+    On Error GoTo Failed
+    If Not m_npBound Then
+        Note "最小化：メモ帳が見つかりません"
+        Exit Sub
+    End If
+    Set wp = m_npWin.GetCurrentPattern(UIA_WindowPatternId)
+    If wp Is Nothing Then
+        Note "最小化できません（WindowPattern が取れませんでした）"
+        Exit Sub
+    End If
+    wp.SetWindowVisualState WindowVisualState_Minimized
+    m_npMin = True
+    PbLog "npmin: minimized"
+    Note "最小化 ･ タスクバーへ格納しました"
+    m_mapSig = ""
+    ScanWindows
+    Exit Sub
+Failed:
+    Note "最小化に失敗 " & Err.Number
+End Sub
+
 
 ' ほかの窓は UIA のパターンで動かす。最大化されていると CanMove が False に
 ' なるので、先に WindowPattern で通常表示へ戻す。
@@ -1937,15 +1851,13 @@ End Function
 Private Sub PbBindKeys()
     On Error Resume Next
     Application.OnKey "^+M", Qual("PbKeySync")
-    Application.OnKey "^+F", Qual("PbKeyRunFe")
-    Application.OnKey "^+B", Qual("PbKeyRunBe")
+    Application.OnKey "^+P", Qual("PbKeyRunPi")
 End Sub
 
 Private Sub PbUnbindKeys()
     On Error Resume Next
     Application.OnKey "^+M"
-    Application.OnKey "^+F"
-    Application.OnKey "^+B"
+    Application.OnKey "^+P"
 End Sub
 
 Public Sub PbKeySync()
@@ -1955,13 +1867,8 @@ End Sub
 
 ' 実行はボタンだけでなくキーからも。ボタンはセルなので、押すには盤面が
 ' 前に出ていないといけない。キーなら他の窓を見ていても始められる。
-Public Sub PbKeyRunFe()
-    DoAction "runfe"
-    Release
-End Sub
-
-Public Sub PbKeyRunBe()
-    DoAction "runbe"
+Public Sub PbKeyRunPi()
+    DoAction "runpi"
     Release
 End Sub
 
@@ -1973,8 +1880,12 @@ End Sub
 ' 動いている」ティックが次を仕掛け直し、Excel は閉じられないまま待たされる。
 ' 実測：閉じる要求から Auto_Close が走り出すまで 35 秒かかった。
 ' 実証済み実装の Rdv3AppPrepareClose と同じ役どころ。
+'
+' **別プロセスを残さないための後始末も、必ず走るこの入口でやる。** Auto_Close
+' は必ず走るとは限らない（実測：ベンチ直後に閉じたとき、BeforeClose のログは
+' 出たのに Auto_Close が来ないまま 45 秒待たされたことがある）。表示用 Excel を
+' 閉じ、BE へ quit を送るところまでは、ここで済ませてしまう。
 Public Sub PbPrepareClose()
-    Dim k As Long
     On Error Resume Next
     m_running = False
     ' 「保存しますか」を出させない。この盤面は保存しない前提で毎回作り直す
@@ -1987,19 +1898,26 @@ Public Sub PbPrepareClose()
     PbDisarm
     PbLog "quit: pump disarmed"
     PbUnbindKeys
+    ' ベンチが回っている最中に閉じられても、後始末は同じ道を通す。
+    If m_bench Then FinishBench
+    CloseDisplayExcel
+    If m_beStarted Then
+        m_reqSeq = m_reqSeq + 1
+        WriteAll CmdPath(), "{""cmd"":""quit"",""seq"":" & m_reqSeq & _
+            ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+    End If
 End Sub
 
 Public Sub PbShutdown()
     Dim k As Long
     On Error Resume Next
     PbLog "quit: begin"
+    ' quit の送信と表示用 Excel の後始末は PbPrepareClose が済ませている
+    ' （BeforeClose は必ず走るが、Auto_Close は走らないことがある。実測）。
     PbPrepareClose
 
-    ' BE に終われと言って、返事を待つ。相手のプロセスは殺さない。
+    ' BE の返事を待つ。相手のプロセスは殺さない。
     If m_beStarted Then
-        m_reqSeq = m_reqSeq + 1
-        WriteAll CmdPath(), "{""cmd"":""quit"",""seq"":" & m_reqSeq & _
-            ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
         For k = 1 To 8
             If InStr(1, ReadAll(ProgPath()), """bye""") > 0 Then Exit For
             Application.Wait Now + TimeSerial(0, 0, 1)
@@ -2007,8 +1925,7 @@ Public Sub PbShutdown()
         PbLog "quit: be waited " & k
     End If
     KillQuiet CmdPath()
-    KillQuiet SrcPath()
-    KillQuiet CleanPath()
+    KillQuiet PiPath()
     KillQuiet ProgPath()
     KillQuiet FePath()
     ' BE のコピーもこのフォルダの中にある。先に消さないとフォルダが空にならず、
@@ -2030,12 +1947,10 @@ Public Sub PbShutdown()
     ' UI Automation で掴んだ相手（メモ帳の窓と ValuePattern）を手放す。
     ' これはプロセスをまたぐ COM 参照なので、握ったままだと Excel は終われない。
     ' 実測：後始末は 2 秒で終わっているのに、プロセスだけが 45 秒たっても残った。
-    For k = 0 To PB_MAXNP - 1
-        m_npBound(k) = False
-        Set m_npVal(k) = Nothing
-        Set m_npDoc(k) = Nothing
-        Set m_npWin(k) = Nothing
-    Next k
+    m_npBound = False
+    Set m_npVal = Nothing
+    Set m_npDoc = Nothing
+    Set m_npWin = Nothing
     Set m_root = Nothing
     Set m_uia = Nothing
     PbLog "quit: done"
@@ -2054,94 +1969,9 @@ End Sub
 ' だから k 文字目のコストは k に比例し、全体は文字数の 2 乗で効く。
 ' 速くする工夫は入れない（要件どおり、意図的に重い）。
 '==============================================================================
-' 先頭から upto 文字目までを読み直して畳む。重さの中身はここ。
-Private Function ProofFold(ByVal src As String, ByVal upto As Long) As Long
-    Dim i As Long
-    Dim h As Long
 
-    h = 5381
-    For i = 1 To upto
-        ' 23 bit に丸めてから 33 倍する。Long のまま掛けると溢れる。
-        h = (((h And &H7FFFFF) * 33) Xor AscW(Mid$(src, i, 1))) And &H7FFFFFFF
-    Next i
-    ProofFold = h
-End Function
 
-' 原稿が短いとすぐ終わってしまい、FE と BE の差が見えない。そこで「原稿を
-' 何周読み直すか」で総量を揃える。周回数は画面にも確認ダイアログにも出すので、
-' 水増しを隠しはしない。
-Private Function RoundsFor(ByVal n As Long) As Long
-    Dim ops As Double
 
-    RoundsFor = 0
-    If n <= 0 Then Exit Function
-    ops = CDbl(n) * CDbl(n) / 2#
-    RoundsFor = CLng(OpsPerSec() * PB_JOBSECS / ops)
-    If RoundsFor < 1 Then RoundsFor = 1
-End Function
-
-' この端末の ProofFold の速さ（1 秒あたりの文字読み直し回数）。最初の 1 回
-' だけ 0.1 秒計測し、以後は覚えた値を返す。
-Private Function OpsPerSec() As Double
-    Static rate As Double
-    Dim s As String
-    Dim t As Double
-    Dim k As Long
-    Dim sink As Long
-
-    If rate > 0 Then
-        OpsPerSec = rate
-        Exit Function
-    End If
-    s = String$(1000, "x")
-    t = Timer
-    Do While Timer - t < 0.1
-        sink = sink Xor ProofFold(s, 1000)
-        k = k + 1
-    Loop
-    If Timer - t <= 0 Then
-        rate = 20000000#
-    Else
-        rate = CDbl(k) * 1000# / (Timer - t)
-    End If
-    If rate < 1000000# Then rate = 1000000#
-    PbLog "opspersec: " & Format$(rate, "0")
-    OpsPerSec = rate
-End Function
-
-' 進捗を受け取り、まだ塗っていないランプだけ塗る。ランプの色はその位置の文字
-' そのものから決めるので、同じ字は同じ色になる。追記だけなので塗る面積は増分。
-Private Sub PaintProgress(ByVal src As String, ByVal doneChars As Long)
-    Dim rg As Range
-    Dim lx As Long
-    Dim ly As Long
-    Dim i As Long
-    Dim r As Long
-    Dim c As Long
-    Dim n As Long
-    Dim want As Long
-    Dim at As Long
-
-    On Error Resume Next
-    Set rg = m_ws.Range("pb_lamps")
-    If rg Is Nothing Then Exit Sub
-    n = Len(src)
-    If n <= 0 Then Exit Sub
-    lx = PxOfCol(rg.Column)
-    ly = PxOfRow(rg.Row)
-    want = CLng(CDbl(doneChars) * LAMP_N / CDbl(n))
-    If want > LAMP_N Then want = LAMP_N
-    For i = m_lampShown To want - 1
-        r = i \ LAMP_COLS
-        c = i Mod LAMP_COLS
-        at = CLng(CDbl(i) * n / CDbl(LAMP_N)) + 1
-        If at < 1 Then at = 1
-        If at > n Then at = n
-        Fill lx + c * LAMP_PX, ly + r * LAMP_PX, LAMP_PX, LAMP_PX, _
-             LampColor(Abs(AscW(Mid$(src, at, 1))) Mod 10)
-    Next i
-    If want > m_lampShown Then m_lampShown = want
-End Sub
 
 Private Sub ClearLamps()
     Dim rg As Range
@@ -2153,209 +1983,324 @@ Private Sub ClearLamps()
 End Sub
 
 '==============================================================================
-' 実行
+' 円周率ベンチ（15 秒）
 '
-' 原稿（メモ帳 A）を清書（メモ帳 B）へ写す。同じ仕事を、
-'   FE：この Excel の中で同期に回す。描画は戻さないので Excel は本当に応答
-'       しなくなり、Windows がタイトルバーに「(応答なし)」を付ける。メモ帳 B
-'       は終わるまで 1 文字も増えない。演出は入れない。
-'   BE：非表示の別プロセス Excel へ投げる。FE は 1 秒ポンプが生きたままなので、
-'       清書がメモ帳 B へ少しずつ伸びていくのが見えるし、時計もミニマップも
-'       UIA 同期も動き続ける。
-' という 2 通りで走らせて見比べる。それがこのショーケースの主題。
+' 主題は 1 つだけ。**非表示の別プロセス Excel が重い計算をしている最中も、
+' FE の 1 秒アニメ・メモ帳との双方向同期・メモ帳の移動 / リサイズが止まらない**
+' ことを、一画面と実操作で見せる。
+'
+' 登場人物は 4 つ。
+'   FE Excel     … この疑似ピクセルアプリ。1 秒ポンプで全部を回す。
+'   BE Excel     … 別プロセス・非表示。15 秒だけ円周率を実際に計算する。
+'   表示用 Excel … BE とは別の、保存しない一時ブック。計算できた桁が増えて
+'                  いく様子をセルへ出す。書くのは FE で、BE は触らない。
+'   メモ帳       … つないでいる 1 枚。
+' やりとりは従来どおり Temp の JSON（command.json / progress.json）と、
+' 桁そのものを置く pi.txt。
+'
+' 「計算できた桁」と「表示できた桁」は別に数える。正式な結果は後者。内部で
+' 何桁進んでいても、表示用 Excel まで実際に届いていない桁は数えない。
 '==============================================================================
-Private Sub RunJob(ByVal side As String)
-    Dim ans As VbMsgBoxResult
-    Dim src As String
-    Dim n As Long
-    Dim a0 As Long
-    Dim a1 As Long
+Private Sub StartBench()
+    Dim js As String
 
-    If Len(m_job) > 0 Then Exit Sub
-    If Not m_npBound(0) Or Not m_npBound(1) Then
-        SetTxt "pb_jobstat", "メモ帳が 2 枚要ります（原稿と清書）"
-        MsgBox "このデモにはメモ帳の窓が 2 つ要ります。" & vbCrLf & vbCrLf & _
-               "文章が入っているほうが「原稿」、空のほうが「清書」になります。" & vbCrLf & _
-               "メモ帳を 2 枚（片方は空のまま）開いてから実行してください。" & vbCrLf & vbCrLf & _
-               "アプリはメモ帳を起動も終了もしません。開いている窓につなぐだけです。", _
-               vbExclamation, PB_APP
-        Exit Sub
-    End If
-
-    ' 役割は「並び順」ではなく「中身」で決める。文章が入っているほうが原稿、
-    ' 空のほうが清書。並び順で決めていたときは、たまたま先に見つかった窓が
-    ' 清書になり、利用者の書きかけを上書きしかけた。清書側は必ず上書きする
-    ' のだから、そこは空でなければならない。両方に文章があるなら実行しない。
-    a0 = Len(Trim$(CStr(m_npVal(0).CurrentValue)))
-    a1 = Len(Trim$(CStr(m_npVal(1).CurrentValue)))
-    If a0 > 0 And a1 > 0 Then
-        SetTxt "pb_jobstat", "両方に文章があります ･ 清書用に空のメモ帳を 1 枚"
-        MsgBox "メモ帳が 2 枚とも埋まっています。" & vbCrLf & vbCrLf & _
-               Left$(m_npTitle(0), 40) & "（" & a0 & " 文字）" & vbCrLf & _
-               Left$(m_npTitle(1), 40) & "（" & a1 & " 文字）" & vbCrLf & vbCrLf & _
-               "このデモは清書側を上書きします。消えては困る文章なので実行しません。" & vbCrLf & _
-               "空のメモ帳を 1 枚用意して、そちらが清書になるようにしてください。", _
-               vbExclamation, PB_APP
-        Exit Sub
-    End If
-    If a0 = 0 And a1 = 0 Then
-        SetTxt "pb_jobstat", "原稿が空です ･ どちらかに文章を書いてください"
-        MsgBox "メモ帳が 2 枚とも空です。" & vbCrLf & _
-               "どちらかに文章を書いてから実行してください。そちらが原稿になります。", _
-               vbExclamation, PB_APP
-        Exit Sub
-    End If
-    If a0 > 0 Then
-        m_srcSlot = 0
-        m_dstSlot = 1
-    Else
-        m_srcSlot = 1
-        m_dstSlot = 0
-    End If
-    src = ReadManuscript()
-    n = Len(src)
-    If n < 8 Then
-        SetTxt "pb_jobstat", "原稿が短すぎます（" & n & " 文字）"
-        MsgBox "原稿（メモ帳 A）に文章を書いてから実行してください。" & vbCrLf & _
-               "いまは " & n & " 文字です。", vbExclamation, PB_APP
-        Exit Sub
-    End If
-
-    m_jobSrc = src
-    m_jobRounds = RoundsFor(n)
-    ans = MsgBox("原稿 " & n & " 文字を、1 文字ずつ清書します。" & vbCrLf & _
-                 "1 文字書くたびに、そこまでを頭から読み直して突き合わせます" & vbCrLf & _
-                 "（校正 " & m_jobRounds & " 周。高速化はしません＝意図的に重い処理です）。" & vbCrLf & vbCrLf & _
-                 "原稿：" & Left$(m_npTitle(m_srcSlot), 30) & vbCrLf & _
-                 "清書：" & Left$(m_npTitle(m_dstSlot), 30) & "（中身は上書きされます）" & vbCrLf & vbCrLf & _
-                 IIf(side = "FE", "この Excel の中で回すので、終わるまで操作できません。" & vbCrLf & _
-                                  "清書はいっぺんに出ます。", _
-                                  "非表示の別プロセス Excel が回します。この画面は動き続け、" & vbCrLf & _
-                                  "清書は少しずつ伸びていきます。") & vbCrLf & vbCrLf & _
-                 "よろしいですか", vbOKCancel + vbQuestion, PB_APP)
-    If ans <> vbOK Then Exit Sub
-
-    m_job = side
-    m_jobT0 = Timer
-    m_repaints = 0
-    m_jobDone = 0
-    ClearLamps
-    ClearClean
-    If side = "FE" Then
-        RunJobHere
-    Else
-        StartJobOnBe
-    End If
-End Sub
-
-' 原稿はメモ帳 A から、そのとき見えている文字をそのまま取る。
-Private Function ReadManuscript() As String
-    On Error Resume Next
-    ReadManuscript = ToLf(CStr(m_npVal(m_srcSlot).CurrentValue))
-End Function
-
-' 清書をメモ帳 B へ書く。同期側の控えとセルの鏡像も一緒に揃える。
-'
-' 以前は控え（m_npLastCell）だけ動かしてセル本体を書いていなかった。すると
-' 次のティックの同期が「セル（古いまま）≠ 控え（新しい清書）＝セルが編集
-' された」と誤読し、古いセルの中身で B を上書きした。完了ダイアログを閉じた
-' 1 秒後に清書が丸ごと消えるのはこれ（実害として報告された症状）。
-Private Sub WriteClean(ByVal s As String)
-    Dim rg As Range
-    On Error Resume Next
-    If Not m_npBound(m_dstSlot) Then Exit Sub
-    If s = m_cleanShown Then Exit Sub
-    m_npVal(m_dstSlot).SetValue ToCrLf(s)
-    Set rg = m_ws.Range("pb_np" & m_dstSlot & "_text")
-    If Not rg Is Nothing Then
-        MirrorToCell m_dstSlot, rg, s
-    Else
-        m_npLastText(m_dstSlot) = ToLf(s)
-        m_npLastCell(m_dstSlot) = ToLf(s)
-    End If
-    m_cleanShown = s
-    SetTxt "pb_get", "→ SetValue " & Format$(Now, "hh:nn:ss")
-End Sub
-
-' 清書側の面を仕事前の状態に揃える。B は空であることを RunJob が確かめて
-' いるので、消すものは無い。スロットを「結んだ直後」に戻し、次のティックに
-' メモ帳 → セルの向きで取り込み直させるだけでいい。
-Private Sub ClearClean()
-    On Error Resume Next
-    m_cleanShown = ""
-    m_npFresh(m_dstSlot) = True
-End Sub
-
-' FE 側。校正の輪の中には DoEvents を入れないので、この間 Excel は本当に
-' 固まる。輪に入る前の DoEvents 1 つは「実行中（固まります）」の文字を
-' 画面に出すためのもの（直書きの描画は待ちの間に走るので、固まる前に
-' 一度だけメッセージを捌いて描かせる）。
-Private Sub RunJobHere()
-    Dim k As Long
-    Dim r As Long
-    Dim ms As Double
-    Dim n As Long
-    Dim sink As Long
-
+    If m_bench Then Exit Sub
     On Error GoTo Failed
-    n = Len(m_jobSrc)
-    ' 固まる直前の状態を 1 度だけ確定させておく（固まったあとは何も描けない）
-    SetTxt "pb_fe_state", "実行中（固まります）"
-    SetTxt "pb_jobstat", "FE で校正中 ･ " & n & " 文字 × " & m_jobRounds & " 周"
-    DoEvents
+    SetTxt "pb_jobstat", "用意しています ･ 表示用 Excel を作成中"
+    ClearLamps
+    m_piText = ""
+    m_piCalc = 0
+    m_piShown = 0
+    m_benchMs = 0
 
-    Hold
-    For r = 1 To m_jobRounds
-        For k = 1 To n
-            sink = sink Xor ProofFold(m_jobSrc, k)
-        Next k
-    Next r
-    ms = (Timer - m_jobT0) * 1000
-    If ms < 0 Then ms = ms + 86400000#
-    PaintProgress m_jobSrc, n
-    WriteClean m_jobSrc
-    SetTxt "pb_fe_state", "待機 pid " & PidText()
-    SetTxt "pb_jobstat", "FE 完了 " & Format$(ms / 1000, "0.0") & " 秒 ･ " & n & " 文字 ･ 描画 " & _
-        (m_repaints + 1) & " 回"
-    m_job = ""
-    Release
-    ' その場では出さない（QueueDialog の説明を参照）
-    QueueDialog "FE（この Excel）で完了しました。" & vbCrLf & vbCrLf & _
-           "所要時間：" & Format$(ms / 1000, "0.00") & " 秒" & vbCrLf & _
-           "原稿：" & n & " 文字 × 校正 " & m_jobRounds & " 周" & vbCrLf & _
-           "描画回数：" & m_repaints & " 回" & vbCrLf & vbCrLf & _
-           "実行中この画面は固まっていて、清書も最後にまとめて出ました。"
+    If Not m_beStarted Then PbEnsureBe
+    If Not m_beStarted Then
+        SetTxt "pb_jobstat", "BE を起こせませんでした ･ " & m_beNote
+        Exit Sub
+    End If
+    KillQuiet PiPath()
+    KillQuiet ProgPath()
+    m_lastProg = ""
+
+    If Not EnsureDisplayExcel() Then
+        SetTxt "pb_jobstat", "表示用 Excel を作れませんでした"
+        Exit Sub
+    End If
+    BenchLayout
+
+    ' ここまでが「配置と準備」。15 秒はこの下から測る。
+    m_benchT0 = Timer
+    m_bench = True
+    m_reqSeq = m_reqSeq + 1
+    js = "{""cmd"":""pi"",""secs"":" & CLng(PB_BENCHSECS) & ",""seq"":" & m_reqSeq & _
+         ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+    WriteAll CmdPath(), js
+    Flash "pb_lane_out"
+    PbLog "bench: started"
+    SetTxt "pb_be_state", "計算中"
+    SetTxt "pb_jobstat", "計算中 ･ 経過 0.0 秒"
     Exit Sub
 Failed:
-    m_job = ""
-    Release
-    SetTxt "pb_jobstat", "FE エラー " & Err.Number & " " & Err.Description
+    m_bench = False
+    PbLog "bench: start failed " & Err.Number & " " & Err.Description
+    SetTxt "pb_jobstat", "開始に失敗 " & Err.Number
+    CloseDisplayExcel
 End Sub
 
-' 完了ダイアログは、その場では出さずにここへ積む。
-'
-' Excel が背面のまま OnTime ティックの中で MsgBox を出すと、ダイアログの窓が
-' 作られない「見えないモーダル」になり、OK が届くまでポンプごと止まる。実測：
-' 90 秒止まり、fe.json が更新されず BE が置き去り判定で自分から終わった。
-' vbMsgBoxSetForeground でも AppActivate でも直らなかった。
-' 前面かどうかを Win32 なしで確かめる口が無いので、出してよい瞬間を探すのを
-' やめ、利用者の次の操作（セル選択・ウィンドウ復帰 = 前面が保証された文脈）
-' まで持ち越す。完了そのものは盤面（jobstat・進捗盤・清書）に出ているので、
-' ダイアログが遅れて困る情報は無い。
-Private Sub QueueDialog(ByVal s As String)
-    m_doneMsg = s
+' ベンチ開始時の配置。FE は左半分のまま動かさない（起動時に置いたきり）。
+' 表示用 Excel を右上 4 分の 1、メモ帳を右下 4 分の 1 へ。三つが重ならずに
+' 画面を埋めるので、どれも隠れない。
+Private Sub BenchLayout()
+    Dim hx As Long, hy As Long, hw As Long, hh As Long
+
+    On Error Resume Next
+    If m_scrR <= m_scrL Then ScanWindows
+    hx = m_scrL + (m_scrR - m_scrL) \ 2
+    hw = m_scrR - hx
+    hy = m_scrT
+    hh = (m_scrB - m_scrT) \ 2
+
+    If Not m_dispApp Is Nothing Then
+        m_dispApp.WindowState = xlNormal
+        m_dispApp.Left = hx / m_pxPerPt
+        m_dispApp.Top = hy / m_pxPerPt
+        m_dispApp.Width = hw / m_pxPerPt
+        m_dispApp.Height = hh / m_pxPerPt
+        m_dispApp.Visible = True
+    End If
+    If m_npBound Then
+        MoveWin m_npWin, hx, hy + hh, hw, (m_scrB - m_scrT) - hh
+        m_npMin = False
+        ' 前面へ。UIA の SetFocus は相手のプロセスの窓に対して使う（自分の窓の
+        ' 要素は作らない、という原則は守っている）。
+        m_npWin.SetFocus
+    End If
+    m_mapSig = ""
+    ScanWindows
+    PbLog "bench: layout disp=" & hx & "," & hy & " " & hw & "x" & hh
 End Sub
 
-' ThisWorkbook のイベント（ビルド時に注入）から呼ばれる。
-Public Sub PbShowPending()
+' 表示用 Excel。BE とは別プロセスで、保存しない一時ブックを 1 つ持つだけ。
+' 起こし方は XLToolRack の JobHost（CreateObject → Visible / DisplayAlerts を
+' 決めてから使う → 済んだら Quit して参照を捨てる）と同じ形にしてある。
+' 違いは 2 つ：この相手はマクロを持たない新規ブックなので開くファイルが無く
+' AutomationSecurity を触る必要が無いこと、そして **こちらは忙しくないので
+' COM 参照を持ち続けてよい**こと（BE の参照を手放すのは、忙しい相手を COM で
+' 叩くと FE がサーバービジーで止まるからで、表示用 Excel は FE が叩く側）。
+Private Function EnsureDisplayExcel() As Boolean
+    On Error GoTo Failed
+    If Not m_dispApp Is Nothing Then
+        ' 生きているか確かめる。落ちていれば作り直す。
+        If m_dispApp.Workbooks.Count > 0 Then
+            PrepareDisplaySheet
+            EnsureDisplayExcel = True
+            Exit Function
+        End If
+    End If
+    Set m_dispApp = CreateObject("Excel.Application")
+    m_dispApp.DisplayAlerts = False
+    m_dispApp.EnableEvents = False
+    m_dispApp.UserControl = False
+    Set m_dispBook = m_dispApp.Workbooks.Add
+    Set m_dispSheet = m_dispBook.Worksheets(1)
+    m_dispApp.Visible = True
+    PrepareDisplaySheet
+    SetTxt "pb_disp_state", "作成"
+    EnsureDisplayExcel = True
+    Exit Function
+Failed:
+    PbLog "disp: FAILED " & Err.Number & " " & Err.Description
+    SetTxt "pb_disp_state", "失敗 " & Err.Number
+    CloseDisplayExcel
+    EnsureDisplayExcel = False
+End Function
+
+Private Sub PrepareDisplaySheet()
+    On Error Resume Next
+    With m_dispSheet
+        .Cells.Clear
+        .Cells.Font.Name = m_fontMono
+        .Cells.Font.Size = 11
+        .Range("A1:J1").Merge
+        .Range("A1").Value = "pi = 3.   BE が計算した桁を FE がここへ流しています"
+        .Range("A1").Font.Bold = True
+        .Range("A1").Font.Size = 14
+        .Range("A2").Value = "小数点以下 " & PI_PERCELL & " 桁ずつ ･ 1 行 " & _
+            (PI_PERCELL * PI_PERROW) & " 桁"
+        .Range("A2").Font.Size = 10
+        .Columns("A:J").ColumnWidth = 12
+        .Rows(1).RowHeight = 24
+    End With
+    ' 桁は文字列で書くので「数値が文字列として保存されています」の緑三角が
+    ' 全セルに出る。これは使い捨ての別プロセスなので、その Excel の
+    ' エラーチェックだけ切る（利用者の Excel の設定には触っていない）。
+    m_dispApp.ErrorCheckingOptions.NumberAsText = False
+    m_dispApp.ActiveWindow.DisplayGridlines = False
+End Sub
+
+' 保存せずに閉じる。ブックを閉じてから Quit、そのあと参照を捨てる。
+' 逆順にすると、ブックを持たない Excel だけが残ることがある（BeQuit の教訓）。
+Private Sub CloseDisplayExcel()
+    On Error Resume Next
+    If Not m_dispBook Is Nothing Then
+        m_dispBook.Saved = True
+        m_dispBook.Close SaveChanges:=False
+    End If
+    If Not m_dispApp Is Nothing Then
+        m_dispApp.DisplayAlerts = False
+        m_dispApp.Quit
+    End If
+    Set m_dispSheet = Nothing
+    Set m_dispBook = Nothing
+    Set m_dispApp = Nothing
+    SetTxt "pb_disp_state", "終了"
+End Sub
+
+' 毎ティック。BE の進捗を読み、まだ表示していない桁を表示用 Excel へ流す。
+Private Sub PumpBench()
+    Dim el As Double
+    Dim js As String
+    Dim st As String
+
+    If Not m_bench Then Exit Sub
+    On Error GoTo Failed
+    el = Timer - m_benchT0
+    If el < 0 Then el = el + 86400
+    ' 15 秒を過ぎたティックでは、もう表示しない。正式な結果は「15 秒以内に
+    ' 表示用 Excel まで届いた桁」なので、境界を越えてから足すと数えすぎになる。
+    ' 1 秒ポンプなので、最後に数えられるのは 14 秒台のティックまで。
+    If el >= PB_BENCHSECS Then
+        FinishBench
+        Exit Sub
+    End If
+
+    js = ReadAll(ProgPath())
+    If Len(js) > 0 And js <> m_lastProg Then
+        m_lastProg = js
+        Flash "pb_lane_in"
+        Unflash "pb_lane_out"
+        st = JVal(js, "state")
+        m_piCalc = CLng(Val(JVal(js, "n")))
+        If st = "error" Then
+            SetTxt "pb_jobstat", "BE エラー " & JVal(js, "msg")
+            FinishBench
+            Exit Sub
+        End If
+    Else
+        Unflash "pb_lane_in"
+    End If
+
+    ShowDigits ReadDigits()
+
+    SetTxt "pb_jobstat", "計算中 ･ 経過 " & Format$(el, "0.0") & " 秒 ･ 計算 " & _
+        PiDecimals(m_piCalc) & " 桁 ･ 表示 " & m_piShown & " 桁"
+    Exit Sub
+Failed:
+    PbLog "bench: pump err " & Err.Number & " " & Err.Description
+    FinishBench
+End Sub
+
+' 15 秒で自動終了。BE を止め、表示用 Excel を保存せずに閉じ、Temp を片づける。
+' 例外や途中終了からも同じ道を通す。
+Private Sub FinishBench()
+    Dim el As Double
+
+    On Error Resume Next
+    If Not m_bench Then Exit Sub
+    m_bench = False
+    el = Timer - m_benchT0
+    If el < 0 Then el = el + 86400
+    m_benchMs = el * 1000
+
+    m_reqSeq = m_reqSeq + 1
+    WriteAll CmdPath(), "{""cmd"":""quit"",""seq"":" & m_reqSeq & _
+        ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+    ' 返事（bye）をここで待つと FE が数秒固まる。待つのは次のティック以降。
+    m_beStopping = True
+    m_beStopTicks = 0
+    CloseDisplayExcel
+    KillQuiet PiPath()
+    Unflash "pb_lane_in"
+    Unflash "pb_lane_out"
+    SetTxt "pb_be_state", "終了中"
+    SetTxt "pb_jobstat", "完了 " & Format$(el, "0.00") & " 秒 ･ 計算 " & _
+        PiDecimals(m_piCalc) & " 桁 ･ 表示 " & m_piShown & " 桁（結果）"
+    PbLog "bench: finished " & Format$(el, "0.00") & "s calc=" & m_piCalc & _
+        " shown=" & m_piShown
+End Sub
+
+' BE が置いた桁の列を読む。末尾の改行は WriteAll の Print # が足すので落とす。
+Private Function ReadDigits() As String
     Dim s As String
-    If Not m_running Then Exit Sub
-    If m_inTick Then Exit Sub
-    If Len(m_doneMsg) = 0 Then Exit Sub
-    s = m_doneMsg
-    m_doneMsg = ""
-    MsgBox s, vbInformation + vbMsgBoxSetForeground, PB_APP
+    s = ReadAll(PiPath())
+    Do While Len(s) > 0 And (Right$(s, 1) = vbLf Or Right$(s, 1) = vbCr)
+        s = Left$(s, Len(s) - 1)
+    Loop
+    ReadDigits = s
+End Function
+
+' 先頭の 1 桁は整数部の 3。数えるのは小数点以下だけ。
+Private Function PiDecimals(ByVal n As Long) As Long
+    If n > 0 Then PiDecimals = n - 1
+End Function
+
+' まだ表示していない桁を、10 桁ずつ表示用 Excel のセルへ流す。表示できた
+' 桁数（m_piShown）だけが結果になるので、ここは「実際に書けた分」しか進めない。
+Private Sub ShowDigits(ByVal digits As String)
+    Dim dec As String
+    Dim have As Long
+    Dim g As Long
+    Dim groups As Long
+    Dim r As Long
+    Dim c As Long
+    Dim piece As String
+
+    On Error GoTo Failed
+    If Len(digits) < 2 Then Exit Sub
+    If m_dispSheet Is Nothing Then Exit Sub
+    m_piText = digits
+    dec = Mid$(digits, 2)                       ' 整数部の 3 を落とす
+    have = Len(dec)
+    groups = have \ PI_PERCELL                  ' 埋まりきった 10 桁だけ出す
+    g = m_piShown \ PI_PERCELL
+    Do While g < groups
+        r = 4 + g \ PI_PERROW
+        c = 1 + (g Mod PI_PERROW)
+        piece = Mid$(dec, g * PI_PERCELL + 1, PI_PERCELL)
+        m_dispSheet.Cells(r, c).Value = "'" & piece
+        g = g + 1
+        m_piShown = g * PI_PERCELL
+    Loop
+    PaintDigits dec, m_piShown
+    Exit Sub
+Failed:
+    PbLog "bench: show err " & Err.Number & " " & Err.Description
 End Sub
+
+' 盤のランプは 1 つが 1 桁。桁の値がそのまま色になる（0 = 薄い、9 = 濃い）。
+Private Sub PaintDigits(ByVal dec As String, ByVal shown As Long)
+    Dim rg As Range
+    Dim lx As Long
+    Dim ly As Long
+    Dim i As Long
+    Dim want As Long
+
+    On Error Resume Next
+    Set rg = m_ws.Range("pb_lamps")
+    If rg Is Nothing Then Exit Sub
+    lx = PxOfCol(rg.Column)
+    ly = PxOfRow(rg.Row)
+    want = shown
+    If want > LAMP_N Then want = LAMP_N
+    For i = m_lampShown To want - 1
+        Fill lx + (i Mod LAMP_COLS) * LAMP_PX, ly + (i \ LAMP_COLS) * LAMP_PX, _
+             LAMP_PX, LAMP_PX, LampColor(Val(Mid$(dec, i + 1, 1)))
+    Next i
+    If want > m_lampShown Then m_lampShown = want
+End Sub
+
+
+
 
 Private Function PidText() As String
     If Len(m_myPid) = 0 Then
@@ -2377,31 +2322,6 @@ Private Sub ReadOwnPid()
     If el Is Nothing Then Exit Sub
     m_myPid = CStr(el.CurrentProcessId)
     Set el = Nothing
-End Sub
-
-' BE 側へ投げる。原稿そのものは JSON に載せない。長い本文を JSON へ押し込むと
-' 引用符と改行の始末で必ず事故る。原稿は別ファイルに置き、JSON では「どこを
-' 読め」だけを伝える。
-Private Sub StartJobOnBe()
-    Dim js As String
-
-    ' BE は FE が長く黙ると（完了ダイアログの放置など）置き去り防止で自分から
-    ' 終わっている。次のジョブでここから起こし直す。
-    If Not m_beStarted Then PbEnsureBe True
-    If Not m_beStarted Then
-        SetTxt "pb_jobstat", "BE が起動していません ･ " & m_beNote
-        m_job = ""
-        Exit Sub
-    End If
-    WriteAll SrcPath(), m_jobSrc
-    m_reqSeq = m_reqSeq + 1
-    js = "{""cmd"":""proof"",""seq"":" & m_reqSeq & ",""n"":" & Len(m_jobSrc) & _
-         ",""rounds"":" & m_jobRounds & _
-         ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
-    WriteAll CmdPath(), js
-    Flash "pb_lane_out"
-    SetTxt "pb_jobstat", "BE へ投げました ･ この画面は動き続けます"
-    SetTxt "pb_be_state", "実行中"
 End Sub
 
 '==============================================================================
@@ -2430,15 +2350,12 @@ Private Function FePath() As String
     FePath = TempDir() & "fe.json"
 End Function
 
-' 原稿と清書は JSON に載せず、素のテキストで置く。長い本文を JSON へ押し込むと
-' 引用符と改行の始末で必ず事故る。
-Private Function SrcPath() As String
-    SrcPath = TempDir() & "manuscript.txt"
+' 桁そのものを置くファイル。JSON に本文を入れないので、引用符も改行も
+' 気にしなくていい（原稿を JSON へ入れていた頃の教訓をそのまま使う）。
+Private Function PiPath() As String
+    PiPath = TempDir() & "pi.txt"
 End Function
 
-Private Function CleanPath() As String
-    CleanPath = TempDir() & "clean.txt"
-End Function
 
 ' BE 用の軽いコピーは %TEMP%\pixelbridge\ に置く。配布物のフォルダには
 ' 何も作らない。配布するのは 1px / 2px / 4px の FE ブック 1 冊ずつだけで、
@@ -2551,8 +2468,7 @@ Private Sub PbEnsureBe(Optional ByVal reuseCopy As Boolean = False)
     On Error GoTo Failed
     EnsureTempDir
     KillQuiet CmdPath()
-    KillQuiet SrcPath()
-    KillQuiet CleanPath()
+    KillQuiet PiPath()
     KillQuiet ProgPath()
     WriteAll FePath(), "{""fe"":""alive"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
 
@@ -2578,17 +2494,17 @@ Private Sub PbEnsureBe(Optional ByVal reuseCopy As Boolean = False)
     PbLog "be: opened, calling bootstrap"
     beApp.Run "'" & Replace(beBook.Name, "'", "''") & "'!PbBeBootstrap"
     PbLog "be: bootstrap returned"
-    m_beNote = "Visible=False"
+    m_beNote = "非表示"
     ' FE は BE への COM 参照を持ち続けない。忙しい BE を COM で叩くと FE が
     ' サーバービジーで固まる。ここで手放す。
     Set beBook = Nothing
     Set beApp = Nothing
     m_beStarted = True
-    SetTxt "pb_be_state", "待機 Visible=False"
+    SetTxt "pb_be_state", "待機 非表示"
     Exit Sub
 Failed:
     m_beStarted = False
-    m_beNote = "起動に失敗 " & Err.Number
+    m_beNote = "失敗 " & Err.Number
     PbLog "be: FAILED " & Err.Number & " " & Err.Description
     SetTxt "pb_be_state", m_beNote
 End Sub
@@ -2613,77 +2529,54 @@ Private Sub Unflash(ByVal nm As String)
     rg.Interior.Color = C_LINE
 End Sub
 
+' 毎ティックの Temp まわり。BE が居るあいだだけ「FE は生きている」印を置き、
+' ベンチ中はそのポンプへ回す。BE へ quit を送ったあとは bye を待ち、見えたら
+' やりとりに使った一時ファイルをフォルダごと片づける。
 Private Sub PumpChannel()
     Dim js As String
-    Dim st As String
-    Dim ms As Double
-    Dim doneN As Long
-    Dim total As Long
-    Dim clean As String
 
     On Error Resume Next
-    WriteAll FePath(), "{""fe"":""alive"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
-    js = ReadAll(ProgPath())
-    If Len(js) = 0 Then Exit Sub
-    If js = m_lastProg Then
-        Unflash "pb_lane_in"
+    If m_beStarted Then
+        WriteAll FePath(), "{""fe"":""alive"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+    End If
+    If m_bench Then
+        PumpBench
         Exit Sub
     End If
-    m_lastProg = js
-    Flash "pb_lane_in"
-    Unflash "pb_lane_out"
-
-    st = JVal(js, "state")
-    ms = Val(JVal(js, "ms"))
-    doneN = CLng(Val(JVal(js, "n")))
-    total = CLng(Val(JVal(js, "total")))
-    If total <= 0 Then total = Len(m_jobSrc)
-
-    ' 届いた清書をメモ帳 B へ写す。ここが「FE が生きている」いちばんの証拠に
-    ' なる。BE が回している間もこの 1 秒ポンプが動いているから、B が伸びる。
-    If doneN > 0 Then
-        clean = ReadAll(CleanPath())
-        Do While Len(clean) > 0 And (Right$(clean, 1) = vbLf Or Right$(clean, 1) = vbCr)
-            clean = Left$(clean, Len(clean) - 1)
-        Loop
-        If Len(clean) > 0 Then
-            WriteClean clean
-            PaintProgress m_jobSrc, Len(clean)
+    js = ReadAll(ProgPath())
+    If Len(js) > 0 And js <> m_lastProg Then
+        m_lastProg = js
+        ' BE は FE が黙って見えると自分から終わる（置き去り防止）。それを見たら、
+        ' 次のベンチで起こし直せるようにこちら側の印も倒す。
+        If JVal(js, "state") = "bye" Then
+            m_beStarted = False
+            If Not m_beStopping Then SetTxt "pb_be_state", "自動終了"
         End If
     End If
+    If m_beStopping Then
+        m_beStopTicks = m_beStopTicks + 1
+        ' bye が見えたか、8 ティック待っても来ないなら、そこで片づける。
+        If Not m_beStarted Or m_beStopTicks > 8 Then
+            m_beStopping = False
+            m_beStarted = False
+            BenchCleanupTemp
+            SetTxt "pb_be_state", "終了"
+        End If
+    End If
+End Sub
 
-    Select Case st
-        Case "running"
-            SetTxt "pb_be_state", "実行中 " & doneN & " / " & total & " 文字"
-            SetTxt "pb_jobstat", "BE 実行中 ･ 校正 " & JVal(js, "round") & " / " & _
-                JVal(js, "rounds") & " 周 ･ 清書 " & doneN & " / " & total & " 文字 ･ " & _
-                Format$(ms / 1000, "0.0") & " 秒 ･ 描画 " & m_repaints & " 回"
-        Case "done"
-            SetTxt "pb_be_state", "待機 Visible=False"
-            SetTxt "pb_jobstat", "BE 完了 " & Format$(ms / 1000, "0.0") & " 秒 ･ " & _
-                total & " 文字 ･ 描画 " & m_repaints & " 回"
-            If m_job = "BE" Then
-                m_job = ""
-                Release
-                ' その場では出さない（QueueDialog の説明を参照）
-                QueueDialog "BE（非表示の別プロセス Excel）で完了しました。" & vbCrLf & vbCrLf & _
-                       "所要時間：" & Format$(ms / 1000, "0.00") & " 秒" & vbCrLf & _
-                       "原稿：" & total & " 文字 × 校正 " & m_jobRounds & " 周" & vbCrLf & _
-                       "描画回数：" & m_repaints & " 回" & vbCrLf & vbCrLf & _
-                       "実行中もこの画面は動き続け、清書は少しずつ伸びていました。"
-            End If
-        Case "error"
-            SetTxt "pb_jobstat", "BE エラー " & JVal(js, "msg")
-            m_job = ""
-        Case "bye"
-            ' BE は FE が黙って見えると自分から終わる（置き去り防止）。それを
-            ' 見たら、次のジョブで起こし直せるようにこちら側の印も倒す。
-            If m_beStarted Then
-                m_beStarted = False
-                SetTxt "pb_be_state", "停止（自動終了）"
-                If m_job = "BE" Then m_job = ""
-            End If
-    End Select
+' ベンチのやりとりに使った一時ファイルを消す。フォルダも空なら消す。
+' 例外や途中終了からもここを通す（FinishBench → 次のティック）。
+Private Sub BenchCleanupTemp()
+    On Error Resume Next
+    KillQuiet PiPath()
+    KillQuiet ProgPath()
+    KillQuiet CmdPath()
+    KillQuiet FePath()
+    KillQuiet BeBookPath()
+    RmDirQuiet Left$(TempDir(), Len(TempDir()) - 1)
+    m_lastProg = ""
+    PbLog "bench: temp cleaned"
 End Sub
 
 '==============================================================================
@@ -2737,8 +2630,10 @@ Public Sub PbBeMain()
         If seq > m_beLastSeq Then
             m_beLastSeq = seq
             Select Case JVal(js, "cmd")
-                Case "proof"
-                    BeProofread CLng(Val(JVal(js, "n"))), CLng(Val(JVal(js, "rounds")))
+                Case "pi"
+                    BePiRun Val(JVal(js, "secs")), seq
+                Case "pistop"
+                    ' 走っていなければ何もしない（走行中は BePiRun が自分で拾う）
                 Case "quit"
                     Exit Do
             End Select
@@ -2767,90 +2662,154 @@ Public Sub PbBeMain()
     BeQuit
 End Sub
 
-' BE 側の仕事。原稿は JSON ではなく別ファイルから読む。
-' 進捗は progress.json、清書そのものは clean.txt。本文を JSON に入れないので、
-' 引用符も改行も気にしなくていい。
-Private Sub BeProofread(ByVal n As Long, ByVal rounds As Long)
-    Dim src As String
-    Dim k As Long
-    Dim r As Long
-    Dim t0 As Double
-    Dim ms As Double
+' BE 側の仕事。円周率を **実際に計算する**。既知の桁を流し込むことは 1 桁も
+' しない。使うのは Rabinowitz-Wagon の spigot（有限桁版）で、桁を頭から 1 つずつ
+' 吐くので「増えていく」様子がそのまま出せる。
+'
+' 配列の長さ ln は「何桁まで正しく出せるか」を決める。途中で打ち切っても、
+' そこまでに吐いた桁は正しい（足りなくなるのではなく、まだ吐いていないだけ）。
+' ln = 10n/3 + 1 で、1 桁あたり内側ループが ln 回まわるから総コストは約
+' 10n^2/3。端末の速さは決め打ちできない（開発機で決めた回数が非力なノートで
+' 14 倍かかった、という実測がこのリポジトリにある）ので、走る前に 0.15 秒だけ
+' 同じ内側ループを空回しして速さを測り、15 秒で届く n を選ぶ。1.15 倍だけ
+' 多めに取って、15 秒の打ち切りまで手が空かないようにする。
+Private Sub BePiRun(ByVal secs As Double, ByVal stopSeq As Long)
+    Dim a() As Long
+    Dim n As Long, ln As Long
+    Dim i As Long, j As Long, k As Long
+    Dim q As Long, x As Long
+    Dim predigit As Long, nines As Long
+    Dim first As Boolean
+    Dim out As String
+    Dim t0 As Double, ms As Double
+    Dim lastDv As Double
     Dim chunk As Long
-    Dim done As Long
-    Dim sink As Long
+    Dim rate As Double
+    Dim js As String
 
     On Error GoTo Failed
-    src = ReadAll(SrcPath())
-    ' WriteAll の Print # は末尾に改行を足す。原稿の長さがずれるので落とす。
-    Do While Len(src) > 0 And (Right$(src, 1) = vbLf Or Right$(src, 1) = vbCr)
-        src = Left$(src, Len(src) - 1)
-    Loop
-    If Len(src) = 0 Then
-        PbBeWrite "{""state"":""error"",""msg"":""原稿が読めません"",""ts"":""" & _
-            Format$(Now, "hh:nn:ss") & """}"
-        Exit Sub
-    End If
-    n = Len(src)
-    If rounds < 1 Then rounds = 1
-    ' 進捗は 40 回くらいに割る。細かすぎると書き出しのほうが重くなる。
-    chunk = n \ 40
-    If chunk < 1 Then chunk = 1
+    If secs <= 0 Then secs = 15
+    rate = BeInnerRate()
+    n = CLng(Sqr(3# * rate * secs / 10#) * 1.15)
+    If n < 200 Then n = 200
+    If n > 30000 Then n = 30000
+    ln = (10 * n) \ 3 + 1
+    ReDim a(1 To ln)
+    For i = 1 To ln
+        a(i) = 2
+    Next i
+    predigit = 0
+    nines = 0
+    first = True
+    out = ""
+    chunk = n \ 60
+    If chunk < 5 Then chunk = 5
     t0 = Timer
+    lastDv = t0
+    PbBeWrite "{""state"":""running"",""n"":0,""target"":" & n & ",""rate"":" & _
+        CLng(rate) & ",""ms"":0,""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
 
-    For r = 1 To rounds
-        For k = 1 To n
-            sink = sink Xor ProofFold(src, k)
-            ' メッセージを捌く。これは演出でも手加減でもなく、行儀の問題。
-            '
-            ' ここを入れずに測ったとき、FE は BE の実行中ずっと固まった。原因は
-            ' FE 側の仕事ではない。FE の 1 秒ティックにある ScanWindows（UI
-            ' Automation の列挙）が、この BE を待って返らなかった。実測：ティックの
-            ' t:sel から t:scan までが 15.6 秒で、BE の処理時間とぴたり一致した。
-            ' UIA の列挙は端から端まで全部のトップレベル窓に触りにいくので、
-            ' その中に「メッセージを一切処理しないプロセス」が一つでもあると、
-            ' そこで止まる。不可視でも窓は窓で、ここに BE 自身がいた。
-            ' つまり「重い処理を別プロセスへ逃がす」だけでは足りず、逃がした先が
-            ' 応答し続けないと、結局 FE が巻き添えで固まる。
-            '
-            ' 64 文字に 1 回で十分に応答が保てる（この端末で 3ms おき）。毎文字
-            ' だと DoEvents 自体が仕事の 5 倍かかり、同じ総量の BE が FE の
-            ' 5.7 倍遅く見えてしまう（実測 15 秒 対 85 秒。1 回 1.6ms）。
-            If (k And 63) = 0 Then DoEvents
-            If (k Mod chunk) = 0 Or k = n Then
-                ' 清書は「全体の何割まで進んだか」で伸ばす。最終周だけで伸ばすと
-                ' 実行時間のほとんどで 0 のままになり、動いて見えない（実測）。
-                done = CLng((CDbl(r - 1) * n + k) / (CDbl(rounds) * n) * n)
-                If done < 1 Then done = 1
-                If done > n Then done = n
-                WriteAll CleanPath(), Left$(src, done)
-                ms = (Timer - t0) * 1000
-                If ms < 0 Then ms = ms + 86400000#
-                PbBeWrite "{""state"":""running"",""n"":" & done & ",""total"":" & n & _
-                    ",""round"":" & r & ",""rounds"":" & rounds & ",""ms"":" & CLng(ms) & _
-                    ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
-            End If
-        Next k
-    Next r
+    For j = 1 To n
+        q = 0
+        For i = ln To 2 Step -1
+            x = 10 * a(i) + q * i
+            a(i) = x Mod (2 * i - 1)
+            q = x \ (2 * i - 1)
+        Next i
+        x = 10 * a(1) + q
+        a(1) = x Mod 10
+        q = x \ 10
+        If q = 9 Then
+            nines = nines + 1
+        ElseIf q = 10 Then
+            out = out & CStr(predigit + 1)
+            For k = 1 To nines
+                out = out & "0"
+            Next k
+            predigit = 0
+            nines = 0
+        Else
+            If Not first Then out = out & CStr(predigit)
+            predigit = q
+            For k = 1 To nines
+                out = out & "9"
+            Next k
+            nines = 0
+            first = False
+        End If
 
-    WriteAll CleanPath(), src
+        ' 応答を保つ。ここを入れないと FE の 1 秒ティックにある UIA の列挙が
+        ' この BE を待って返らず、「別プロセスへ逃がしたのに FE が固まる」に
+        ' なる（実測。README の該当節を参照）。ただし DoEvents は 1 回 1.6ms
+        ' かかるので毎桁は高すぎる（1 桁の計算より重くなる端末がある）。
+        ' 時間で間隔を決めて 30ms に 1 回にすると、応答は保てて損は数 % で済む。
+        ms = Timer - lastDv
+        If ms < 0 Then ms = ms + 86400
+        If ms >= 0.03 Then
+            DoEvents
+            lastDv = Timer
+        End If
+
+        If (j Mod chunk) = 0 Or j = n Then
+            ms = (Timer - t0) * 1000
+            If ms < 0 Then ms = ms + 86400000#
+            WriteAll PiPath(), out
+            PbBeWrite "{""state"":""running"",""n"":" & Len(out) & ",""target"":" & n & _
+                ",""ms"":" & CLng(ms) & ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+            If ms >= secs * 1000 Then Exit For
+            ' FE から新しい命令（pistop / quit）が来ていたら、そこで畳む。
+            js = ReadAll(TempDir() & "command.json")
+            If CLng(Val(JVal(js, "seq"))) > stopSeq Then Exit For
+        End If
+    Next j
+
     ms = (Timer - t0) * 1000
     If ms < 0 Then ms = ms + 86400000#
-    PbBeWrite "{""state"":""done"",""n"":" & n & ",""total"":" & n & _
-        ",""rounds"":" & rounds & ",""ms"":" & CLng(ms) & _
-        ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
+    WriteAll PiPath(), out
+    PbBeWrite "{""state"":""done"",""n"":" & Len(out) & ",""target"":" & n & _
+        ",""ms"":" & CLng(ms) & ",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
     Exit Sub
 Failed:
     PbBeWrite "{""state"":""error"",""msg"":""" & Err.Number & " " & _
         Replace(Err.Description, """", "'") & """,""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
 End Sub
 
+' 内側ループを 0.15 秒だけ空回しして、1 秒あたり何回まわるかを測る。
+' 桁を吐かないので円周率そのものには 1 桁も関与しない。
+Private Function BeInnerRate() As Double
+    Dim a() As Long
+    Dim ln As Long
+    Dim i As Long
+    Dim q As Long, x As Long
+    Dim t0 As Double, el As Double
+    Dim loops As Double
+
+    ln = 2000
+    ReDim a(1 To ln)
+    For i = 1 To ln
+        a(i) = 2
+    Next i
+    t0 = Timer
+    Do
+        q = 0
+        For i = ln To 2 Step -1
+            x = 10 * a(i) + q * i
+            a(i) = x Mod (2 * i - 1)
+            q = x \ (2 * i - 1)
+        Next i
+        loops = loops + ln
+        el = Timer - t0
+        If el < 0 Then el = el + 86400
+    Loop While el < 0.15
+    If el <= 0 Then el = 0.15
+    BeInnerRate = loops / el
+End Function
+
 ' 終わり方の順序が効く。ThisWorkbook.Close を先に呼ぶと、そこで自分のコードが
 ' 止まって Application.Quit に届かず、ブックを持たない不可視 Excel が残る（実測）。
 Private Sub BeQuit()
     On Error Resume Next
     m_beQuit = True
-    m_beAlive = False
     PbBeWrite "{""state"":""bye"",""ts"":""" & Format$(Now, "hh:nn:ss") & """}"
     Application.DisplayAlerts = False
     ThisWorkbook.Saved = True
