@@ -1,11 +1,10 @@
 ﻿# ============================================================================
 # pack_app.ps1 -- assemble the practical build's self-contained .cmd from
-# src\app\csharp and src\app\cmd.
+# src\csharp and src\launcher.
 #
 #   dist\app-csharp\ReaderDataViewer.cmd
 #
-# Same three rules as build\pack_cmd.ps1 (which packs the frozen comparison
-# builds and is not touched by this script):
+# Packing follows three rules:
 #
 #  1. usings are hoisted to the top and de-duplicated
 #  2. every character above U+007F is rewritten as \uXXXX, because Add-Type
@@ -25,12 +24,11 @@ param(
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
-$srcDir = 'src\app\csharp'
-$sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs', 'Rdv3Jobs.cs',
-             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3SetGeom.cs', 'Rdv3Json.cs', 'Rdv3Config.cs',
-             'Rdv3Uia.cs', 'Rdv3Ui.cs', 'Rdv3Settings.cs', 'Rdv3App.cs')
+$srcDir = 'src\csharp'
+. (Join-Path $Root 'build\sources.ps1')
+$sources = $RdvSources
 $title = 'Reader Data Viewer -- practical build, C# standard Dictionary'
-$usage = 'ReaderDataViewer.cmd [dataDir] [-ledger <file.xlsx>] [-log <file>]'
+$usage = 'ReaderDataViewer.cmd [dataDir] [-config <settings.json>] [-ledger <file.xlsx>] [-log <file>]'
 $name = 'ReaderDataViewer.cmd'
 
 $usings = New-Object System.Collections.Specialized.OrderedDictionary
@@ -64,7 +62,7 @@ foreach ($ch in $cs.ToString().ToCharArray()) {
 }
 $csText = $esc.ToString()
 
-$psText = [IO.File]::ReadAllText((Join-Path $Root 'src\app\cmd\boot-app.ps1'), [Text.Encoding]::UTF8)
+$psText = [IO.File]::ReadAllText((Join-Path $Root 'src\launcher\boot-app.ps1'), [Text.Encoding]::UTF8)
 
 foreach ($pair in @(@('PS section', $psText), @('C# section', $csText))) {
   foreach ($m in @(('#RDV' + '-PS-BEGIN'), ('#RDV' + '-CS-BEGIN'))) {
@@ -79,7 +77,7 @@ $psBegin = '#RDV' + '-PS-BEGIN'
 $csBegin = '#RDV' + '-CS-BEGIN'
 
 # ---- the .cmd: one file, a console window comes with it ---------------------
-$head = [IO.File]::ReadAllText((Join-Path $Root 'src\cmd\header.cmd'), [Text.Encoding]::UTF8)
+$head = [IO.File]::ReadAllText((Join-Path $Root 'src\launcher\header.cmd'), [Text.Encoding]::UTF8)
 $head = $head.Replace('@@TITLE@@', $title).Replace('@@USAGE@@', $usage)
 $all = $head + "`r`n" + $psBegin + "`r`n" + $psText + "`r`n" + $csBegin + "`r`n" + $csText
 
@@ -106,7 +104,7 @@ function Rdv-Comment([string] $text) {
   return $sb.ToString().TrimEnd("`r", "`n")
 }
 
-$vbsHead = [IO.File]::ReadAllText((Join-Path $Root 'src\cmd\header.vbs'), [Text.Encoding]::UTF8)
+$vbsHead = [IO.File]::ReadAllText((Join-Path $Root 'src\launcher\header.vbs'), [Text.Encoding]::UTF8)
 $vbsHead = $vbsHead.Replace('@@TITLE@@', $title).Replace('@@USAGE@@', ($usage -replace '\.cmd', '.vbs'))
 foreach ($ch in $vbsHead.ToCharArray()) {
   if ([int]$ch -gt 127) { throw "the VBScript head must stay ASCII (found U+{0:X4})" -f [int]$ch }

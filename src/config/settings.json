@@ -1,0 +1,268 @@
+// ============================================================================
+// Reader Data Viewer -- settings.json
+//
+// ReaderDataViewer.cmd is the program; this file is everything else. It sits
+// next to the .cmd and is read at start-up. It has six parts:
+//
+//   paths     where the CSVs, the ledger and the log are
+//   search    what a number looks like, how many candidates to list
+//   watch     which windows to read the number from (UI Automation)
+//   jobs      time limits of the background jobs
+//   data      what the CSVs are and how they become the ledger (tables, keys,
+//             joins, the ledger columns)
+//   screen    what the screen shows (sections, values, judgments, work
+//             states, the candidate list)
+//
+// The file is read STRICTLY: a member the program does not know (a typo), a
+// value of the wrong kind or out of range, a name that refers to nothing --
+// and the app does not start, naming the line and the reason. Nothing is
+// silently ignored or replaced by a default, because an edit that seems to be
+// in effect but is not is worse than a clear stop.
+//
+//   - // line comments and /* block comments */ are allowed.
+//   - Relative paths are relative to the folder holding the .cmd.
+//   - The 設定 button rewrites ONLY "paths", "search" and "watch"; everything
+//     else, these comments included, is left exactly as it is. (Comments
+//     inside those three members are not kept.)
+//
+// What every member means: docs/settings.md (paths, search, watch, jobs, data)
+// and docs/ui-spec.md (screen).
+//
+// The "data" and "screen" below describe the SHIPPED SAMPLE: three colourless
+// tables (表A / 表B / 表C, values like SAMPLE-A-0000001) with generic labels.
+// A site replaces both parts with its own CSVs and its own screen; realistic
+// worked examples are in src\samples (販売 / 製造 / 施設予約).
+// ============================================================================
+{
+  "schema": 2,
+
+  "paths": {
+    "dataDir": "data",
+    "ledger": "ReaderDataViewer-Ledger.xlsx",
+    "log": "ReaderDataViewer.log"
+  },
+
+  // "pattern": a typed or watched value counts as a number only when the whole
+  // of it matches this regular expression. "candidateRowsShown": the most
+  // candidate rows a search puts in the list (the count is always shown).
+  "search": { "pattern": "^[0-9]{8}$", "candidateRowsShown": 100 },
+
+  // WHAT TO WATCH.
+  //
+  // Every enabled target is bound and polled at the same time; whichever
+  // confirms a number first drives the search. A target is a path:
+  //
+  //     window  ->  path[0]  ->  path[1]  ->  field
+  //
+  // and each step is matched on the properties UI Automation exposes:
+  //
+  //     automationId   the stable identifier, when the application sets one
+  //     className      the window or control class
+  //     name           exact text
+  //     nameLike       text with * and ? wildcards
+  //     processName    the executable's name, without .exe
+  //     controlTypes   Edit, Document, DataGrid, Pane, Custom, ...
+  //     index          which one to take when several match (0 = the first)
+  //     scope          "descendants" (default) or "children"
+  //
+  // "read" says where the text comes from: "value" (ValuePattern, the usual
+  // case), "text" (TextPattern, rich documents) or "name" (the Name property,
+  // for read-only labels).
+  //
+  // A second target, for a line-of-business window, looks like this:
+  //
+  //   { "enabled": false,
+  //     "name": "在庫照会",
+  //     "window": { "processName": "LobApp", "nameLike": "在庫照会*", "scope": "children" },
+  //     "path": [ { "automationId": "tabMain" }, { "automationId": "pnlSearch" } ],
+  //     "field": { "automationId": "txtBarcode", "controlTypes": ["Edit"] },
+  //     "read": "value" }
+  //
+  // The 設定 dialog's 「画面から選ぶ」 reads all of this off the element you
+  // point at -- far quicker, and far more accurate, than writing it by hand.
+  "watch": {
+    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": { "className": "Notepad", "scope": "children" },
+        "path": [],
+        "field": { "controlTypes": ["Document", "Edit"], "requireValuePattern": true, "scope": "descendants" },
+        "read": "value"
+      }
+    ]
+  },
+
+  "jobs": {
+    "checkTimeoutMs": 180000,
+    "searchTimeoutMs": 30000,
+    "saveTimeoutMs": 60000,
+    "markOverdueMs": 180000,
+    "pumpMs": 1000
+  },
+
+  // THE DATA.
+  //
+  // "tables": each CSV in paths.dataDir, by a short id, with the column that
+  // identifies one row of it ("key", unique). "spine": the table whose rows
+  // are the ledger rows, one each; its key is the row identity that the work
+  // state and the carry-over key on. "joins": for each other table, the spine
+  // column that holds that table's key (B.key1 -> A.key, B.key2 -> C.key).
+  // "ledger.columns": the ledger row, as "<table>.<column>", in the order the
+  // xlsx has them; "ledger.search": the column the search box looks up.
+  //
+  // Column names are the CSV header rows. Every name here is checked against
+  // the headers before the window opens. "encoding" is "utf-8" (default) or
+  // any name Windows knows, e.g. "shift_jis".
+  "data": {
+    "encoding": "utf-8",
+    "tables": {
+      "A": { "file": "tableA.csv", "key": "key1" },
+      "B": { "file": "tableB.csv", "key": "key2" },
+      "C": { "file": "tableC.csv", "key": "key2" }
+    },
+    "spine": "B",
+    "joins": [
+      { "table": "A", "on": "key1" },
+      { "table": "C", "on": "key2" }
+    ],
+    "ledger": {
+      "search": "B.key1",
+      "columns": [
+        "B.key1", "B.key2",
+        "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note",
+        "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo",
+        "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"
+      ]
+    }
+  },
+
+  // THE SCREEN.
+  //
+  //   value       { "field": "A.a_name" }                 one ledger column
+  //               { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " }   several, joined
+  //               { "state": "searchKey" }                 an app value (docs/ui-spec.md)
+  //               + "format": { "kind": "number", "group": true }
+  //                           { "kind": "date", "from": "yyyyMMdd", "to": "yyyy-MM-dd" }
+  //               + "empty": "N/A"   what to show when the record has no value there
+  //
+  //   judgments   rules are tried top to bottom: "equals" (exact list), "pattern"
+  //               (regular expression), "empty" (true). Nothing matching is the
+  //               built-in result "undefined"; a source that cannot be read is
+  //               "error". Both are shown as such -- never as OK.
+  //
+  //   workState   "stored" is the string written to the ledger column "store.column";
+  //               "initial" is the state a new or changed record gets; a
+  //               transition is what the button does from the state it names.
+  //               {B.key2} and {state} are filled in before a confirm is shown.
+  //
+  //   card        "width" is the reference design width the sizes below belong to;
+  //               "startSize" is the window's client size at start-up (CSS px);
+  //               the screen reflows to whatever the window is resized to.
+  //
+  //   sections    titleBar | keyPanel | columns | fieldList | textBox | statusBand | statusBar
+  //               in display order. Sizes are CSS px of the reference screen
+  //               (docs/ui-reference/v2.html) and scale with the Windows display.
+  "screen": {
+    "card": { "width": 1240, "startSize": [840, 830], "gap": 17, "padding": [14.3, 14.3, 14.2], "font": "Yu Gothic UI" },
+    "toast": { "durationMs": 3600 },
+
+    "judgments": {
+      "status1": {
+        "source": { "field": "B.b_status" },
+        "rules": [
+          { "equals": ["DONE", "OPEN"], "result": "ok" },
+          { "equals": ["HOLD", "VOID"], "result": "ng" }
+        ],
+        "results": {
+          "ok": { "text": "OK", "look": "ok", "icon": "check" },
+          "ng": { "text": "NG", "look": "ng" },
+          "undefined": { "text": "未定義", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      }
+    },
+
+    "workState": {
+      "store": { "column": "処理済み" },
+      "states": [
+        { "id": "todo", "text": "未処理", "short": "未", "look": "neutral", "stored": "FALSE" },
+        { "id": "done", "text": "処理済", "short": "済", "look": "accent", "stored": "TRUE" }
+      ],
+      "initial": "todo",
+      "transitions": [
+        { "from": "todo", "to": "done",
+          "confirm": "表示中のレコード (番号2 = {B.key2}) を処理済にします。よろしいですか?",
+          "done": "処理済の保存が完了しました" }
+      ],
+      "button": { "text": "{state}", "tip": "表示中のレコードを処理済にします (確認あり)" }
+    },
+
+    "sections": [
+      { "type": "keyPanel",
+        "figure": { "label": "現在の番号（番号1）", "value": { "state": "searchKey" } },
+        "input": { "placeholder": "番号1 を入力", "width": 220, "maxLength": 64 },
+        "buttons": [
+          { "action": "search", "text": "検索", "icon": "search", "primary": true, "tip": "入力した番号1 で統合台帳を検索します" },
+          { "action": "clear", "text": "クリア", "tip": "入力と結果表示を消します (台帳と処理済は消えません)" },
+          { "action": "workState" }
+        ] },
+
+      { "type": "columns", "weights": [1, 1], "gap": 17,
+        "items": [
+          { "type": "fieldList", "title": "番号", "labelWidth": 104, "rowHeight": 44,
+            "rows": [
+              { "label": "番号1", "value": { "field": "B.key1" } },
+              { "label": "番号2", "value": { "field": "B.key2" } },
+              { "label": "行番号", "value": { "field": "B.b_line" } }
+            ] },
+          { "type": "fieldList", "title": "表A の項目", "labelWidth": 128, "rowHeight": 44,
+            "rows": [
+              { "label": "名称", "value": { "field": "A.a_name" } },
+              { "label": "コード", "value": { "field": "A.a_code" } },
+              { "label": "区分", "value": { "field": "A.a_grade" } },
+              { "label": "部門", "value": { "field": "A.a_dept" } },
+              { "label": "日付", "value": { "field": "A.a_date" } },
+              { "label": "金額", "value": { "field": "A.a_amount" } },
+              { "label": "率 ・ フラグ", "value": { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " } }
+            ] }
+        ] },
+
+      { "type": "textBox", "title": "メモ（表B: b_memo）", "lines": 4, "value": { "field": "B.b_memo" } },
+      { "type": "textBox", "title": "備考（表C: c_remark）", "lines": 2, "value": { "field": "C.c_remark" } },
+
+      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 84,
+        "sub": [ { "field": "B.b_status" }, { "state": "workState" } ], "joiner": " ・ " },
+
+      { "type": "statusBar", "height": 48,
+        "segments": [
+          { "value": { "state": "appState" }, "bold": true, "dot": true },
+          { "prefix": "", "value": { "state": "watchLabel" } },
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } }
+        ],
+        "buttons": [
+          { "action": "refreshLedger", "text": "台帳更新", "icon": "refresh", "tip": "CSV の変更を確認して統合台帳を更新します" },
+          { "action": "settings", "text": "設定", "icon": "gear", "tip": "監視対象や動作の設定を変更します" }
+        ] }
+    ],
+
+    "candidates": {
+      "title": "候補一覧", "hint": "行をクリックするとレコード詳細を表示します",
+      "width": 980, "maxHeight": 340, "rowHeight": 46, "headerHeight": 38,
+      "columns": [
+        { "header": "#", "width": 34, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "番号2", "width": 108, "value": { "field": "B.key2" }, "bold": true },
+        { "header": "行番号", "width": 80, "align": "right", "value": { "field": "B.b_line" } },
+        { "header": "参照番号", "width": 128, "value": { "field": "B.b_ref" } },
+        { "header": "日付", "width": 100, "value": { "field": "B.b_date" } },
+        { "header": "数量", "width": 68, "align": "right", "value": { "field": "B.b_qty" } },
+        { "header": "状態", "width": 92, "value": { "field": "B.b_status" }, "render": "tag",
+          "looks": { "DONE": "accent", "HOLD": "outline", "VOID": "faded", "*": "neutral" } },
+        { "header": "コード", "width": 100, "value": { "field": "C.c_code" } },
+        { "header": "名称", "width": 118, "value": { "field": "C.c_name" } },
+        { "header": "処理済", "value": { "state": "workStateShort" }, "render": "tag" }
+      ]
+    }
+  }
+}

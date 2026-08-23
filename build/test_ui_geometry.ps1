@@ -1,39 +1,47 @@
 ﻿# ============================================================================
-# test_ui_geometry.ps1 -- the acceptance check for the practical build's screen.
+# test_ui_geometry.ps1 -- the acceptance check for the main screen.
 #
 #   powershell -File build\test_ui_geometry.ps1
 #   powershell -File build\test_ui_geometry.ps1 -Quick
 #   powershell -File build\test_ui_geometry.ps1 -Png        (also writes bitmaps)
+#   powershell -File build\test_ui_geometry.ps1 -Settings samples\sales-wide\settings.json
 #
-# The screen was rebuilt to the UI reference (Reader Data Viewer_ver3.html, and
-# docs\ui-spec.md). "It looks like the picture" is not the condition; the
-# conditions are:
+# The screen is built from the "screen" part of src\config\settings.json to the v2
+# reference (docs\ui-reference\v2.html, measured into docs\ui-ref-v2-geom.json).
+# With -Settings the screen of ANY definition is built instead: its sample
+# rows are made up from its own ledger columns (dates and numbers in the
+# shape its formats ask for, a value that judges ok / ng / undefined found
+# from its own rules), and only the INTEGRITY check runs -- the fidelity
+# table belongs to the shipped definition alone.
+# "It looks like the picture" is not the condition; the conditions are:
 #
-#   1. FIDELITY   at the design size, every named element sits within -Tol of
-#                 the rectangle measured from the reference (docs\ui-ref-geom.json).
-#                 Layout decides y/h for every element and x/w for the
-#                 structural ones; the rest follow their text, so a substituted
-#                 font may legitimately move them (docs\ui-spec.md 8.1).
-#   2. INTEGRITY  at EVERY size, scaling factor, state and data set: no two leaf
-#                 rectangles intersect, nothing falls outside the client area,
-#                 and no string is silently cut off. This is the condition a
-#                 screen that merely imitates the picture fails.
+#   1. FIDELITY   at the design size (1240 wide, 100%), every named element
+#                 sits within -Tol of the rectangle measured from the reference.
+#                 Structural elements are held on x/y/w/h; elements that
+#                 follow their text (figures, buttons, the band's group) on y/h.
+#   2. INTEGRITY  at EVERY size, scaling factor, state and data set: no two
+#                 leaf rectangles intersect, nothing falls outside the client
+#                 area, and no string is silently cut off (an ellipsis where
+#                 the design allows one -- long values, the bar's segments --
+#                 is not a cut).
 #
 # The form is compiled from the SHIPPING sources and rendered WITHOUT EVER
-# BEING SHOWN (the handle is created, DrawToBitmap paints it). No window
-# appears, the foreground never moves, and what is measured is the product.
+# BEING SHOWN (the handle is created, DrawToBitmap paints it). The sizes
+# include ones narrower and shorter than the design, which is where the
+# responsive rules (stacked columns, wrapped input group, compressed rows,
+# scrolling) have to hold.
 # ============================================================================
 [CmdletBinding()]
 param(
   [string] $Root = "",
   [string] $Out = "",
   [double[]] $Scales = @(1.0, 1.25, 1.5),
-  [string[]] $Sizes = @('1240x689', '1366x768', '1480x800', '1920x1040'),
-  [string[]] $States = @('boot', 'checking', 'applying', 'watching', 'waiting', 'searching',
-                         'none', 'single', 'multi', 'picked', 'processed', 'saving', 'error', 'cleared',
-                         'badkey'),
+  [string[]] $Sizes = @('1240x974', '1000x700', '1480x900', '1920x1040', '800x600', '640x900'),
+  [string[]] $States = @('idle', 'checking', 'single-ok', 'single-ng', 'multi', 'picked', 'saving',
+                         'none', 'unknown-state', 'undefined', 'cleared'),
   [string[]] $Data = @('ref', 'long'),
   [double] $Tol = 2.0,
+  [string] $Settings = "",
   [switch] $Quick,
   [switch] $Png
 )
@@ -41,16 +49,14 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 if ([string]::IsNullOrEmpty($Out)) { $Out = Join-Path $Root 'work\ui-check' }
-if ($Quick) { $Scales = @(1.0); $Sizes = @('1240x689'); $States = @('multi', 'picked', 'error'); $Data = @('ref') }
+if ($Quick) { $Scales = @(1.0); $Sizes = @('1240x974', '1000x700'); $States = @('picked', 'multi', 'none', 'single-ok'); $Data = @('ref') }
 
 # ---- the product, compiled exactly as the packer compiles it ---------------
-$sources = @('Rdv3Core.cs', 'Rdv3Index.cs', 'Rdv3Ledger.cs', 'Rdv3Xlsx.cs', 'Rdv3Jobs.cs',
-             'Rdv3Watch.cs', 'Rdv3Text.cs', 'Rdv3Geom.cs', 'Rdv3SetGeom.cs', 'Rdv3Json.cs', 'Rdv3Config.cs',
-             'Rdv3Uia.cs', 'Rdv3Ui.cs', 'Rdv3Settings.cs', 'Rdv3App.cs')
+. (Join-Path $Root 'build\sources.ps1')
 $usings = New-Object System.Collections.Specialized.OrderedDictionary
 $bodies = New-Object System.Text.StringBuilder
-foreach ($f in $sources) {
-  $t = [IO.File]::ReadAllText((Join-Path $Root "src\app\csharp\$f"), [Text.Encoding]::UTF8)
+foreach ($f in $RdvSources) {
+  $t = [IO.File]::ReadAllText((Join-Path $Root "src\csharp\$f"), [Text.Encoding]::UTF8)
   if ($t.Contains('@"')) { throw "$f has a verbatim string" }
   foreach ($line in ($t -split "`r?`n")) {
     if ($line -match '^\s*using\s+[A-Za-z_][A-Za-z0-9_.]*\s*;\s*$') {
@@ -86,12 +92,61 @@ try {
 Write-Output 'compile ok'
 [void][System.IO.Directory]::CreateDirectory($Out)
 
+# ---- the definition (read strictly, as the app reads it) and the ledger
+# columns it names
+$generic = -not [string]::IsNullOrEmpty($Settings)
+$settingsPath = $(if ($generic) { (Resolve-Path -LiteralPath $Settings).Path } else { Join-Path $Root 'src\config\settings.json' })
+$cfg = [Rdv3Config]::Load($settingsPath)
+$screen = $cfg.Screen
+$fields = New-Object Rdv3Fields (,$cfg.Data.ColumnRefs)
+Write-Output ('definition: ' + $settingsPath)
+Write-Output ('  ' + $cfg.Data.Describe())
+Write-Output ('  ' + $screen.Describe())
+
+# ---- what this definition calls its states and its judgment outcomes ---------
+$workDef = $screen.Work
+$storedInitial = $workDef.InitialStored
+$storedLast = $storedInitial
+$cur = $workDef.InitialState
+for ($i = 0; $i -lt 8 -and $null -ne $cur; $i++) {
+  $storedLast = $cur.Stored
+  $tr = $workDef.FromState($cur.Id)
+  $cur = $(if ($null -eq $tr) { $null } else { $workDef.ById($tr.To) })
+}
+$bandJudgment = $null
+foreach ($sec in $screen.Sections) { if ($sec.Type -eq 'statusBand' -and $null -eq $bandJudgment) { $bandJudgment = $screen.JudgmentOf($sec.Judgment) } }
+$judgeCol = $(if ($null -ne $bandJudgment -and $bandJudgment.Source.IsField) { $fields.IndexOf($bandJudgment.Source.Fields[0]) } else { -1 })
+# a raw value that makes the band's judgment come out with the wanted look
+function Judge-Look([string] $raw) {
+  if ($judgeCol -lt 0) { return '' }
+  $vw = New-Object Rdv3View
+  $rec = New-Object 'string[]' $cfg.Data.Columns.Count
+  for ($i = 0; $i -lt $rec.Length; $i++) { $rec[$i] = '' }
+  $rec[$judgeCol] = $raw
+  $vw.Record = $rec
+  return ([Rdv3Eval]::Judge($bandJudgment, $vw, $fields)).Result.Look
+}
+function Value-For([string] $look, [string[]] $fallbacks) {
+  if ($null -eq $bandJudgment) { return $fallbacks[0] }
+  foreach ($r in $bandJudgment.Rules) {
+    $cands = @()
+    if ($r.EqualsAny.Length -gt 0) { $cands += $r.EqualsAny[0] }
+    if ($r.Pattern.Length -gt 0) { $cands += ($r.Pattern -replace '[\^\$]', '') }
+    foreach ($c in $cands) { if ((Judge-Look $c) -eq $look) { return $c } }
+  }
+  foreach ($c in $fallbacks) { if ((Judge-Look $c) -eq $look) { return $c } }
+  throw ("no raw value of the band's judgment comes out as " + $look)
+}
+$valueOk = Value-For 'ok' @('OPEN', 'OK', 'DONE', '1', 'Y')
+$valueNg = Value-For 'ng' @('HOLD', 'NG', '0', 'N')
+$valueUndefined = Value-For 'undefined' @('WEIRD', 'ZZZ', '???', '')
+Write-Output ('  judgment raw values: ok=' + $valueOk + ' ng=' + $valueNg + ' undefined=' + $valueUndefined + '   stored: ' + $storedInitial + ' -> ' + $storedLast)
+
 # ---- sample data -----------------------------------------------------------
-# 30 tab separated ledger fields; the screen reads 1 key2, 2..9 table A,
-# 16 status, 17 line, 18 memo, 19..20 item/maker, 27 remark
+# a ledger line is 28 tab-separated columns: key1 key2 A[1..9] B[2..9] C[1..9]
 function New-Line([string] $key1, [string] $key2, [hashtable] $o) {
-  $f = New-Object 'string[]' 30
-  for ($i = 0; $i -lt 30; $i++) { $f[$i] = '' }
+  $f = New-Object 'string[]' 28
+  for ($i = 0; $i -lt 28; $i++) { $f[$i] = '' }
   $f[0] = $key1; $f[1] = $key2
   $f[2] = $o.code; $f[3] = $o.name; $f[4] = $o.grade; $f[5] = $o.date; $f[6] = $o.amount
   $f[7] = $o.rate; $f[8] = $o.flag; $f[9] = $o.dept
@@ -99,135 +154,131 @@ function New-Line([string] $key1, [string] $key2, [hashtable] $o) {
   $f[17] = $o.line; $f[18] = $o.memo; $f[19] = $o.item; $f[20] = $o.maker; $f[27] = $o.remark
   return ($f -join "`t")
 }
-# 'ref' repeats the artifact's own sample strings, so the design-size comparison
-# is like for like; 'long' is deliberately longer than anything real
-$refRow = @{ code = 'A-4471'; name = '相模原精密工業 株式会社'; grade = 'B'; date = '2024-11-08';
-  amount = '1,284,000'; rate = '0.86'; flag = 'Y'; dept = '第二製造部'; slip = 'SL00016168';
-  bdate = '20230117'; qty = '597'; status = 'HOLD'; line = '001'; item = 'IT347201'; maker = 'MAKER-2758';
-  memo = '検品時に外観キズ 2 件。再検査済み、出荷可否は品証判断待ち。'; remark = 'ロット L-2291 の在庫と突合済み。次回入荷は 2026-09-02 予定。' }
-$longRow = @{ code = 'A-4471-EXTENDED-CODE'; name = 'とても長い取引先名称株式会社 東日本第二営業統括本部'; grade = 'SPECIAL';
+# 'ref' repeats the reference's own sample strings; 'long' is deliberately
+# longer than anything real
+$refRow = @{ code = 'A52903'; name = 'CUSTOMER-0016168'; grade = 'B2'; date = '20240814';
+  amount = '3969262'; rate = '0.1596'; flag = 'N'; dept = 'D568'; slip = 'SL00016168';
+  bdate = '20240814'; qty = '320'; status = 'OPEN'; line = '001'; item = 'IT527901'; maker = 'MAKER-4128';
+  memo = 'MEMO-85655'; remark = 'RMK-449812' }
+$longRow = @{ code = 'A-4471-EXTENDED-CODE'; name = 'とても長い取引先名称株式会社 東日本第二営業統括本部 品質保証課'; grade = 'SPECIAL';
   date = '2024-11-08'; amount = '9,999,999,999'; rate = '0.8642'; flag = 'YES-LONG'; dept = '第二製造部 品質保証課 検査係';
   slip = 'SL-882140-EXT-0001'; bdate = '2026-08-14'; qty = '120,000'; status = 'HOLD'; line = '11482';
   item = 'IT-77120-LONG-ITEM'; maker = 'KYOWA-INDUSTRIAL-LONG';
-  memo = ('長い摘要テキスト。' * 12); remark = ('長い備考テキスト。' * 12) }
+  memo = ('長い摘要テキスト。' * 40); remark = ('長い備考テキスト。' * 40) }
 
-# a real ledger row whose table A side never matched: every field the record
-# panel shows on the left is empty, which is what N/A is for
-$sparseRow = @{ code = ''; name = ''; grade = ''; date = ''; amount = ''; rate = ''; flag = ''; dept = '';
-  slip = 'SL00016168'; bdate = '20230117'; qty = '597'; status = 'OPEN'; line = '004'; item = 'IT347201';
-  maker = 'MAKER-2758'; memo = ''; remark = '' }
+# ---- generic sample rows, from the definition's own columns (-Settings) -----
+# the first format the screen applies to a column says what shape its raw
+# value has (a date in "from", a number); everything else is text
+$fmtOf = @{}
+foreach ($b in $screen.AllBindings()) {
+  if ($b.IsField -and $null -ne $b.Format) { foreach ($f in $b.Fields) { if (-not $fmtOf.ContainsKey($f)) { $fmtOf[$f] = $b.Format } } }
+}
+function Generic-Value([string] $ref, [bool] $long) {
+  $fmt = $fmtOf[$ref]
+  if ($null -ne $fmt -and $fmt.Kind -eq 'date') { return (New-Object DateTime 2024, 8, 14, 16, 25, 0).ToString($fmt.From) }
+  if ($null -ne $fmt -and $fmt.Kind -eq 'number') { return $(if ($long) { '9999999999' } else { '3969262' }) }
+  $name = $ref.Substring($ref.IndexOf('.') + 1)
+  if ($long) { return ('とても長い値 ' + $name + ' 東日本第二営業統括本部 品質保証課 検査係 ') * 3 }
+  return $name.ToUpperInvariant() + '-0001'
+}
+function New-GenericLine([string] $key1, [string] $key2, [bool] $long, [string] $status) {
+  $cols = $cfg.Data.Columns
+  $f = New-Object 'string[]' $cols.Count
+  for ($i = 0; $i -lt $cols.Count; $i++) { $f[$i] = Generic-Value $cols[$i].Ref $long }
+  $f[$cfg.Data.IdentityCol] = $key2
+  $f[$cfg.Data.SearchCol] = $key1
+  if ($judgeCol -ge 0) {
+    $f[$judgeCol] = $(switch ($status) { 'HOLD' { $valueNg } 'WEIRD' { $valueUndefined } default { $valueOk } })
+  }
+  return ($f -join "`t")
+}
 
-function New-Rows([int] $n, [hashtable] $o, [string] $key1) {
+function New-Rows([int] $n, [hashtable] $o, [string] $key1, [string] $status) {
   $list = New-Object 'System.Collections.Generic.List[Rdv3CandRow]'
   for ($i = 0; $i -lt $n; $i++) {
-    $line = New-Line $key1 ('{0:D8}' -f (60919 + $i + 1)) $o
     $r = New-Object Rdv3CandRow
-    $r.Cols = [Rdv3Ledger]::CandidateColumns($line)
-    $r.Processed = ($i -eq 1)
-    $r.Line = $line
+    if ($generic) {
+      $r.Line = New-GenericLine $key1 ('{0:D8}' -f (60919 + $i + 1)) ($o.ContainsKey('long')) $status
+    } else {
+      $h = $o.Clone(); if ($status) { $h.status = $status }
+      $r.Line = New-Line $key1 ('{0:D8}' -f (60919 + $i + 1)) $h
+    }
+    $r.Stored = $(if ($i -eq 1) { $storedLast } else { $storedInitial })
     [void]$list.Add($r)
   }
   return $list
 }
+$longRow['long'] = $true
 
 # ---- the form, never shown -------------------------------------------------
-$form = New-Object Rdv3Form
-$null = $form.Handle              # creates the window handle WITHOUT showing it
+$form = New-Object Rdv3Form $screen
+$null = $form.Handle
 $form.Visible = $false
-# a form that is never shown does not create its children's handles, and
-# DrawToBitmap would then render empty boxes where the buttons, the search box
-# and the candidate table are
-function Touch-Handles($c) {
-  $null = $c.Handle
-  foreach ($k in $c.Controls) { Touch-Handles $k }
-}
+function Touch-Handles($c) { $null = $c.Handle; foreach ($k in $c.Controls) { Touch-Handles $k } }
 Touch-Handles $form
+$form.SetFields($fields)
 
 function Set-Data([string] $kind) {
   if ($kind -eq 'long') {
-    $form.SetIdentity('とても長い利用者名 太郎', 'DESKTOP-LONGHOSTNAME-01', '読み取り専用', 'PID 182332', 'ReaderDataViewer-very-long-name.log')
-    $form.SetLedgerInfo('ReaderDataViewer-Ledger-very-long-file-name.xlsx ・ 1,284,900 件')
-    $form.SetLedgerSummary('1,284,900', '08-16 01:14')
-    $form.SetNotepad('とても長いタイトルのテキストファイル - メモ帳（hwnd 132850）')
-    $form.SetMergeMs(41234.6); $form.SetSearchMs(1234.8)
+    $form.SetIdentity('PID 182332', 'ReaderDataViewer-very-long-name.log')
+    $form.SetLedger('ReaderDataViewer-Ledger-very-long-file-name.xlsx ・ 1,284,900 件', '1,284,900', '08-16 01:14')
+    $form.SetWatch('とても長い名前の監視対象アプリケーション', '接続中（とても長いタイトルのテキストファイル - メモ帳）')
   } else {
-    $form.SetIdentity('田中 太郎', '検品担当 ・ D613', '一般', 'PID 18332', 'ReaderDataViewer.log')
-    $form.SetLedgerInfo('ReaderDataViewer-Ledger.xlsx ・ 100,000 件')
-    $form.SetLedgerSummary('100,000', '08-15 09:12')
-    $form.SetNotepad('無題 - メモ帳（hwnd 132850）')
-    $form.SetMergeMs(412.6); $form.SetSearchMs(0.8)
+    $form.SetIdentity('PID 18332', 'ReaderDataViewer.log')
+    $form.SetLedger('ReaderDataViewer-Ledger.xlsx ・ 100,000 件', '100,000', '08-23 17:40')
+    $form.SetWatch('メモ帳', '接続中（無題 - メモ帳）')
   }
 }
 
 function Set-State([string] $st, [string] $kind) {
-  $o = if ($kind -eq 'long') { $longRow } elseif ($kind -eq 'sparse') { $sparseRow } else { $refRow }
+  $o = if ($kind -eq 'long') { $longRow } else { $refRow }
   $key1 = if ($kind -eq 'long') { '40218764' } else { '00016168' }
-  if ($kind -eq 'sparse') { $kind = 'ref' }
-  $form.SetError('')
   $form.ClearResult()
   Set-Data $kind
+  $form.SetState('監視中')
+  $form.EnableOps($true)
   switch ($st) {
-    'boot'      { $form.SetState([Rdv3Text]::StateBoot, 0) }
-    'checking'  { $form.SetState([Rdv3Text]::StateChecking, 0) }
-    'applying'  { $form.SetState([Rdv3Text]::StateApplying, 0) }
-    'watching'  { $form.SetState([Rdv3Text]::StateReady, 0) }
-    'waiting'   { $form.SetState([Rdv3Text]::StateWaitingNotepad, 0); $form.SetNotepad([Rdv3Text]::NotepadNone) }
-    'searching' { $form.SetState([Rdv3Text]::StateBusy, 0); $form.SetKeyText($key1) }
-    'none'      { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $form.ShowCandidates($key1, (New-Rows 0 $o $key1), 0, 0) }
-    'single'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $rows = New-Rows 1 $o $key1
-                  $form.ShowCandidates($key1, $rows, 1, 1)
-                  $form.SelectCandidate(0, $rows[0].Line, $false, 1) }
-    'multi'     { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $form.ShowCandidates($key1, (New-Rows 8 $o $key1), 8, 8) }
-    'multi3'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $form.ShowCandidates($key1, (New-Rows 3 $o $key1), 3, 3)
-                  $form.SetSearchMs(7.33) }
-    'picked'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $rows = New-Rows 8 $o $key1
-                  $form.ShowCandidates($key1, $rows, 8, 8)
-                  $form.SelectCandidate(2, $rows[2].Line, $false, 8) }
-    'processed' { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText($key1)
-                  $rows = New-Rows 8 $o $key1
-                  $form.ShowCandidates($key1, $rows, 8, 8)
-                  $form.SelectCandidate(2, $rows[2].Line, $true, 8)
-                  $form.ShowProcessedState('TRUE')
-                  $form.SetCandidateProcessed(2, $true) }
-    'saving'    { $form.SetState([Rdv3Text]::StateSavingMark, 0); $form.SetKeyText($key1)
-                  $rows = New-Rows 8 $o $key1
-                  $form.ShowCandidates($key1, $rows, 8, 8)
-                  $form.SelectCandidate(2, $rows[2].Line, $false, 8)
-                  $form.ShowProcessedState('TRUE' + [Rdv3Text]::SavingSuffix)
-                  $form.SetCandidateProcessed(2, $true) }
-    'error'     { $form.SetState([Rdv3Text]::StateReady, 0)
-                  $rows = New-Rows 8 $o $key1
-                  $form.ShowCandidates($key1, $rows, 8, 8)
-                  $form.SelectCandidate(2, $rows[2].Line, $false, 8)
-                  $form.SetError([Rdv3Text]::ErrPersist + 'ReaderDataViewer-Ledger.xlsx は他のプロセスが使用中です') }
-    'cleared'   { $form.SetState([Rdv3Text]::StateReady, 0); $form.ClearResult() }
-    'badkey'    { $form.SetState([Rdv3Text]::StateReady, 0); $form.SetKeyText('123')
-                  $form.SetInputError([Rdv3Text]::ErrBadKey.Replace('{n}', '8')) }
-    default     { throw "unknown state: $st" }
+    'idle'          { }
+    'checking'      { $form.SetState('更新を確認中'); $form.EnableOps($false) }
+    'single-ok'     { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 1 $o $key1 'OPEN'), 1); $form.SelectCandidate(0) }
+    'single-ng'     { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 1 $o $key1 'HOLD'), 1); $form.SelectCandidate(0) }
+    'multi'         { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 8 $o $key1 ''), 8) }
+    'picked'        { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 8 $o $key1 'DONE'), 8); $form.SelectCandidate(2) }
+    'saving'        { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 8 $o $key1 'DONE'), 8); $form.SelectCandidate(2)
+                      $form.SetState('処理済を保存中'); $form.SetStoredState(2, $storedLast, $true) }
+    'none'          { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 0 $o $key1 ''), 0) }
+    'unknown-state' { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 1 $o $key1 'OPEN'), 1); $form.SelectCandidate(0)
+                      $form.SetStoredState(0, 'MAYBE', $false) }
+    'undefined'     { $form.SetKeyText($key1); $form.ShowCandidates($key1, (New-Rows 1 $o $key1 'WEIRD'), 1); $form.SelectCandidate(0) }
+    'cleared'       { $form.SetKeyText('123'); $form.ClearResult() }
+    default         { throw "unknown state: $st" }
   }
   [System.Windows.Forms.Application]::DoEvents()
 }
 
 # ---- the two checks --------------------------------------------------------
 # containers legitimately hold other rectangles, so they are not paired
-$containers = @('nav', 'sum.panel', 'list.panel', 'list.scroll', 'rec.panel', 'status', 'err',
-                'nav.rule', 'list.rule', 'rec.rule')
-# x/w of these is fixed by the layout; for everything else it follows the text
-$structural = @('nav', 'sum.panel', 'list.panel', 'list.scroll', 'rec.panel', 'status', 'status.dot',
-                'rec.memoLabel', 'rec.memoBox', 'rec.remarkLabel', 'rec.remarkBox')
-for ($i = 0; $i -lt 7; $i++) { $structural += ('rec.kv{0}' -f $i) }
-for ($i = 0; $i -lt 10; $i++) { $structural += ('list.col{0}' -f $i); $containers += ('list.col{0}' -f $i) }
-# the input keeps the reference's SIZE exactly but sits at the right hand end of
-# the summary row, so its x follows the width of the text blocks beside it
-$rightAnchored = @('sum.input', 'sum.field.label')
+function Is-Container([string] $k) {
+  if ($k -notmatch '\.') { return $true }                       # a section
+  if ($k -match '^columns\d+\.\d+$') { return $true }           # a card inside columns
+  if ($k -match '\.row\d+$') { return $true }                   # a field row
+  if ($k -match '\.box$') { return $true }                      # a text box frame (the control sits in it)
+  return $false
+}
+# an ellipsis is the design here, not a cut
+function Is-Elastic([string] $k) {
+  return ($k -match '\.row\d+\.value$') -or ($k -match '^statusBar\d+\.seg\d+$') -or ($k -match '\.title$') -or ($k -match '^statusBand\d+\.(sub|value)$')
+}
+# x/w of these is fixed by the layout; the rest follow their text
+function Is-Structural([string] $k) {
+  if ($k -match '^keyPanel\d+(\.label|\.value|\.input|\.btn\d+)$') { return $false }
+  if ($k -match '^statusBand\d+\.(icon|value|sub)$') { return $false }
+  if ($k -match '\.row\d+\.value$') { return $false }
+  return $true
+}
 
 function Test-Integrity($el, [double] $cw, [double] $ch) {
-  $keys = @($el.PSObject.Properties.Name | Where-Object { $containers -notcontains $_ })
+  $keys = @($el.PSObject.Properties.Name | Where-Object { -not (Is-Container $_) })
   $n = $keys.Count
   $x0 = New-Object 'double[]' $n; $y0 = New-Object 'double[]' $n
   $x1 = New-Object 'double[]' $n; $y1 = New-Object 'double[]' $n
@@ -235,7 +286,6 @@ function Test-Integrity($el, [double] $cw, [double] $ch) {
     $r = $el.($keys[$i])
     $x0[$i] = $r[0]; $y0[$i] = $r[1]; $x1[$i] = $r[0] + $r[2]; $y1[$i] = $r[1] + $r[3]
   }
-  # sweep in y: only rectangles whose vertical ranges overlap can intersect
   $order = 0..($n - 1) | Sort-Object { $y0[$_] }
   $hits = New-Object System.Collections.ArrayList
   for ($a = 0; $a -lt $n; $a++) {
@@ -260,7 +310,7 @@ function Test-Integrity($el, [double] $cw, [double] $ch) {
   return @{ Overlap = $hits; Outside = $outside }
 }
 
-$refPath = Join-Path $Root 'docs\ui-ref-geom.json'
+$refPath = Join-Path $Root 'docs\ui-ref-v2-geom.json'
 $refGeom = (Get-Content -LiteralPath $refPath -Raw -Encoding UTF8 | ConvertFrom-Json).el
 
 function Test-Fidelity($el) {
@@ -271,11 +321,20 @@ function Test-Fidelity($el) {
     $a = $el.$k
     if ($null -eq $a) { $missing++; continue }
     $d = @(($a[0] - $r[0]), ($a[1] - $r[1]), ($a[2] - $r[2]), ($a[3] - $r[3]))
-    if ($structural -contains $k) { $cls = 'geom'; $chk = @(0, 1, 2, 3) }
-    elseif ($rightAnchored -contains $k) { $cls = 'size'; $chk = @(1, 2, 3) }
-    else { $cls = 'text'; $chk = @(1, 3) }
     $worst = 0.0
-    foreach ($c in $chk) { if ([Math]::Abs($d[$c]) -gt $worst) { $worst = [Math]::Abs($d[$c]) } }
+    if ($k -match '\.row\d+\.value$') {
+      # a right-aligned value: the reference measured the text span, the app
+      # reports the box it is aligned in -- the right edge and the centre line
+      # are what have to agree
+      $cls = 'right'
+      $dr = ($a[0] + $a[2]) - ($r[0] + $r[2])
+      $dc = ($a[1] + $a[3] / 2) - ($r[1] + $r[3] / 2)
+      $d = @($dr, $dc, 0, 0)
+      $worst = [Math]::Max([Math]::Abs($dr), [Math]::Abs($dc))
+    } else {
+      if (Is-Structural $k) { $cls = 'geom'; $chk = @(0, 1, 2, 3) } else { $cls = 'text'; $chk = @(1, 3) }
+      foreach ($c in $chk) { if ([Math]::Abs($d[$c]) -gt $worst) { $worst = [Math]::Abs($d[$c]) } }
+    }
     if ($worst -gt $Tol) { $bad++ }
     [void]$rows.Add([pscustomobject]@{ Element = $k; Class = $cls
       Reference = ('{0},{1},{2},{3}' -f $r[0], $r[1], $r[2], $r[3])
@@ -287,7 +346,7 @@ function Test-Fidelity($el) {
 }
 
 # ---- run -------------------------------------------------------------------
-$cases = 0; $failed = 0; $gaveWay = 0
+$cases = 0; $failed = 0
 $baseEl = $null
 $sw = [Diagnostics.Stopwatch]::StartNew()
 foreach ($sc in $Scales) {
@@ -299,7 +358,6 @@ foreach ($sc in $Scales) {
       foreach ($st in $States) {
         Set-State $st $kind
         $tag = '{0}-{1}-{2}-{3}' -f $st, $kind, $sz, ($sc.ToString('0.00'))
-        # render first: the clipping report is filled while painting
         $bmp = New-Object Drawing.Bitmap $form.Width, $form.Height
         $form.DrawToBitmap($bmp, (New-Object Drawing.Rectangle 0, 0, $form.Width, $form.Height))
         $json = $form.GeometryDump()
@@ -314,22 +372,10 @@ foreach ($sc in $Scales) {
         $bmp.Dispose()
 
         $d = $json | ConvertFrom-Json
-        $r = Test-Integrity $d.el $d.client[0] $d.client[1]
-        $clip = @($d.clipped)
-        # The summary row's declared give-way (Rdv3Ui.LaySummary): when even a
-        # window as wide as the desktop cannot hold the row, the SUB-lines
-        # shorten and the figures never do. That is the design, not a fault, so
-        # it is counted and printed rather than failed -- and only the three
-        # sub-lines, and only while the row provably does not fit.
-        $gave = @()
-        if ([double]$d.needW -gt [double]$d.client[0]) {
-          $gave = @($clip | Where-Object { $_ -in @('sum.key.sub', 'sum.status.sub', 'sum.rows.sub') })
-          $clip = @($clip | Where-Object { $_ -notin $gave })
-          if ($gave.Count -gt 0) {
-            $gaveWay++
-            Write-Output ('  give-way {0,-34} row needs {1:N0} css px, client is {2:N0}: {3}' -f $tag, [double]$d.needW, [double]$d.client[0], ($gave -join ', '))
-          }
-        }
+        # the body may be taller than the client and scroll: integrity is
+        # judged on the laid-out card, not on the viewport
+        $r = Test-Integrity $d.el $d.card[0] $d.card[1]
+        $clip = @($d.clipped | Where-Object { -not (Is-Elastic $_) })
         $cases++
         if ($r.Overlap.Count -gt 0 -or $r.Outside.Count -gt 0 -or $clip.Count -gt 0) {
           $failed++
@@ -338,7 +384,7 @@ foreach ($sc in $Scales) {
           foreach ($h in $r.Outside) { Write-Output ("       outside  " + $h) }
           if ($clip.Count -gt 0) { Write-Output ("       clipped  " + ($clip -join ', ')) }
         }
-        if ($st -eq 'picked' -and $kind -eq 'ref' -and $sz -eq '1240x689' -and $sc -eq 1.0) { $baseEl = $d.el }
+        if ($st -eq 'single-ok' -and $kind -eq 'ref' -and $sz -eq '1240x974' -and $sc -eq 1.0) { $baseEl = $d.el }
       }
     }
   }
@@ -346,18 +392,19 @@ foreach ($sc in $Scales) {
 $form.Dispose()
 
 Write-Output ''
-Write-Output ('integrity : {0} cases, {1} failing, {2} on the declared give-way   ({3:F0} s)' -f
-  $cases, $failed, $gaveWay, $sw.Elapsed.TotalSeconds)
+Write-Output ('integrity : {0} cases, {1} failing   ({2:F0} s)' -f $cases, $failed, $sw.Elapsed.TotalSeconds)
 
 $fidBad = 0
-if ($null -ne $baseEl) {
+if ($generic) {
+  Write-Output 'fidelity  : not measured for a definition other than the shipped one (integrity only)'
+} elseif ($null -ne $baseEl) {
   $f = Test-Fidelity $baseEl
   $fidBad = $f.Bad + $f.Missing
   Write-Output ''
   Write-Output ("fidelity at the design size (tolerance {0} px)" -f $Tol)
-  Write-Output ('{0,-20} {1,-5} {2,-26} {3,-26} {4}' -f 'element', 'class', 'reference x,y,w,h', 'app x,y,w,h', 'delta')
+  Write-Output ('{0,-24} {1,-5} {2,-28} {3,-28} {4}' -f 'element', 'class', 'reference x,y,w,h', 'app x,y,w,h', 'delta')
   foreach ($row in $f.Rows) {
-    Write-Output ('{0,-20} {1,-5} {2,-26} {3,-26} {4}{5}' -f $row.Element, $row.Class, $row.Reference, $row.App, $row.Delta,
+    Write-Output ('{0,-24} {1,-5} {2,-28} {3,-28} {4}{5}' -f $row.Element, $row.Class, $row.Reference, $row.App, $row.Delta,
       $(if ($row.Over) { '   <-- over' } else { '' }))
   }
   Write-Output ('elements {0}, outside tolerance {1}, missing {2}' -f $f.Rows.Count, $f.Bad, $f.Missing)

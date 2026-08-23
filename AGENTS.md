@@ -1,175 +1,65 @@
 # AGENTS.md - pub/reader-data-viewer
 
-Entry-point notes. For details see [README.md](README.md).
+詳細な利用方法は [README.md](README.md) を参照する。
 
-## Role
+## 現在の製品
 
-- **Reader Data Viewer** — the app this repository exists to build. Implemented.
-- Reading detection (Notepad / UI Automation) → join three 1,000,000-row × 10-column CSVs
-  → search by key 1 → display, with every stage timed
-- A-B joins on key 1, B-C joins on key 2, both one-to-one, over all rows every time
-- Two products, same workload and same measurement boundaries:
-  C#/WinForms and VBA/Excel. There is no third build of any kind: only these
-  two are authorised, and only these two are produced.
-- `benchmarks/` holds method-selection evidence only. It is not the product and is
-  read-only: do not change anything under it.
+- 現役の Reader Data Viewer は **C# / WinForms 版 1 種類**。
+- 製品ソースは `src/csharp/`、設定 (1 枚の `settings.json`: paths / search / watch / jobs / data / screen) は `src/config/`、起動部は `src/launcher/`。
+- CSV の定義 (`data`: 表、キー、結合、台帳の列) と画面 (`screen`: 部品 7 種、値の取り方 3 種、判定規則 3 種) は JSON の名前だけで書き、式やコードは書かせない。
+- `settings.json` は厳格に読む。無い・壊れている・知らないメンバー・範囲外・何も指していない名前は、既定で動かず起動しない (理由をダイアログとログへ)。組込み既定を持ち込まない。
+- `build.bat` と `build/build_dist.ps1` は `dist/app-csharp/` だけを生成する。出荷するデータと画面は**脱色したサンプル** (表A/B/C、`SAMPLE-A-0000001` のような値、中立なラベル) で、業務の色を付けない。
+- 現実的なダミー (販売 / 製造 / 施設予約 + 画面を変えた 2 変種) は `src/samples/<name>/settings.json` + `build/gen_samples.ps1` が `samples/` に生成する検査用の組で、`build/test_samples.ps1` が製品コードに、`build/test_ui_geometry.ps1 -Settings` が画面の健全性に、`work/ui-v2/live_scenario.ps1` が実配布物の利用動作に通す。配布物には入れない。
+- 画面の定義を変える・増やすときは、出荷定義の忠実度 (`test_ui_geometry.ps1`) と見本 5 定義の健全性 (`-Settings`) を両方回す。レイアウトの不具合は見本定義のほうで先に出る。
+- VBA 版と旧比較実験は `archive/` に保全済み。現行製品へ混ぜず、通常ビルドから参照しない。
+- `showcase/` は独立した VBA Pixel Bridge 展示。Reader 本体の変更に巻き込まない。
+- `benchmarks/` は方式選定の証拠で read-only。配下を変更しない。
 
-## runtime / connections
+## 動作契約
 
-- runtime: local Windows + Excel only, no network at run time
-- detection: UI Automation polling of a Notepad window (ValuePattern on the text host)
-- the app writes nothing except the display surface; workbooks are opened read-only
+- ローカル Windows 上だけで動き、実行時にネットワーク接続しない。
+- UI Automation で対象の入力欄を読み、対象アプリには書き込まない。
+- CSV は `data` の定義どおりに結合する (出荷定義: 3 本、A-B は key1、B-C は key2)。
+- 統合台帳の identity は spine 表のキー (出荷定義では key2)。作業状態 (処理済み列) は identity と内容列が全部一致するときだけ引き継ぐ。
+- CSV は厳格に読む。列数違い・引用符付きの列・キーの空や幅違い・一意キーの重複は、ファイル名と行番号を挙げて拒否し、続行しない。黙ってずらさない。
+- 判定 (OK/NG) は画面定義の規則で CSV の生データから決め、一致なしは未定義、列なしはエラーとして明示する。暗黙に OK にしない。
+- 検索・結合・保存は worker スレッドで行い、UI スレッドを塞がない。
+- 作業状態の保存中は次の保存と終了を拒否し、成功または失敗が確定した後に解除する。キューや終了時一括保存へ変えない。
+- 失敗時に別方式へフォールバックしない。失敗理由を記録して表示する。
+- メモ帳を起動・終了・kill しない。すでに存在する対象へ接続して読むだけにする。
 
-## Where to look first
+## 読む場所
 
-- `README.md` — what the app does, how to build and run it, known limits
-- `docs/results.md` — the 1:1 measurements and everything that had to be discovered
-- `docs/results2.md` — the one-to-many measurements: what an index costs, and the traps
-- `docs/app.md` — the practical build: ledger model, FE/BE architecture, measurements
-- `docs/save-methods.md` — the three ways the VBA build can persist ONE processed record
-  (the shipped one, ADO, and a pure-VBA ZIP + deflate rewrite), measured against each other
+- `docs/README.md` — 現行ドキュメントの索引
+- `docs/architecture.md` — 現行 C# 版の構成とデータ契約
+- `docs/settings.md` — `settings.json` (paths / search / watch / jobs / data、厳格な読込み)
+- `docs/ui-spec.md` — `settings.json` の `screen`、画面の振る舞い、レスポンシブ、検査
+- `docs/ui-reference/v2.html` — UI の正本 HTML (リポジトリ直下の `Reader Data Viewer v2 (standalone).html` と同じもの)
+- `archive/README.md` — 退役物の境界と所在
 
-Two frozen comparisons and one practical build live here, with separate sources,
-distributables and measurements:
-
-| | sources | build | data | measured |
-|---|---|---|---|---|
-| 1:1, 1,000,000 rows, 2 methods | `src/csharp`, `src/vba`, `src/cmd` | `build_all.ps1` | `data/` | `docs/results.md` |
-| one-to-many, 100,000 rows, 4 methods | `src/v2/**` | `build_all2.ps1` | `data-100k/`, `data-tiny/` | `docs/results2.md` |
-| practical, standard index only | `src/app/**` | `build_app.ps1` | copies of `data-100k/` | `docs/app.md` |
-
-The practical build persists the merged ledger (identity = key2, processed flag
-carried across rebuilds) and checks for updates at startup by comparing CONTENT
-against the saved state. The old per-trigger re-read contract applies to the
-frozen comparisons only. The VBA practical build (v2) follows a proven Excel
-FE/BE architecture with the ledger SPLIT OUT of the parent book: the FE is a small
-UI-only workbook; the ledger workbook (`ReaderDataViewer-Ledger.xlsx`) and its
-sidecar mirror (`.state`, UTF-16LE) are read, compared, carried, written and saved
-ONLY by an invisible BE Excel, which also owns every heavy stage and the Notepad
-watch, publishes atomically to a file channel, and the FE pulls with a short
-bounded OnTime pump. The BE never calls into the FE by COM, the FE holds no
-COM reference to the BE (it drops them as soon as the BE's bootstrap returns),
-and the FE never materializes ledger rows or saves itself (the reasoning, and the
-measurement it rests on, is summarised in `docs/app.md`; v1 — ledger inside the
-FE book — is archived outside the repository and documented at the end of
-`docs/app.md`).
-
-**The practical VBA build (`src/app/vba`) contains no `Declare` and no `Shell`.**
-It runs on VBA + COM only: the BE is started with `CreateObject("Excel.Application")`
-and a bootstrap that arms `Application.OnTime` and returns; the clock is `Timer`;
-sub-second waits come from a WMI event source's `NextEvent` timeout; the Notepad
-window is found with UIA `GetFocusedElement` plus a parent walk; liveness is a
-lease-file lock in both directions. Keep it that way — the reasons, and the
-measurements behind each choice, are in `docs/app.md` ("Win32 / Shell を使わない実装").
-The frozen comparison builds keep their Declare blocks and are not touched.
-
-The 1:1 sources are **frozen** and are NOT built by `build.bat` any more: it builds only
-the two products. They are kept for the measurements in `docs/results.md`. Work on the one-to-many side goes in `src/v2`, even
-when that means a deliberate copy (`Rdv2Watch.cs`, `modRdv2Uia.bas`).
-
-- `src/csharp/RdvCore.cs` — the 1:1 engine (both .cmd builds share it verbatim)
-- `src/vba/modRdvEngine.bas` — the same algorithm inside Excel
-- `src/v2/csharp/Rdv2Core.cs` — the one-to-many engine; the index is NOT in it
-- `src/v2/csharp/Rdv2IdxHash.cs` / `Rdv2IdxDict.cs` — two classes with the same name and
-  the same members; the packer puts exactly one in each .cmd, so there is no dispatch
-- `src/v2/vba/clsRdv2IdxHash.cls` / `clsRdv2IdxDict.cls` — the same trick in VBA
-
-## Dev commands
-
-```
-build.bat            everything in dist\, from source (double-clickable, no admin)
-```
+## 開発コマンド
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File build\build_dist.ps1     # what build.bat runs
-powershell -ExecutionPolicy Bypass -File build\build_all.ps1
-powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method csharp -Repeat 7
-powershell -ExecutionPolicy Bypass -File build\run_bench.ps1 -Method vba    -Repeat 7
-powershell -ExecutionPolicy Bypass -File build\summarize.ps1 -Log work\bench-vba-<stamp>.tsv
-
-powershell -ExecutionPolicy Bypass -File build\build_all2.ps1
-powershell -ExecutionPolicy Bypass -File build\run_bench2.ps1 -Method chash -Repeat 8
-powershell -ExecutionPolicy Bypass -File build\run_bench2.ps1 -Method cdict -Repeat 8
-powershell -ExecutionPolicy Bypass -File build\run_bench2.ps1 -Method vhash -Repeat 8
-powershell -ExecutionPolicy Bypass -File build\run_bench2.ps1 -Method vdict -Repeat 8
-
-powershell -ExecutionPolicy Bypass -File build\build_app.ps1
-powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method csharp -Launches 7
-powershell -ExecutionPolicy Bypass -File build\bench_app.ps1 -Method vba    -Launches 7
-
-powershell -ExecutionPolicy Bypass -File build\bench_save.ps1                  # the 3 save methods (micro)
-powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1                   # the 3 save methods (real path)
-powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1 -Build csharp     # the C# build, same two jobs
-powershell -ExecutionPolicy Bypass -File build\bench_e2e.ps1 -Mode race        # search vs save confirmation
-powershell -ExecutionPolicy Bypass -File build\test_exit_guard.ps1             # the exit guard, both builds
+build.bat
+powershell -NoProfile -ExecutionPolicy Bypass -File build\build_dist.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\compile_check.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_contract.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_ui_geometry.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_geometry.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_exit_guard.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
 ```
 
-`bench_save.ps1` calls the save functions directly (a microbenchmark); `bench_e2e.ps1`
-drives the real distributable through its own screen and times the two jobs a person
-actually waits for, from outside, by watching the FE/BE file channel. The two are not
-interchangeable and their numbers are not comparable — see `docs/save-methods.md`.
+## ガードレール
 
-The practical build persists ONE processed record per operation and never batches. While
-that one save is unresolved, both builds refuse a second mark AND refuse to close, saying
-why; the close is allowed again once the save is decided (saved or failed). Do not turn
-that into a queue, a flush-on-exit, or a longer exit protocol — it guards the single save
-that is already running (`docs/app.md`, "未確定の 1 件保存を黙って落とさない終了保護").
-
-The VBA build carries three ways to write that record (`src/app/vba/modRdv3Save.bas`):
-the shipped one (the BE's open workbook + `Workbook.Save`), ADO/ACE against the closed
-file, and a pure-VBA edit of ONE BYTE of the original sheet XML (`modRdv3Zip`: deflate
-decoder, block re-emitter, bit splice, CRC-32 with a GF(2) one-byte update). **What ships
-is unchanged**: the BE uses the first unless a `<ledger>.savemethod` file sits next to the
-ledger, and no distribution contains that file. Measured in `docs/save-methods.md`: only
-the third one leaves every other byte of the package alone.
-
-## Guardrails
-
-- Never touch an Excel instance or process this code did not start. No `GetActiveObject`,
-  no running-object-table lookups — bind from a window handle only.
-- A ledger written by anything other than Excel is not proven by a checksum. `xl/worksheets`
-  can be byte-consistent, CRC-correct and well-formed and still be a file Excel refuses to
-  open (measured: `docs/save-methods.md`). Prove a writer by REOPENING what it produced —
-  every part inflated by an independent inflater, and every row compared in Excel.
-- Changing one byte of a deflated part is not one byte of the stream. Later data is encoded
-  as matches that COPY the changed byte (measured: one edit moved 58,033 rows), and a stored
-  block further on breaks if the bit alignment shifts. Any edit of a compressed part must
-  re-emit every block that can reach back to it and resume on a byte boundary.
-- The FE/BE channel keeps ONE record per KIND, so the kind IS the delivery slot. That is
-  right for state (a heartbeat, the newest search answer — losing an older one costs
-  nothing) and wrong for anything that must be delivered: a save confirmation therefore has
-  its own kind (`MARK`) and names the request it answers. Measured before the split: a
-  search issued 200 ms into a save replaced `res=marked` 441 ms later, the screen never saw
-  the save, and the exit guard held the book for its full 180 s ceiling and then called a
-  SUCCESSFUL save undecided (`work\race-evidence-before\`). Anything new that must arrive
-  gets its own kind — never a second record of an existing one.
-- An invisible automation Excel shows a VBA COMPILE ERROR as a modal nobody can see:
-  `Application.Run` never returns and the process sits at 0% CPU. Module-level declarations
-  after a procedure are the usual cause. The builders check for it; so should any harness.
-- Never start, close or kill Notepad. The app attaches to a window that is already there
-  and only reads from it.
-- Do not commit generated artifacts: `data\` (241 MB), `dist\` (the two products),
-  `work\` (logs). All are reproducible from `build\`.
-- Four methods on the one-to-many side must stay comparable too: same files, same key
-  sequence, same measurement boundary. The boundary ends when one candidate is on screen
-  or the candidate list is built — never after a person has chosen. The post-choice
-  display is a separate figure.
-- An index must answer with a SET of rows. `key -> single row` loses rows that legitimately
-  share a key 1, and no build here may do that.
-- The three methods must stay comparable. Same input files, same join rule, same
-  measurement boundaries, same screen. Every run reports a join checksum, a probe count
-  and two matched counts; all three methods must agree, and the checksum must match
-  `data\expected.txt`, which the generator computed independently.
-- Never cache between triggers. Each merge-select re-reads all three CSVs, rebuilds all
-  three indexes and redoes both joins over all 1,000,000 rows.
-- Do not update the status bar or write timings while a measurement is running. Stamp the
-  end time, finalise the numbers, then display once.
-- When a method fails, record the failure. Never fall back to a different method.
-- The polynomial hash is inlined into three loops in `modRdvEngine.bas`. `build\build_workbooks.ps1`
-  compares every copy against `modRdvSpec.RdvHashBytes` and stops the build if they differ.
-- `.bas` files are imported in the system ANSI code page (CP932 on Japanese Windows).
-  Source must survive a CP932 round trip.
-- `.ps1` files that contain non-ASCII need a UTF-8 BOM: Windows PowerShell 5.1 reads a
-  BOM-less script in the ANSI code page and the parser breaks on the mangled text.
-- C# embedded in the `.cmd` files is compiled by the in-box .NET Framework `csc`:
-  **C# 5 only**, and no verbatim strings (the packer escapes non-ASCII to `\uXXXX`).
+- `data/`、`data-100k/`、`dist/`、`samples/`、`work/` は生成物。コミットしない。
+- `archive/` の履歴資料を現行設計の根拠にしない。変更依頼がない限り整理・修正しない。
+- key1 は一対多なので、索引は必ず `key -> 行の集合` とし、単一行で上書きしない。
+- xlsx は temp 書込みから安全に置換する。保存完了前に成功表示しない。
+- UI の寸法は画面定義 (`src/config/settings.json` の `screen`) の値で、`docs/ui-ref-v2-geom.json` (正本 HTML の実測) と検査で突き合わせる。コードに座標表を持たない。
+- 文字は GDI (`Rdv3Skin.Draw/Measure`) で描き測る。GDI+ の文字描画や `TextRenderer` に戻さない (横潰れ・DPI 換算の狂い)。モーダルの角丸は DWM に任せ、Region で切らない。
+- C# は Windows 同梱の .NET Framework `csc` でコンパイルするため **C# 5** に限定する。verbatim string を使わない。非 ASCII を含む C# は `Rdv3Text.cs` だけ。
+- 製品ソースの一覧は `build/sources.ps1` だけに持つ。
+- 非 ASCII を含む `.ps1` は UTF-8 BOM を維持する。
+- 「設定」ボタンの書戻しは `paths` / `search` / `watch` の 3 メンバーの範囲だけを差し替える (`Rdv3Config.Save`)。ファイル全体を生成し直す形に戻さない。
+- `build.bat` は CRLF を維持し、`&`・`(`・`)` を含む配置パスでもダブルクリック実行できる引用を崩さない。

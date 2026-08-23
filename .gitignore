@@ -21,6 +21,7 @@ xll/nuget/
 data/
 data-100k/
 data-tiny/
+samples/
 work/
 
 # Excel の一時ファイル

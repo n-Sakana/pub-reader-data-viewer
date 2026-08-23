@@ -1,21 +1,13 @@
 @echo off
 rem ==========================================================================
-rem  build.bat -- double-click this. It builds EVERY distributable in dist\
-rem  from the sources in this repository (C# and VBA alike).
+rem  build.bat -- double-click this. It builds the C# product in dist\
+rem  from the sources in this repository.
 rem
 rem  It does NOT need administrator rights and never asks for elevation.
 rem  It does NOT write to the registry.
 rem  It does NOT change the machine's execution policy: -ExecutionPolicy
 rem  Bypass below applies to the one PowerShell process it starts.
-rem  It does NOT touch any Excel instance it did not start itself.
-rem
-rem  It DOES need Excel, plus Excel's per-user setting
-rem      Trust Center > Macro Settings > Trust access to the VBA project
-rem      object model
-rem  because the only way this repository can put VBA into an .xlsm is
-rem  VBProject.VBComponents.Import. That setting is per user (HKCU) and needs
-rem  no administrator; if it is off, the build stops and prints how to turn it
-rem  on, instead of quietly producing fewer files.
+rem  It does NOT need or start Excel.
 rem
 rem  The window stays open at the end -- on success and on failure alike -- so
 rem  the reason and the exit code can be read.
@@ -41,7 +33,7 @@ echo ==========================================================================
 echo  Reader Data Viewer -- build
 echo  repository : "%RDV_ROOT%"
 echo  powershell : "%RDV_PS%"
-echo  builds     : the product only -- dist\app-csharp + dist\app-vba
+echo  builds     : dist\app-csharp
 echo ==========================================================================
 echo.
 
@@ -68,9 +60,8 @@ echo ==========================================================================
 if "%RDV_RC%"=="0" (
   echo  RESULT: success   ^(exit code %RDV_RC%^)
   echo.
-  echo  The products are under:
+  echo  The product is under:
   echo      "%RDV_ROOT%\dist\app-csharp"
-  echo      "%RDV_ROOT%\dist\app-vba"
 ) else (
   echo  RESULT: FAILED   ^(exit code %RDV_RC%^)
   echo.

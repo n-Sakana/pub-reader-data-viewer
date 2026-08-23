@@ -4,38 +4,27 @@
 #
 #   powershell -ExecutionPolicy Bypass -File build\build_dist.ps1
 #
-# It builds the two authorised products and NOTHING else. No comparison build,
-# no benchmark, no test fixture, no sample, no comparison: those are not products
-# and must never reach dist\ through this path.
+# It builds the C# product and NOTHING else. No archived build, benchmark,
+# test fixture, sample or showcase may reach dist\ through this path.
 #
-# What it produces, all of it from the .cs / .bas / .cls / .ps1 sources:
+# What it produces, all of it from the active C# / PowerShell sources:
 #
 #   dist\app-csharp\ReaderDataViewer.vbs            the C# product (entry point)
 #   dist\app-csharp\ReaderDataViewer.cmd            the same payload with a console
-#   dist\app-csharp\ReaderDataViewer.json           its settings
+#   dist\app-csharp\settings.json                   its settings (paths, watch, data, screen)
 #   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    its initial ledger
 #   dist\app-csharp\data\table{A,B,C}.csv
-#   dist\app-vba\ReaderDataViewer.xlsm              the VBA product (FE)
-#   dist\app-vba\ReaderDataViewer.json              its settings
-#   dist\app-vba\ReaderDataViewer-Ledger.xlsx       the BE-owned ledger
-#   dist\app-vba\ReaderDataViewer-Ledger.state      its sidecar mirror
-#   dist\app-vba\data\table{A,B,C}.csv
-#
 # WHAT IT NEEDS, and what it does NOT need
-#   needs   Windows PowerShell 5.1 (in box), .NET Framework csc (in box),
-#           Excel, and Excel's per-user setting "Trust access to the VBA
-#           project object model" -- the only way this repository can put VBA
-#           into a workbook is VBProject.VBComponents.Import.
+#   needs   Windows PowerShell 5.1 and .NET Framework csc (both in box).
 #   does NOT need administrator rights, and never asks for elevation.
-#   does NOT write to the registry (it only READS the AccessVBOM value).
+#   does NOT need Excel and does not read or write its registry settings.
+#   does NOT write to the registry.
 #   does NOT change the machine's execution policy: build.bat passes
 #           -ExecutionPolicy Bypass, which applies to that one process.
-#   does NOT touch any Excel instance it did not start itself.
+#   does NOT start or touch Excel.
 #
 # The 100,000-row data set (data-100k\) is generated only if it is absent; the
-# practical build needs it. The 1,000,000-row set (data\, 241 MB) is NOT
-# generated: no distributable is built from it -- it is what the 1:1
-# comparison READS at run time -- and the note at the end says so.
+# practical build needs it. The archived comparison data set is not generated.
 #
 # Exit codes: 0 = every artifact listed above is present, 1 = a step failed
 # (the failing step and its message are printed).
@@ -55,45 +44,13 @@ function Head([string] $t) {
 
 $started = Get-Date
 
-# --- preflight: say up front what is missing, never half-build silently -----
+# --- preflight ---------------------------------------------------------------
 Head 'preflight'
 Write-Output ("  repository     : " + $Root)
 Write-Output ("  PowerShell     : " + $PSVersionTable.PSVersion.ToString())
 Write-Output ("  .NET (this ps) : " + [Environment]::Version.ToString())
 
-$needExcel = $true
-if ($needExcel) {
-  $excel = $null
-  foreach ($k in 'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe',
-                 'HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\excel.exe') {
-    if (Test-Path $k) { $excel = (Get-ItemProperty $k).'(default)'; break }
-  }
-  if ($null -eq $excel) {
-    throw "Excel が見つかりません (App Paths\excel.exe が登録されていません)。ワークブックのビルドには Excel が要ります。"
-  }
-  Write-Output ("  Excel          : " + $excel)
-
-  $vbom = 0
-  foreach ($v in '16.0', '15.0', '14.0') {
-    $p = "HKCU:\Software\Microsoft\Office\$v\Excel\Security"
-    if (Test-Path $p) { $x = (Get-ItemProperty $p).AccessVBOM; if ($x) { $vbom = $x } }
-  }
-  if ($vbom -ne 1) {
-    throw @"
-Excel の「VBA プロジェクト オブジェクト モデルへのアクセスを信頼する」が無効です。
-このリポジトリが .xlsm に VBA を入れる唯一の経路が VBProject.VBComponents.Import
-なので、この設定なしではワークブックを作れません。管理者権限は不要です:
-
-  Excel > ファイル > オプション > トラスト センター > トラスト センターの設定
-        > マクロの設定 > VBA プロジェクト オブジェクト モデルへのアクセスを信頼する
-
-にチェックを入れて Excel を閉じ、build.bat をもう一度実行してください。
-(この設定はユーザー単位 HKCU の値です。build.bat はレジストリを書き換えません。)
-"@
-  }
-  Write-Output ("  AccessVBOM     : 1 (trusted)")
-}
-Write-Output ("  will build     : the product only (app-csharp, app-vba)")
+Write-Output ("  will build     : app-csharp only")
 
 try {
   # --- data: only the set a distributable is actually built from ------------
@@ -107,7 +64,7 @@ try {
   # The product, and only the product. Comparison builds, benchmarks, test
   # fixtures are deliberately NOT called from here: nothing that
   # is not a shipped product may reach dist\ through build.bat.
-  Head 'product -> dist\app-csharp + dist\app-vba'
+  Head 'product -> dist\app-csharp'
   & (Join-Path $Root 'build\build_app.ps1') -Root $Root
 }
 catch {
@@ -127,17 +84,14 @@ catch {
 # list while the list still described the comparison builds it no longer makes.
 $app = @('dist\app-csharp\ReaderDataViewer.vbs',
          'dist\app-csharp\ReaderDataViewer.cmd',
-         'dist\app-csharp\ReaderDataViewer-Ledger.xlsx',
-         'dist\app-vba\ReaderDataViewer.xlsm',
-         'dist\app-vba\ReaderDataViewer-Ledger.xlsx',
-         'dist\app-vba\ReaderDataViewer-Ledger.state')
+         'dist\app-csharp\ReaderDataViewer-Ledger.xlsx')
 # the shipped CSVs and settings are copies, so "current" means "identical to
 # the source", not "written after this run started" (Copy-Item keeps the
 # source's timestamp, and re-copying an unchanged file changes nothing)
 $copies = @()
-foreach ($d in 'dist\app-csharp', 'dist\app-vba') {
-  $copies += @{ dest = (Join-Path $d 'ReaderDataViewer.json')
-                src  = 'src\app\config\ReaderDataViewer.json' }
+foreach ($d in 'dist\app-csharp') {
+  $copies += @{ dest = (Join-Path $d 'settings.json')
+                src  = 'src\config\settings.json' }
   foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv') {
     $copies += @{ dest = (Join-Path (Join-Path $d 'data') $n); src = (Join-Path 'data-100k' $n) }
   }

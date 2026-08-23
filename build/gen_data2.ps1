@@ -6,6 +6,11 @@
 #   data-100k\tableC.csv    100,000 rows x 10 fields, key2 unique
 #   data-100k\expected.txt  the oracle: row counts, join checksum, candidate counts
 #
+# This is the SHIPPED sample, and it is deliberately colourless: the values are
+# SAMPLE-A-0000001, REF-00018414, CAT3, NOTE-47180 -- tokens that say "a
+# sample", not a business. Realistic dummies for testing a definition live in
+# build\gen_samples.ps1.
+#
 # The difference from gen_data.ps1 is the shape of B, and it is the whole point
 # of this dataset: key 1 is legitimately one-to-many. B is the middle table -- a
 # slip with several lines - so one key 1 can own 1, 2, 3 or 5 rows of B, each
@@ -86,7 +91,7 @@ public static class RdvGen2
 
     private static readonly string[] Grades = { "A1", "A2", "B1", "B2", "C1" };
     private static readonly string[] Status = { "OPEN", "HOLD", "DONE", "VOID" };
-    private static readonly string[] Cats   = { "ELEC", "MECH", "CHEM", "FOOD", "PAPR", "MISC" };
+    private static readonly string[] Cats   = { "CAT1", "CAT2", "CAT3", "CAT4", "CAT5", "CAT6" };
 
     private static string Pad(int v, int w)
     {
@@ -120,7 +125,7 @@ public static class RdvGen2
         StringBuilder b = new StringBuilder(96);
         b.Append(Pad(n, 8)).Append(',');
         b.Append("A").Append(Pad((int)(Mix(1, (uint)n, 1) % 99999u) + 1, 5)).Append(',');
-        b.Append("CUSTOMER-").Append(Pad(n, 7)).Append(',');
+        b.Append("SAMPLE-A-").Append(Pad(n, 7)).Append(',');
         b.Append(Grades[Mix(1, (uint)n, 2) % 5u]).Append(',');
         b.Append(Date(Mix(1, (uint)n, 3))).Append(',');
         b.Append(Pad((int)(Mix(1, (uint)n, 4) % 9999999u) + 1, 7)).Append(',');
@@ -141,7 +146,7 @@ public static class RdvGen2
         int unit = (int)(Mix(2, seed, 2) % 99989u) + 10;
         b.Append(Pad(n, 8)).Append(',');
         b.Append(Pad(k2, 8)).Append(',');
-        b.Append("SL").Append(Pad(n, 8)).Append(',');
+        b.Append("REF-").Append(Pad(n, 8)).Append(',');
         b.Append(Date(Mix(2, seed, 3))).Append(',');
         b.Append(Pad(qty, 3)).Append(',');
         b.Append(Pad(unit, 5)).Append(',');
@@ -156,8 +161,8 @@ public static class RdvGen2
     {
         StringBuilder b = new StringBuilder(96);
         b.Append(Pad(k2, 8)).Append(',');
-        b.Append("IT").Append(Pad((int)(Mix(3, (uint)k2, 1) % 999999u) + 1, 6)).Append(',');
-        b.Append("MAKER-").Append(Pad((int)(Mix(3, (uint)k2, 2) % 9999u) + 1, 4)).Append(',');
+        b.Append("C").Append(Pad((int)(Mix(3, (uint)k2, 1) % 999999u) + 1, 6)).Append(',');
+        b.Append("SAMPLE-").Append(Pad((int)(Mix(3, (uint)k2, 2) % 9999u) + 1, 4)).Append(',');
         b.Append(Cats[Mix(3, (uint)k2, 3) % 6u]).Append(',');
         b.Append(Pad((int)(Mix(3, (uint)k2, 4) % 999999u) + 1, 6)).Append(',');
         b.Append(Pad((int)(Mix(3, (uint)k2, 5) % 99999u), 5)).Append(',');
@@ -169,8 +174,8 @@ public static class RdvGen2
     }
 
     public const string HeadA = "key1,a_code,a_name,a_grade,a_date,a_amount,a_rate,a_flag,a_dept,a_note";
-    public const string HeadB = "key1,key2,b_slip,b_date,b_qty,b_unit,b_total,b_status,b_line,b_memo";
-    public const string HeadC = "key2,c_item,c_maker,c_cat,c_price,c_stock,c_loc,c_lot,c_exp,c_remark";
+    public const string HeadB = "key1,key2,b_ref,b_date,b_qty,b_unit,b_total,b_status,b_line,b_memo";
+    public const string HeadC = "key2,c_code,c_name,c_cat,c_price,c_stock,c_loc,c_lot,c_exp,c_remark";
 
     private static StreamWriter Open(string path)
     {
