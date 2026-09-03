@@ -1,6 +1,6 @@
 // ============================================================================
-// Rdv3Watch.cs -- reading detection for the practical build, driven entirely by
-// UI Automation and entirely by the settings file.
+// Rdv3Watch.cs -- reading detection, driven entirely by UI Automation and
+// entirely by the settings file.
 //
 //   format          the key rule from settings.json (search.pattern)
 //   quiet time      the value must survive stableMs of polling
@@ -16,8 +16,8 @@
 // The watcher never starts, closes or kills anything. It attaches to windows
 // that are already there and only ever reads from them.
 //
-// In the practical build a confirmed number triggers a SEARCH of the current
-// ledger -- not a re-merge. The merge belongs to the startup update check.
+// A confirmed number triggers a SEARCH of the current ledger -- not a
+// re-merge. The merge belongs to the startup update check.
 //
 // C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
 // ============================================================================

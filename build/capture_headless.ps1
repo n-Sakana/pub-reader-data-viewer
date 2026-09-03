@@ -71,12 +71,13 @@ for ($i = 0; $i -lt $cfg.Data.Tables.Count; $i++) {
 $cfg.Data.Bind($heads)
 $form = New-Object Rdv3Form $cfg.Screen
 $form.SetFields((New-Object Rdv3Fields (,$cfg.Data.ColumnRefs)))
+$targetName = $cfg.Targets[0].Name
 if ($Waiting) {
-  $form.SetState([Rdv3Text]::StateWaitingFmt.Replace('{name}', [Rdv3Text]::LabelNotepad))
+  $form.SetState([Rdv3Text]::StateWaitingFmt.Replace('{name}', $targetName))
 } else {
   $form.SetState([Rdv3Text]::StateReady)
 }
-$form.SetWatch([Rdv3Text]::LabelNotepad, [Rdv3Text]::WatchConnectedFmt.Replace('{title}', [Rdv3Text]::LabelNotepad))
+$form.SetWatch($targetName, [Rdv3Text]::WatchConnectedFmt.Replace('{title}', $targetName))
 $form.SetLedger([Rdv3Text]::LedgerSegFmt.Replace('{file}', 'ReaderDataViewer-Ledger.xlsx').Replace('{n}', '100,000'), '100,000', '09-03 11:42')
 $form.SetPendingCount($PendingCount)
 if ($Loaded -or $Ng) {

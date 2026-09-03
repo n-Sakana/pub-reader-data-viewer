@@ -226,8 +226,7 @@
   //               the screen reflows to whatever the window is resized to.
   //
   //   sections    titleBar | keyPanel | columns | fieldList | textBox | statusBand | sendBar | statusBar
-  //               in display order. Sizes are CSS px of the reference screen
-  //               (archive/ui-v2/docs/ui-reference/v2.html) and scale with the Windows display.
+  //               in display order. Sizes are CSS px and scale with the Windows display.
   "screen": {
     "card": { "width": 780, "startSize": [780, 634], "gap": 8, "padding": [8], "font": "Yu Gothic UI" },
     "toast": { "durationMs": 3600 },

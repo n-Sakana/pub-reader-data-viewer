@@ -1,0 +1,605 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reader Data Viewer — 説明書</title>
+<style>
+  :root {
+    --ink: #1f2933; --muted: #52606d; --line: #d9dee3; --paper: #ffffff; --ground: #f4f6f8;
+    --accent: #1f5fa8; --accent-ink: #ffffff; --ok: #1d7a3a; --ng: #a8322b; --warn: #8a5a00;
+    --code: #eef2f5; --focus: #ffbf47;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--ground); color: var(--ink);
+    font-family: "Yu Gothic UI", "Meiryo", "Segoe UI", "Hiragino Sans", sans-serif;
+    font-size: 16px; line-height: 1.8; -webkit-text-size-adjust: 100%;
+  }
+  a { color: var(--accent); }
+  a:focus-visible, button:focus-visible, summary:focus-visible, input:focus-visible {
+    outline: 3px solid var(--focus); outline-offset: 2px;
+  }
+  .skip { position: absolute; left: -999px; top: 0; background: var(--paper); padding: .5rem 1rem; }
+  .skip:focus { left: 1rem; z-index: 10; }
+  header.top {
+    background: var(--paper); border-bottom: 1px solid var(--line);
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 0 1.25rem; }
+  header.top .wrap { padding-top: 2.2rem; padding-bottom: 1.6rem; }
+  h1 { font-size: 1.9rem; margin: 0 0 .4rem; line-height: 1.3; letter-spacing: .01em; }
+  .tagline { margin: 0; font-size: 1.05rem; color: var(--muted); }
+  .facts { display: flex; flex-wrap: wrap; gap: .5rem 1.5rem; margin: 1rem 0 0; padding: 0; list-style: none; color: var(--muted); font-size: .95rem; }
+  .facts li::before { content: "■ "; color: var(--accent); }
+  nav.toc { background: var(--paper); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 5; }
+  nav.toc ol { display: flex; flex-wrap: wrap; gap: .1rem .3rem; margin: 0; padding: .5rem 0; list-style: none; }
+  nav.toc a { display: inline-block; padding: .3rem .6rem; border-radius: 4px; text-decoration: none; color: var(--ink); font-size: .95rem; }
+  nav.toc a:hover { background: var(--ground); }
+  main .wrap { padding-top: 1.5rem; padding-bottom: 4rem; }
+  section.chapter { background: var(--paper); border: 1px solid var(--line); border-radius: 6px; padding: 1.4rem 1.6rem 1.2rem; margin: 0 0 1.4rem; }
+  h2 { font-size: 1.35rem; margin: 0 0 .8rem; padding-bottom: .4rem; border-bottom: 2px solid var(--accent); }
+  h2 .no { color: var(--accent); margin-right: .5rem; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 1.08rem; margin: 1.4rem 0 .5rem; }
+  p { margin: 0 0 .9rem; }
+  ul, ol { margin: 0 0 .9rem; padding-left: 1.4rem; }
+  li { margin: .15rem 0; }
+  .steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .8rem; margin: 1rem 0 1.2rem; }
+  .step { border: 1px solid var(--line); border-radius: 6px; padding: .9rem 1rem; background: var(--ground); }
+  .step b { display: block; font-size: 1.05rem; margin-bottom: .3rem; }
+  .step .n { display: inline-block; width: 1.7rem; height: 1.7rem; line-height: 1.7rem; text-align: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-weight: bold; margin-right: .4rem; }
+  table { border-collapse: collapse; width: 100%; margin: .6rem 0 1rem; font-size: .95rem; }
+  th, td { border: 1px solid var(--line); padding: .45rem .6rem; text-align: left; vertical-align: top; }
+  th { background: var(--ground); font-weight: 600; }
+  .scroll { overflow-x: auto; }
+  code, kbd, .mono { font-family: Consolas, "Courier New", monospace; font-size: .92em; }
+  code { background: var(--code); padding: .05rem .35rem; border-radius: 3px; }
+  pre { background: var(--code); padding: .8rem 1rem; border-radius: 4px; overflow-x: auto; line-height: 1.5; margin: .5rem 0 1rem; }
+  pre code { background: none; padding: 0; }
+  kbd { border: 1px solid #aab; border-bottom-width: 2px; border-radius: 3px; padding: 0 .35rem; background: #fff; }
+  .note { border-left: 4px solid var(--accent); background: var(--ground); padding: .6rem .9rem; margin: .8rem 0 1rem; }
+  .note.warn { border-color: var(--warn); }
+  details { border: 1px solid var(--line); border-radius: 6px; margin: .8rem 0; background: var(--paper); }
+  details > summary { cursor: pointer; padding: .7rem 1rem; font-weight: 600; list-style: none; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary::before { content: "▸ "; color: var(--accent); }
+  details[open] > summary::before { content: "▾ "; }
+  details > .body { padding: 0 1rem 1rem; }
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: .5rem; margin: .8rem 0 1rem; }
+  .flow .box { flex: 1 1 160px; border: 1px solid var(--line); border-radius: 6px; padding: .6rem .8rem; background: var(--ground); font-size: .95rem; }
+  .flow .box b { display: block; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 1.3rem; padding: 0 .1rem; }
+  .tag { display: inline-block; padding: 0 .5rem; border-radius: 999px; font-size: .85rem; border: 1px solid var(--line); background: var(--ground); }
+  .tag.ok { color: var(--ok); border-color: var(--ok); }
+  .tag.ng { color: var(--ng); border-color: var(--ng); }
+  .tag.done { color: var(--accent); border-color: var(--accent); }
+
+  /* demo */
+  .demo { border: 1px solid var(--line); border-radius: 6px; background: var(--ground); padding: 1rem 1.1rem; margin: .8rem 0 1rem; }
+  .demo .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin-bottom: .6rem; }
+  .demo label { font-weight: 600; }
+  .demo input[type=text] { font-family: Consolas, "Courier New", monospace; font-size: 1.05rem; padding: .35rem .5rem; width: 10.5rem; border: 1px solid #9aa5b1; border-radius: 3px; }
+  .demo button { font: inherit; padding: .35rem .9rem; border: 1px solid #7b8794; border-radius: 3px; background: #fff; cursor: pointer; }
+  .demo button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .demo button[disabled] { opacity: .5; cursor: default; }
+  .demo button[aria-pressed="true"] { background: #dbe7f7; border-color: var(--accent); font-weight: bold; }
+  .demo .panel { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: .7rem .9rem; margin: .5rem 0; }
+  .demo .panel h4 { margin: 0 0 .4rem; font-size: 1rem; }
+  .demo .msg { min-height: 1.6rem; color: var(--muted); }
+  .demo .msg.err { color: var(--ng); }
+  .demo .msg.ok { color: var(--ok); }
+  .demo .cands { list-style: none; padding: 0; margin: 0; }
+  .demo .cands li { margin: .2rem 0; }
+  .demo .cands button { width: 100%; text-align: left; font-family: Consolas, "Courier New", monospace; }
+  .demo .rec dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0; }
+  .demo .rec dt { color: var(--muted); }
+  .demo .rec dd { margin: 0; font-family: Consolas, "Courier New", monospace; }
+  .demo .pending { font-weight: bold; }
+  .demo .pending.has { color: var(--ng); }
+  .demo .judge { font-size: 1.3rem; font-weight: bold; }
+  .demo .judge.ok { color: var(--ok); } .demo .judge.ng { color: var(--ng); } .demo .judge.undef { color: var(--muted); }
+
+  footer { color: var(--muted); font-size: .9rem; }
+  @media (max-width: 720px) {
+    .steps { grid-template-columns: 1fr; }
+    section.chapter { padding: 1.1rem 1rem 1rem; }
+    h1 { font-size: 1.5rem; }
+    nav.toc { position: static; }
+  }
+  @media print {
+    body { background: #fff; }
+    nav.toc, .skip { display: none; }
+    details { border: none; }
+    details > .body { display: block; }
+    section.chapter { border: none; padding: 0; page-break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">本文へ</a>
+<header class="top">
+  <div class="wrap">
+    <h1>Reader Data Viewer</h1>
+    <p class="tagline">別のアプリの画面に出た番号を読み取り、複数の CSV から作った台帳を引き、「処理済」の印を仲間と共有する Windows アプリです。</p>
+    <ul class="facts">
+      <li>Windows 上で単体で動く（インストール不要、Excel 不要、ネットワーク接続なし）</li>
+      <li>データの扱い方と画面の並びは設定ファイル 1 枚（<code>settings.json</code>）で決める</li>
+      <li>台帳は共有フォルダーの Excel ファイル 1 本。複数の PC から同じ 1 本を使う</li>
+    </ul>
+  </div>
+</header>
+
+<nav class="toc" aria-label="目次">
+  <div class="wrap">
+    <ol>
+      <li><a href="#what">1. 何をするアプリか</a></li>
+      <li><a href="#daily">2. 毎日の使い方</a></li>
+      <li><a href="#data">3. データと台帳</a></li>
+      <li><a href="#shared">4. 複数人で使う</a></li>
+      <li><a href="#settings">5. 設定</a></li>
+      <li><a href="#try">6. 試してみる</a></li>
+      <li><a href="#limits">7. しないこと</a></li>
+      <li><a href="#tech">8. 技術者向け</a></li>
+    </ol>
+  </div>
+</nav>
+
+<main id="main">
+<div class="wrap">
+
+<section class="chapter" id="what">
+  <h2><span class="no">1</span>何をするアプリか</h2>
+  <p>現場では、別のアプリの入力欄に番号が入ります（バーコードなどの読み取り機や手入力）。このアプリはその番号を読み取り、
+  手元の台帳から該当する行を探して画面に出し、確認した行に「処理済」の印を付けます。印は自分の PC にいったん控えられ、
+  「送信」を押したときに共有の台帳へ書き込まれて、ほかの人の画面にも伝わります。</p>
+  <div class="steps">
+    <div class="step"><b><span class="n">1</span>読む</b>設定した別アプリの入力欄を見張り、8 桁の番号が入ったら自動で検索します。画面の検索欄に直接入力もできます。</div>
+    <div class="step"><b><span class="n">2</span>引く</b>複数の CSV を結合して作った「統合台帳」から該当行を探します。1 件ならそのまま表示、複数なら候補一覧から選びます。</div>
+    <div class="step"><b><span class="n">3</span>印を付けて送る</b>表示中の行を「処理済」（または「未処理」に戻す）にして手元に控え、「送信」で共有台帳へ反映します。</div>
+  </div>
+  <p>台帳の元になる CSV、結合の仕方、画面に出す項目、判定（OK / NG）の規則、作業状態の名前は、すべて設定ファイルに書きます。
+  プログラムには「どの列を」「どう結合するか」といった業務の判断が入っていません。同梱の設定とデータは色を抜いたサンプル
+  （表A / 表B / 表C、<code>SAMPLE-A-0000001</code> のような値）で、現場ではその部分を自分の CSV と画面に置き換えます。</p>
+</section>
+
+<section class="chapter" id="daily">
+  <h2><span class="no">2</span>毎日の使い方</h2>
+  <h3>起動する</h3>
+  <p><code>ReaderDataViewer.vbs</code> をダブルクリックします（コンソール画面を見たいときは <code>ReaderDataViewer.cmd</code>）。
+  起動すると設定ファイルと CSV を読み、保存済みの台帳と CSV の内容を突き合わせます。CSV に変更があれば「更新しますか」と
+  尋ねます。準備ができるとステータスバーの左端が「監視中」になります。</p>
+  <h3>番号を読む</h3>
+  <p>設定した別アプリの入力欄（同梱の設定ではメモ帳の本文）に 8 桁の番号が入って少し落ち着くと、自動で検索します。
+  同じ番号が続けて 2 回読まれても、欄が空にならない限り 2 回目は検索しません。画面の「番号1」欄に入力して
+  「検索」（<kbd>Enter</kbd>）を押しても同じです。番号の形が違うと「番号1 が形式 … に一致しません」と出ます。
+  見張る窓がまだ無いときはステータスバーに「メモ帳 を待機中」のように出て、窓が開くと自動でつながります。</p>
+  <h3>結果を見る</h3>
+  <ul>
+    <li><b>1 件</b> — その行の項目（番号、表A の項目、メモ、備考）が画面に並び、判定の帯に OK / NG / 未定義 が出ます。
+      別アプリから読み取った番号で 1 件だけ当たったときは、確認なしに自動で「処理済」になります。</li>
+    <li><b>複数件</b> — 候補一覧が開きます。行を選ぶまで印は変わりません。閉じれば未選択のままです。
+      別アプリから読み取った番号のときは、選んだ行が自動で「処理済」になります。</li>
+    <li><b>0 件</b> — 「見つかりません」と出ます。印は付きません。</li>
+  </ul>
+  <p>判定は、設定した列の値を規則（値の一覧、正規表現、空欄）に上から当てて決めます。どの規則にも当たらなければ「未定義」、
+  列そのものが台帳に無ければ「エラー」で、どちらも OK にはなりません。</p>
+  <h3>印を付ける</h3>
+  <p>「処理済」ボタンを押すと確認が出て、承諾すると手元の控えに保存されます。すでに処理済の行は、同じボタンで
+  「未処理」に戻せます。控えた件数は「未送信 N 件」に赤字で出ます。保存の途中は、次の印の変更・送信・更新と終了を
+  受け付けません。</p>
+  <h3>送信する</h3>
+  <p>「送信」を押すと、手元の控えを共有台帳へ書き込みます。処理済にした行も、未処理に戻した行も、いまの値がそのまま
+  送られます。送信後も行は凍りません。戻したければ番号をもう一度引いて未処理にし、また送信します。
+  台帳の行が消えていたり中身が変わっていたりして当てられなかった変更は、一覧で知らせて手元に残します。</p>
+  <h3>終了する</h3>
+  <p>窓を閉じます。保存や送信の結果が出るまでは閉じられません（「書き込み中です」と出ます）。未送信の控えは
+  次回の起動で戻ってきます。</p>
+</section>
+
+<section class="chapter" id="data">
+  <h2><span class="no">3</span>データと台帳</h2>
+  <div class="flow">
+    <div class="box"><b>取り込むデータ</b><code>data\</code> の CSV（同梱: 表A・表B・表C と削除指定 2 本）</div>
+    <div class="arrow">→</div>
+    <div class="box"><b>処理内容</b>設定に並べた表操作（結合、マージ …）</div>
+    <div class="arrow">→</div>
+    <div class="box"><b>統合台帳</b><code>ReaderDataViewer-Ledger.xlsx</code>（共有フォルダー）</div>
+  </div>
+  <p>台帳は毎回作り直すのではなく、育てます。CSV が新しくなったら「レコード更新」で差分を当てます。マージの規則は
+  3 方向で、元（CSV）にだけある行は<b>追加</b>、両方にある行は CSV 側の列だけ<b>更新</b>、台帳にだけある行は<b>保持</b>
+  （設定で「削除」も選べます）。作業状態の列はアプリが持つ列なので、マージで消えません。
+  CSV 側の中身が変わった行は、設定に従って印を「未処理」へ戻すか、そのまま保つかを選べます。戻った行は一覧で知らせます。</p>
+  <p>下部の 4 つのボタンでできること:</p>
+  <table>
+    <tr><th>ボタン</th><th>何をするか</th></tr>
+    <tr><td>テーブル出力</td><td>統合台帳から、選んだ項目だけを CSV に書き出します（既定で <code>data\export-日時.csv</code>）。</td></tr>
+    <tr><td>レコード更新</td><td>設定に書いた更新ジョブを表示し、実行すると CSV を読み直して台帳へマージします。</td></tr>
+    <tr><td>レコード削除</td><td>設定に書いた削除ジョブを表示し、実行すると指定ファイルに載った行を台帳から取り除きます。</td></tr>
+    <tr><td>設定</td><td>場所（CSV フォルダー・台帳・ログ）、番号の形式、監視対象を変えます。</td></tr>
+  </table>
+  <p>更新と削除のダイアログは「取り込むデータ」「処理内容」「書き出し先」の 3 枠で、実行前に分かることだけを出します。
+  処理内容の行は設定から機械的に作られ、操作（結合 / 抽出 / 削除 / 追加 / 更新 / 選択 / 計算 / 集計 / 並べ替え / 重複除去 /
+  マージ / 置換）、対象、キー、条件、出力の名前が並びます。</p>
+  <div class="note warn">
+    <b>CSV は厳格に読みます。</b>列数がヘッダーと違う行、引用符 <code>"</code> で始まる列、タブや改行などの制御文字を含む行、
+    キーが空・幅違い・ASCII 以外の行、同じキーが 2 行にある表は、ファイル名と行番号を挙げて止まります。
+    黙ってずらしたり飛ばしたりはしません。文字コードの不一致だけは止めず、更新・削除ダイアログの「検証」列に
+    「文字コード不一致（N 行目）」と出して続けます。
+  </div>
+</section>
+
+<section class="chapter" id="shared">
+  <h2><span class="no">4</span>複数人で使う</h2>
+  <p>統合台帳は共有フォルダーに 1 本だけ置き、それぞれの PC で同じアプリを動かします。手元の控え（未送信の印）は
+  各 PC の中にあり、共有台帳には「送信」「レコード更新」「レコード削除」のときだけ書き込みます。</p>
+  <ul>
+    <li><b>順番待ち</b> — 書き込む前に台帳の隣にロックファイルを作ります。誰かが書いている間は
+      「○○（PC 名）が N 分前から台帳を使用しています。空くまで待ちます。」と出て、空いたら続けます。</li>
+    <li><b>最新を読み直してから書く</b> — ロックを取ったあとに台帳を読み直し、自分の変更だけを当てて、
+      一時ファイルへ書いてから置き換えます。途中で止まっても台帳が半端になることはありません。</li>
+    <li><b>知らせる</b> — 書き終えると版を記した小さなファイルを更新します。ほかの PC は数秒おきにそれだけを見て、
+      版が進んでいれば台帳を読み直します。送信なら「○○ が N 件を処理済、M 件を未処理にしました」と出ます。
+      レコード更新なら「切り替えますか」と尋ね、印が戻った行があれば一覧で示します。</li>
+    <li><b>Excel で開いている間</b> — 誰かが台帳を Excel で開いていると書き込めず、「書き込めませんでした」と出ます。
+      控えは残るので、閉じてもらってから送り直します。</li>
+  </ul>
+  <p>同じ PC で同じ台帳を 2 つ同時に開くことはできません（「すでに起動しています」）。</p>
+</section>
+
+<section class="chapter" id="settings">
+  <h2><span class="no">5</span>設定</h2>
+  <p>設定は <code>settings.json</code> 1 枚です。6 つの部分からなり、コメント（<code>//</code> と <code>/* */</code>）を書けます。</p>
+  <table>
+    <tr><th>部分</th><th>中身</th><th>誰が変えるか</th></tr>
+    <tr><td><code>paths</code></td><td>CSV フォルダー、台帳、ログの場所</td><td>人、または「設定」ボタン</td></tr>
+    <tr><td><code>search</code></td><td>番号の形式（正規表現）、候補一覧に出す最大行数</td><td>人、または「設定」ボタン</td></tr>
+    <tr><td><code>watch</code></td><td>見張る窓と入力欄（UI Automation の条件）</td><td>人、または「設定」ボタン</td></tr>
+    <tr><td><code>jobs</code></td><td>バックグラウンド処理の時間上限、共有ファイルの確認間隔</td><td>人</td></tr>
+    <tr><td><code>data</code></td><td>CSV の一覧とキー、表示名、更新／削除ジョブ、台帳の列と検索列</td><td>人</td></tr>
+    <tr><td><code>screen</code></td><td>画面の部品と並び、値の取り方、判定規則、作業状態、候補一覧の列</td><td>人</td></tr>
+  </table>
+  <p>「設定」ボタンが書き戻すのは <code>paths</code> / <code>search</code> / <code>watch</code> の 3 つだけで、ほかの部分と
+  コメントは 1 バイトも変わりません。見張る欄は「画面から選ぶ」で指定できます。目的の欄にマウスを合わせて
+  <kbd>Ctrl</kbd>+<kbd>Shift</kbd> を押すと、その欄までの経路が自動で設定に入ります。</p>
+  <div class="note">
+    <b>壊れた設定では起動しません。</b>知らないメンバー（誤字）、型や範囲の違う値、存在しない列や状態の名前が
+    1 つでもあれば、ファイル名・行・理由を出して止まります。「直したつもりが効いていない」状態を作らないためです。
+  </div>
+</section>
+
+<section class="chapter" id="try">
+  <h2><span class="no">6</span>試してみる</h2>
+  <p>同梱のサンプルデータ（100,000 行）で検索を試すときは、番号1 に次の 8 桁を入れます（完全一致）。</p>
+  <div class="scroll">
+  <table>
+    <tr><th>番号1</th><th>ヒット件数</th><th>画面の動き</th></tr>
+    <tr><td><code>00000001</code> 〜 <code>00001000</code></td><td>5 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00001001</code> 〜 <code>00006000</code></td><td>3 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00006001</code> 〜 <code>00021000</code></td><td>2 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00021001</code> 〜 <code>00071000</code></td><td>1 件</td><td>そのまま表示</td></tr>
+    <tr><td><code>00071001</code> 以降</td><td>0 件</td><td>「見つかりません」</td></tr>
+  </table>
+  </div>
+  <h3>画面の流れを手元で追う</h3>
+  <p>下は本物のアプリではなく、上の表の規則で「検索 → 候補を選ぶ → 印を付ける → 送信」の流れだけを再現したものです。
+  同梱のサンプルと同じ番号の範囲でヒット件数が決まります。</p>
+  <div class="demo" id="demo">
+    <div class="row">
+      <label for="demo-key">番号1</label>
+      <input type="text" id="demo-key" inputmode="numeric" maxlength="8" placeholder="8 桁の数字" autocomplete="off">
+      <button type="button" class="primary" id="demo-search">検索</button>
+      <button type="button" id="demo-clear">クリア</button>
+      <button type="button" id="demo-work" aria-pressed="false" disabled>未処理</button>
+    </div>
+    <div class="msg" id="demo-msg" aria-live="polite">番号を入れて「検索」を押してください。</div>
+    <div class="panel" id="demo-cands-panel" hidden>
+      <h4>候補一覧 <span class="tag" id="demo-cands-count"></span></h4>
+      <ul class="cands" id="demo-cands"></ul>
+    </div>
+    <div class="panel rec" id="demo-rec" hidden>
+      <h4>表示中のレコード</h4>
+      <dl>
+        <dt>番号1</dt><dd id="demo-rec-k1"></dd>
+        <dt>番号2</dt><dd id="demo-rec-k2"></dd>
+        <dt>状態</dt><dd id="demo-rec-status"></dd>
+        <dt>処理済</dt><dd id="demo-rec-work"></dd>
+      </dl>
+      <div>ステータス１: <span class="judge" id="demo-judge"></span></div>
+    </div>
+    <div class="row">
+      <span class="pending" id="demo-pending">未送信 0 件</span>
+      <button type="button" id="demo-send">送信</button>
+    </div>
+    <div class="msg" id="demo-shared" aria-live="polite"></div>
+  </div>
+</section>
+
+<section class="chapter" id="limits">
+  <h2><span class="no">7</span>しないこと</h2>
+  <ul>
+    <li>読み取り機そのものには接続しません。設定した別アプリの入力欄に入った値を、画面から読むだけです。別アプリへ書き込みません。</li>
+    <li>業務の判断（どの列で照合するか、何を OK とするか、どの行を消すか）を持ちません。すべて設定に書きます。</li>
+    <li>引用符で囲った CSV、列数の揃っていない CSV、制御文字を含む CSV は読みません。直してから読ませます。</li>
+    <li>Excel の行数の上限（約 104 万行）に近づいたときの分割は行いません。</li>
+    <li>ネットワークへは接続しません。共有フォルダーの台帳も、普通のファイルとして読み書きするだけです。</li>
+  </ul>
+</section>
+
+<section class="chapter" id="tech">
+  <h2><span class="no">8</span>技術者向け</h2>
+  <p>ここから先は、ソースコード（<code>src/csharp</code> の 19 本と <code>settings.json</code>）を読んで書いた中身の説明です。既定では折りたたんであります。</p>
+
+  <details>
+    <summary>配布物と起動の仕組み</summary>
+    <div class="body">
+      <pre><code>dist\app-csharp\
+  ReaderDataViewer.vbs          通常の入口（コンソールを出さない）
+  ReaderDataViewer.cmd          同じ中身。コンソールを見たいとき
+  settings.json                 設定（paths / search / watch / jobs / data / screen）
+  ReaderDataViewer-Ledger.xlsx  統合台帳の初期状態（サンプル 100,000 行、全行「未処理」）
+  data\tableA.csv  tableB.csv  tableC.csv  delete.csv  delete-ref.csv</code></pre>
+      <p><code>.vbs</code> / <code>.cmd</code> は 1 ファイルの中に PowerShell の起動部と C# のソースを抱えています。起動すると
+      Windows PowerShell 5.1 がその C# を .NET Framework 同梱のコンパイラ（<code>csc</code>、C# 5）で <code>Add-Type</code> し、
+      <code>Rdv3Program.Run</code> に入ります。.exe も .dll も置きません。64 ビットの PowerShell が必要です。
+      引数は <code>[dataDir] [-config &lt;settings.json&gt;] [-ledger &lt;file.xlsx&gt;] [-log &lt;file&gt;]</code> で、相対パスは
+      <code>.vbs</code> のあるフォルダー基準です。</p>
+      <p>同じ台帳パスに対する 2 重起動はローカルの Mutex で防ぎます（PC をまたぐ排他は次の「共有ファイル」）。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>ソースの構成（19 本）</summary>
+    <div class="body">
+      <div class="scroll">
+      <table>
+        <tr><th>ファイル</th><th>役割</th></tr>
+        <tr><td><code>Rdv3Core.cs</code></td><td>CSV の厳格な読込（バイト配列に行の位置を持つ）、文字コード不一致の検出、時計</td></tr>
+        <tr><td><code>Rdv3Index.cs</code></td><td><code>Dictionary&lt;string, List&lt;int&gt;&gt;</code> による索引。表のキー用（重複を拒否）、台帳の検索列用（完全一致 / 部分一致走査）</td></tr>
+        <tr><td><code>Rdv3Ledger.cs</code></td><td>左外部結合の高速経路、マージ／置換の適用、識別列の検査、台帳行（タブ区切り 1 行）の操作</td></tr>
+        <tr><td><code>Rdv3Xlsx.cs</code></td><td>xlsx を zip + XML として直接読み書き（Excel 不要）。一時ファイルへ書いて置換</td></tr>
+        <tr><td><code>Rdv3Shared.cs</code></td><td>手元の控え（pending）、ロックファイル、版を知らせる符丁ファイル</td></tr>
+        <tr><td><code>Rdv3Jobs.cs</code></td><td>worker スレッドとジョブ列。run ID で古い結果を捨てる</td></tr>
+        <tr><td><code>Rdv3Json.cs</code></td><td>コメント付き JSON の厳格な読取り。未知メンバー・型違い・範囲外を行番号付きで拒否</td></tr>
+        <tr><td><code>Rdv3Data.cs</code></td><td><code>data</code> の読込み。表・ラベル・ジョブ・台帳列。ジョブの型検査（表 / 行集合 / 台帳）</td></tr>
+        <tr><td><code>Rdv3Process.cs</code></td><td>12 操作の実行と、計算式（列・数値・文字・四則演算）の評価</td></tr>
+        <tr><td><code>Rdv3Config.cs</code></td><td><code>settings.json</code> 全体の読込み。<code>paths</code> / <code>search</code> / <code>watch</code> だけの書き戻し</td></tr>
+        <tr><td><code>Rdv3Screen.cs</code></td><td><code>screen</code> の読込み（部品、値、判定、作業状態、候補一覧）と台帳列との突合せ</td></tr>
+        <tr><td><code>Rdv3Values.cs</code></td><td>値束縛の評価、書式（数値・日付）、判定、文言の穴埋め</td></tr>
+        <tr><td><code>Rdv3Uia.cs</code> / <code>Rdv3Watch.cs</code></td><td>UI Automation で窓 → 経路 → 欄を探して値を読む。複数対象を同時に見張る</td></tr>
+        <tr><td><code>Rdv3Text.cs</code></td><td>プログラム自身の文言（唯一の非 ASCII を含むファイル）</td></tr>
+        <tr><td><code>Rdv3Ui.cs</code></td><td>定義から標準 WinForms 部品を並べる主画面。自前の描画なし</td></tr>
+        <tr><td><code>Rdv3Modals.cs</code> / <code>Rdv3Settings.cs</code></td><td>確認、候補一覧、更新／削除、出力、通知、設定、要素ピッカー</td></tr>
+        <tr><td><code>Rdv3App.cs</code></td><td>入口、状態遷移、検索、作業状態の保存、送信、更新、削除、共有ファイルの監視、ログ</td></tr>
+      </table>
+      </div>
+      <p>コンパイル順は <code>build/sources.ps1</code> が唯一の正本で、パッカー・コンパイル検査・テストがそれを読みます。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>CSV の読み方と台帳の形</summary>
+    <div class="body">
+      <ul>
+        <li>CSV はファイル全体をバイト配列に読み、行ごとに列数・引用符・制御文字（0x00〜0x1F）・キー列（空、幅、ASCII）を検査します。
+          値はそのときは復号せず、必要になったセルだけを指定の文字コードで復号します。</li>
+        <li>指定の文字コードで復号できないバイトがあるかを読込時に一度だけ厳格に調べ、最初の行番号を覚えて「検証」列に出します。処理は続けます。</li>
+        <li>表のキー列は一意でなければならず、重複は行番号を挙げて止まります。</li>
+        <li>台帳の 1 行はメモリ上ではタブ区切りの文字列です。列名は CSV のヘッダーそのもので、<code>data.ledger.columns.source</code> の順です。</li>
+        <li>xlsx はシート <code>LEDGER</code> 1 枚。先頭列が作業状態（見出しは <code>screen.workState.store.column</code>）、以降が台帳列。
+          セルはすべて文字列（先頭のゼロが残る）。読むときは共有文字列やセル座標付きの形も受け付けるので、Excel で保存し直した台帳も読めます。</li>
+        <li>台帳を読んだ直後に、見出し行が定義と一致すること、識別列（<code>data.ledger.identity</code>）が空でも重複でもないこと、
+          セルにタブが無いことを確かめ、違えばファイル名と行番号を挙げます。</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>ジョブ（表操作）の語彙</summary>
+    <div class="body">
+      <p>ジョブは入力（表、または 1 列の外部ファイル）と順序付きの段（steps）です。段の出力名は次の段の対象になります。値の種類は
+      <b>表</b>、<b>行集合</b>（ある表から選んだ行）、<b>台帳</b>の 3 つで、種類が合わない組み合わせは起動時に拒否します。</p>
+      <div class="scroll">
+      <table>
+        <tr><th>operation</th><th>入力</th><th>出力</th></tr>
+        <tr><td><code>join</code></td><td>2 表、<code>keys</code>、<code>condition</code>: match（内部）/ left（左外部）/ full（完全外部）</td><td>表</td></tr>
+        <tr><td><code>append</code></td><td>同じ列名・順序の 2 表</td><td>表</td></tr>
+        <tr><td><code>extract</code></td><td>表と <code>where</code>、表と表 + <code>keys</code>（match / exclude）、行集合 2 つ（either / both / exclude）</td><td>行集合</td></tr>
+        <tr><td><code>select</code></td><td>1 表と <code>columns</code>（<code>as</code> で改名）</td><td>表</td></tr>
+        <tr><td><code>calculate</code></td><td>1 表、<code>column</code>、<code>expression</code></td><td>表</td></tr>
+        <tr><td><code>aggregate</code></td><td>1 表、<code>groupBy</code>、<code>aggregates</code>（sum / count）</td><td>表</td></tr>
+        <tr><td><code>sort</code></td><td>1 表、<code>orders</code>（ascending / descending、text / number）</td><td>表</td></tr>
+        <tr><td><code>distinct</code></td><td>1 表、同一判定の <code>columns</code></td><td>表</td></tr>
+        <tr><td><code>update</code></td><td>表と、その表からの行集合、<code>set</code></td><td>表</td></tr>
+        <tr><td><code>delete</code></td><td>表と、その表からの行集合</td><td>表</td></tr>
+        <tr><td><code>merge</code></td><td>元表と台帳、<code>keys</code>、<code>sourceOnly</code>（add / ignore）、<code>both</code>（update / keep）、<code>targetOnly</code>（keep / delete）</td><td>台帳</td></tr>
+        <tr><td><code>replace</code></td><td>元表と台帳、<code>keys</code></td><td>台帳</td></tr>
+      </table>
+      </div>
+      <p>左外部結合だけを重ねてマージ／置換で終わる更新ジョブは、バイト索引による高速経路で実行します（意味は同じ）。
+      それ以外の組み合わせは汎用の実行器で動きます。<code>where</code> の演算子は equals / notEquals / contains / startsWith / endsWith /
+      empty / notEmpty / greater / atLeast / less / atMost、式は列・数値・シングルクォートの文字・丸括弧と <code>+ - * /</code> だけです。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>共有ファイルと手元の控え</summary>
+    <div class="body">
+      <ul>
+        <li><b>手元の控え</b> — <code>%LOCALAPPDATA%\ReaderDataViewer\pending-&lt;台帳パスのハッシュ&gt;.dat</code>。行の識別値、保存する値、
+          その行の内容のダイジェスト（SHA-256）を持ちます。送信時にダイジェストが合わない行は「中身が変わっています」として残します。
+          共有台帳と同じ値へ戻した変更は控えから消えます。</li>
+        <li><b>ロック</b> — 台帳の隣の <code>&lt;台帳名&gt;.lock</code> を <code>CreateNew</code> で作れた側が書き手です。中に PC 名・ユーザー名・時刻を
+          持ち、待つ側はそれを表示します。書き終えたら消します。</li>
+        <li><b>符丁</b> — <code>&lt;台帳名&gt;.version</code>。版番号、書いた人、種類（update / send）、件数を 1 行で持ちます。各 PC は
+          <code>jobs.markerPollMs</code>（既定 3 秒）ごとにこのファイルだけを見て、版が進んだら台帳を読み直します。</li>
+        <li><b>書き込み</b> — 台帳・控え・符丁のどれも、一時ファイルに書いてから <code>File.Replace</code> で置き換えます。
+          読む側は置き換えを妨げない共有モード（ReadWrite | Delete）で開き、読み始めた版を最後まで読みます。</li>
+      </ul>
+    </div>
+  </details>
+
+  <details>
+    <summary>アプリの状態遷移とスレッド</summary>
+    <div class="body">
+      <p>UI スレッドは重い処理を持ちません。CSV の読込、索引、比較、検索、xlsx の読み書きは 1 本の worker スレッドがジョブ列の
+      順に実行し、結果だけを UI へ戻します。ジョブには run ID があり、待っている ID と違う結果（タイムアウト後に遅れて届いたもの、
+      検索の重ね打ち）は捨ててログに残します。</p>
+      <p>状態語: 起動中 → 更新を確認中 →（確認）→ 台帳を更新中 → 監視中。差分が無いか承諾しなければ保存済みの台帳のまま監視中、
+      台帳が無く作らないなら「台帳がありません」。送信中、レコードを削除中、台帳が空くのを待機中、台帳を読み直し中、
+      {状態}を保存中 の各状態では次の操作を受け付けません。</p>
+      <p>作業状態の保存・送信・更新・削除は「結果が確定するまで終了を拒否」します。確定（成功でも失敗でも）したら解除します。</p>
+    </div>
+  </details>
+
+  <details>
+    <summary>ログと検査</summary>
+    <div class="body">
+      <p>実行ログは <code>paths.log</code>（既定 <code>ReaderDataViewer.log</code>、<code>.vbs</code> の隣）にタブ区切りで 1 行ずつ追記します。
+      起動時の設定内容、読込・索引・結合・比較・保存の所要時間、検索の件数と時間、監視対象からの検出、ロックの取得・待機、
+      符丁の観測、エラーが残ります。</p>
+      <pre><code>build.bat                                                   配布物を dist\app-csharp に作る
+powershell -File build\compile_check.ps1                    パッカーと同じ形でコンパイルだけ行う
+powershell -File build\test_settings_contract.ps1           定義の読込みと拒否、マージ規則、送信の解決 (209 件)
+powershell -File build\test_settings_geometry.ps1           標準部品の構成 (36 件)
+powershell -File build\test_samples.ps1                     見本定義 5 組を製品コードに通す (158 件)
+powershell -File build\test_exit_guard.ps1                  実配布物を起動し、検索・保存・送信・競合・終了を通す (35 件)</code></pre>
+      <p>検査はどれも窓を画面に出しません（画面外に置くか、<code>DrawToBitmap</code> で描きます）。</p>
+    </div>
+  </details>
+</section>
+
+<footer>
+  <p>この説明書は 2026-09-04 に、ソースコードと同梱の設定だけを読んで書き起こしたものです。書かれている動きは
+  そのとき存在した実装で、将来の予定は含みません。</p>
+</footer>
+
+</div>
+</main>
+
+<script>
+(function () {
+  'use strict';
+  var pattern = /^[0-9]{8}$/;
+  var keyInput = document.getElementById('demo-key');
+  var msg = document.getElementById('demo-msg');
+  var candsPanel = document.getElementById('demo-cands-panel');
+  var candsList = document.getElementById('demo-cands');
+  var candsCount = document.getElementById('demo-cands-count');
+  var rec = document.getElementById('demo-rec');
+  var workBtn = document.getElementById('demo-work');
+  var pendingLbl = document.getElementById('demo-pending');
+  var sharedMsg = document.getElementById('demo-shared');
+  var shared = {};   // identity -> stored ("TRUE" / "FALSE"); the shared ledger's column
+  var pending = {};  // identity -> stored; the local store
+  var shown = null;  // { k1, k2, status }
+
+  function hitsFor(key) {
+    var n = parseInt(key, 10);
+    if (n >= 1 && n <= 1000) return 5;
+    if (n >= 1001 && n <= 6000) return 3;
+    if (n >= 6001 && n <= 21000) return 2;
+    if (n >= 21001 && n <= 71000) return 1;
+    return 0;
+  }
+  function candidatesFor(key, n) {
+    var list = [];
+    var statuses = ['DONE', 'OPEN', 'HOLD', 'VOID', 'DONE'];
+    for (var i = 0; i < n; i++) {
+      var k2 = ('00' + ((parseInt(key, 10) * 7 + i * 13) % 100000)).slice(-5);
+      list.push({ k1: key, k2: '000' + k2, status: statuses[(parseInt(key, 10) + i) % statuses.length] });
+    }
+    return list;
+  }
+  function stateOf(identity) {
+    if (Object.prototype.hasOwnProperty.call(pending, identity)) return pending[identity];
+    return shared[identity] || 'FALSE';
+  }
+  function setMsg(text, kind) { msg.textContent = text; msg.className = 'msg' + (kind ? ' ' + kind : ''); }
+  function judge(status) {
+    if (status === 'DONE' || status === 'OPEN') return { text: 'OK', cls: 'ok' };
+    if (status === 'HOLD' || status === 'VOID') return { text: 'NG', cls: 'ng' };
+    return { text: '未定義', cls: 'undef' };
+  }
+  function renderPending() {
+    var n = Object.keys(pending).length;
+    pendingLbl.textContent = '未送信 ' + n + ' 件';
+    pendingLbl.className = 'pending' + (n > 0 ? ' has' : '');
+  }
+  function show(c) {
+    shown = c;
+    rec.hidden = false;
+    document.getElementById('demo-rec-k1').textContent = c.k1;
+    document.getElementById('demo-rec-k2').textContent = c.k2;
+    document.getElementById('demo-rec-status').textContent = c.status;
+    var st = stateOf(c.k2);
+    document.getElementById('demo-rec-work').textContent = (st === 'TRUE') ? '処理済' : '未処理';
+    var j = judge(c.status);
+    var je = document.getElementById('demo-judge');
+    je.textContent = j.text; je.className = 'judge ' + j.cls;
+    workBtn.disabled = false;
+    workBtn.textContent = (st === 'TRUE') ? '処理済' : '未処理';
+    workBtn.setAttribute('aria-pressed', st === 'TRUE' ? 'true' : 'false');
+  }
+  function clearShown() {
+    shown = null;
+    rec.hidden = true;
+    candsPanel.hidden = true;
+    candsList.innerHTML = '';
+    workBtn.disabled = true;
+    workBtn.textContent = '未処理';
+    workBtn.setAttribute('aria-pressed', 'false');
+  }
+  function search() {
+    var key = keyInput.value.trim();
+    clearShown();
+    if (!pattern.test(key)) { setMsg('番号1 が形式 ^[0-9]{8}$ に一致しません', 'err'); return; }
+    var n = hitsFor(key);
+    if (n === 0) { setMsg('見つかりません', 'err'); return; }
+    var cands = candidatesFor(key, n);
+    if (n === 1) { setMsg('1 件が見つかりました。'); show(cands[0]); return; }
+    setMsg('複数ヒット（候補 ' + n + ' 件）。行を選ぶまで印は変わりません。');
+    candsPanel.hidden = false;
+    candsCount.textContent = '該当 ' + n + ' 件';
+    cands.forEach(function (c, i) {
+      var li = document.createElement('li');
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = (i + 1) + '  番号2 ' + c.k2 + '  状態 ' + c.status + '  ' + ((stateOf(c.k2) === 'TRUE') ? '済' : '未');
+      b.addEventListener('click', function () { candsPanel.hidden = true; setMsg('候補 ' + (i + 1) + ' を選びました。'); show(c); });
+      li.appendChild(b);
+      candsList.appendChild(li);
+    });
+    candsList.querySelector('button').focus();
+  }
+  function toggleWork() {
+    if (!shown) { setMsg('処理済にするレコードが表示されていません', 'err'); return; }
+    var current = stateOf(shown.k2);
+    var next = (current === 'TRUE') ? 'FALSE' : 'TRUE';
+    if (next === 'TRUE' && !window.confirm('表示中のレコード (番号2 = ' + shown.k2 + ') を処理済にします。よろしいですか?')) { return; }
+    if (next === (shared[shown.k2] || 'FALSE')) { delete pending[shown.k2]; } else { pending[shown.k2] = next; }
+    renderPending();
+    show(shown);
+    setMsg((next === 'TRUE') ? '処理済の保存が完了しました' : '未処理に戻しました', 'ok');
+  }
+  function send() {
+    var ids = Object.keys(pending);
+    if (ids.length === 0) { setMsg('未送信の変更はありません'); return; }
+    if (!window.confirm('未送信の ' + ids.length + ' 件を送信します。よろしいですか?\n\n送信した行は未送信から外れます。取り込んだデータは書き換えません。')) { return; }
+    var toDone = 0, toInitial = 0;
+    ids.forEach(function (id) { shared[id] = pending[id]; if (pending[id] === 'TRUE') toDone++; else toInitial++; });
+    pending = {};
+    renderPending();
+    if (shown) show(shown);
+    setMsg(ids.length + ' 件を送信しました', 'ok');
+    sharedMsg.textContent = 'ほかの PC ではこう見えます: 「あなた が ' + toDone + ' 件を処理済、' + toInitial + ' 件を未処理にしました」';
+  }
+  document.getElementById('demo-search').addEventListener('click', search);
+  keyInput.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); search(); } });
+  document.getElementById('demo-clear').addEventListener('click', function () { keyInput.value = ''; clearShown(); setMsg('入力と結果表示を消しました。'); keyInput.focus(); });
+  workBtn.addEventListener('click', toggleWork);
+  document.getElementById('demo-send').addEventListener('click', send);
+  renderPending();
+})();
+</script>
+</body>
+</html>

@@ -323,13 +323,6 @@ public sealed class Rdv3CandidatesForm : Rdv3Dialog
         Close();
     }
 
-    public int[] ColumnEdges()
-    {
-        int[] edges = new int[table.Columns.Count + 1];
-        for (int i = 0; i < table.Columns.Count; i++) { edges[i + 1] = edges[i] + table.Columns[i].Width; }
-        return edges;
-    }
-
     public static Rdv3CandidatesForm ForCheck(Rdv3CandidatesDef def, Rdv3Fields fields, Rdv3WorkState work,
                                                List<Rdv3CandRow> rows, int total, int selected)
     {
@@ -369,7 +362,9 @@ public sealed class Rdv3LedgerUpdateForm : Rdv3Dialog
         body.TextAlign = ContentAlignment.TopLeft;
         if (rows.Count > 0)
         {
-            body.Text += "\r\n" + Rdv3Text.SharedResetFmt.Replace("{n}", rows.Count.ToString("N0", CultureInfo.InvariantCulture));
+            body.Text += "\r\n" + Rdv3Text.SharedResetFmt
+                .Replace("{state}", owner.Screen.Work.InitialState.Text)
+                .Replace("{n}", rows.Count.ToString("N0", CultureInfo.InvariantCulture));
         }
 
         FlowLayoutPanel buttons = new FlowLayoutPanel();
@@ -594,7 +589,7 @@ public sealed class Rdv3ProcessForm : Rdv3Dialog
 
         GroupBox inputGroup = new GroupBox();
         inputGroup.Name = "process.inputsGroup";
-        inputGroup.Text = Rdv3Text.SecInputs;
+        inputGroup.Text = Rdv3Text.SecInputs.Replace("{dir}", new DirectoryInfo(dir).Name);
         inputGroup.Dock = DockStyle.Fill;
         inputGroup.Padding = new Padding(7, 3, 7, 0);
         inputGroup.Margin = new Padding(0, 0, 0, 6);
@@ -714,8 +709,16 @@ public sealed class Rdv3ProcessForm : Rdv3Dialog
                 {
                     Rdv3Table table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column);
                     rows = table.Rows.ToString("N0", CultureInfo.InvariantCulture);
-                    validation = Rdv3Text.ValidationColumnsMatch;
-                    color = Color.DarkGreen;
+                    if (table.InvalidEncodingRow > 0)
+                    {
+                        validation = Rdv3Text.ValidationEncodingMismatch.Replace("{row}", table.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture));
+                        color = Color.Maroon;
+                    }
+                    else
+                    {
+                        validation = Rdv3Text.ValidationColumnsMatch;
+                        color = Color.DarkGreen;
+                    }
                 }
                 catch
                 {

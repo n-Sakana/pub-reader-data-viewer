@@ -42,7 +42,6 @@ public sealed class Rdv3Form : Form
     public Action<string> OnDeleteRecords;
     public Action OnSendChanges;
     public Action OnSettings;
-    public Action<int> OnPick;
 
     private Rdv3Fields fields = Rdv3Fields.Empty;
     private readonly List<BoundControl> bound = new List<BoundControl>();
@@ -401,13 +400,7 @@ public sealed class Rdv3Form : Form
         judgmentText.TextChanged += delegate { box.PerformLayout(); };
         judgmentSub.TextChanged += delegate { box.PerformLayout(); };
         judgmentDef = Screen.JudgmentOf(s.Judgment);
-        for (int i = 0; i < s.Sub.Count; i++)
-        {
-            BoundControl bc = new BoundControl();
-            bc.Control = judgmentSub;
-            bc.Bind = s.Sub[i];
-            bound.Add(bc);
-        }
+        // the sub line is composed from all of s.Sub at once, in RefreshJudgment
         judgmentSub.Tag = s;
         return box;
     }
@@ -756,7 +749,6 @@ public sealed class Rdv3Form : Form
         for (int i = 0; i < bound.Count; i++)
         {
             BoundControl x = bound[i];
-            if (x.Control == judgmentSub) { continue; }
             Rdv3Value value = Rdv3Eval.Evaluate(x.Bind, View, fields, Screen.Work);
             string t = value.Text;
             if (x.EmptyAsDash && (t == null || t.Length == 0)) { t = Rdv3Text.Dash; }

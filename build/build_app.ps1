@@ -129,9 +129,19 @@ Add-Type -TypeDefinition $esc.ToString() -ReferencedAssemblies $refs -Language C
 # definition that would not start the app does not build a ledger either
 $cfg = [Rdv3Config]::Load($cfgSrc)
 $mr = [Rdv3Ledger]::BuildFromCsv($cfg.Data, (Join-Path $destC 'data'))
-$exp = [Rdv3Expected]::Read($dataSrc)
-if ($exp.Loaded -and ($exp.Rows -ne $mr.Rows -or $exp.Checksum -ne $mr.Checksum)) {
-  throw ("initial merge does not match the oracle: rows {0}/{1} checksum {2}/{3}" -f $mr.Rows, $exp.Rows, $mr.Checksum, $exp.Checksum)
+# the data generator's own figures (data-100k\expected.txt: rows=..., joinchecksum=...)
+# have to agree with the merge, or the ledger is not built
+$expected = @{}
+$expectedFile = Join-Path $dataSrc 'expected.txt'
+if (Test-Path -LiteralPath $expectedFile) {
+  foreach ($line in [IO.File]::ReadAllLines($expectedFile)) {
+    $eq = $line.IndexOf('=')
+    if ($eq -gt 0) { $expected[$line.Substring(0, $eq)] = $line.Substring($eq + 1) }
+  }
+}
+if ($expected.ContainsKey('rows') -and $expected.ContainsKey('joinchecksum') -and
+    ([long]$expected['rows'] -ne $mr.Rows -or [long]$expected['joinchecksum'] -ne $mr.Checksum)) {
+  throw ("initial merge does not match expected.txt: rows {0}/{1} checksum {2}/{3}" -f $mr.Rows, $expected['rows'], $mr.Checksum, $expected['joinchecksum'])
 }
 # every record starts in the definition's initial work state, stored under
 # the column heading the definition names
@@ -139,7 +149,7 @@ $states = [Rdv3Ledger]::FreshStates($mr.Lines.Length, $cfg.Screen.Work.InitialSt
 $ledger = Join-Path $destC 'ReaderDataViewer-Ledger.xlsx'
 if (Test-Path -LiteralPath $ledger) { Remove-Item -LiteralPath $ledger -Force }
 [Rdv3Xlsx]::Write($ledger, $mr.Head, $cfg.Screen.Work.Column, $mr.Lines, $states, 'build')
-Write-Output ("  initial ledger: {0} rows, checksum {1} (oracle ok) -> {2}" -f $mr.Rows, $mr.Checksum, $ledger)
+Write-Output ("  initial ledger: {0} rows, checksum {1} (matches expected.txt) -> {2}" -f $mr.Rows, $mr.Checksum, $ledger)
 
 Head 'done'
 foreach ($d in 'dist\app-csharp') {

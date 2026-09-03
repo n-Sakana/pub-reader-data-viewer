@@ -171,7 +171,12 @@ public static class Rdv3Xlsx
     // ---- read --------------------------------------------------------------
     public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states)
     {
-        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+        // ReadWrite | Delete: another copy of the app may replace the file
+        // (write-temp-then-replace) while this one is still reading it. The
+        // replace then goes through, and this reader finishes the version it
+        // opened. With Read alone the other copy's send would fail with a
+        // sharing violation for as long as this read takes.
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
         {
             string[] shared = ReadSharedStrings(z);
@@ -219,6 +224,17 @@ public static class Rdv3Xlsx
                             CheckHeader(cells, head, stateHead, path);
                             sawHeader = true;
                             continue;
+                        }
+                        // a ledger line is tab-separated, so a tab typed into a
+                        // cell would shift every column after it: refused, with
+                        // the row as the sheet numbers it
+                        for (int c = 0; c < cells.Length; c++)
+                        {
+                            if (cells[c].IndexOf('\t') >= 0)
+                            {
+                                throw new Rdv3DataError(Rdv3Text.DataLedgerTab.Replace("{file}", Path.GetFileName(path))
+                                    .Replace("{row}", (outLines.Count + 2).ToString(CultureInfo.InvariantCulture)));
+                            }
                         }
                         StringBuilder sb = new StringBuilder(256);
                         for (int c = 0; c < head.Length; c++)

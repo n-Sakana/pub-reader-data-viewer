@@ -5,7 +5,7 @@
 // of parts that the file arranges, names and binds to data:
 //
 //   sections      titleBar | keyPanel | columns | fieldList | textBox |
-//                 statusBand | statusBar            (in display order)
+//                 statusBand | sendBar | statusBar  (in display order)
 //   values        { field } | { fields, joiner } | { state }   + format, empty
 //   judgments     a source value, ordered rules, named results with a look.
 //                 No rule matching is "undefined"; a source that cannot be

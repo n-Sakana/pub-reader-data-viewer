@@ -68,6 +68,9 @@ public sealed class Rdv3DeleteResult
 
 public static class Rdv3Ledger
 {
+    // the modulus of the join fingerprint logged with every merge
+    private const long Mod = 1000000007L;
+
     // ---- the merge: CSV -> ledger lines, with the timed stages ------------------
     public static Rdv3MergeResult BuildFromCsv(Rdv3Data d, string dataDir)
     {
@@ -111,7 +114,9 @@ public static class Rdv3Ledger
 
         if (!job.FastJoinPlan)
         {
-            r.Prepared = Rdv3Process.Prepare(d, job, dataDir);
+            // the tables just read (and their keys just proved unique) are the
+            // pipeline's table inputs; only a non-table input is read here
+            r.Prepared = Rdv3Process.Prepare(d, job, dataDir, tables);
             Rdv3ProcessResult process = Rdv3Process.Execute(r.Prepared, new string[0], new string[0], "", false);
             if (process.Kind != "ledger") { throw new InvalidDataException("automatic update job did not produce ledger"); }
             r.Head = d.Head;
@@ -125,9 +130,9 @@ public static class Rdv3Ledger
         r.Rows = spine.Rows;
 
         // joined[j][i] = the row of join j's table that spine row i joins to, or -1.
-        // The checksum is the one the comparison builds report (spine row by
-        // row, the joined row numbers in join order), so expected.txt still
-        // verifies the shipped merge.
+        // The checksum is a fingerprint of the join (spine row by row, the
+        // joined row numbers in join order): it is logged with the merge, and
+        // the build compares it with the figure the data generator recorded.
         int[][] joined = new int[job.Joins.Count][];
         List<int> found;
         for (int j = 0; j < job.Joins.Count; j++)
@@ -158,7 +163,7 @@ public static class Rdv3Ledger
         {
             long sum = 0;
             for (int j = 0; j < job.Joins.Count; j++) { sum += joined[j][i]; }
-            chk = (chk * 31 + sum) % Rdv3Spec.Mod;
+            chk = (chk * 31 + sum) % Mod;
         }
         r.Checksum = chk;
 
@@ -252,8 +257,8 @@ public static class Rdv3Ledger
         string[] newLines = sourceLines ?? new string[0];
         if (oldStates.Length != oldLines.Length) { throw new InvalidDataException("ledger content and application-column lengths differ"); }
 
-        Dictionary<string, int> oldById = UniqueRows(oldLines, identityCol, "target");
-        Dictionary<string, int> sourceById = UniqueRows(newLines, identityCol, "source");
+        Dictionary<string, int> oldById = RowMap(oldLines, identityCol, "target");
+        Dictionary<string, int> sourceById = RowMap(newLines, identityCol, "source");
         Rdv3ProcessStepDef step = job.ApplyStep;
         if (job.OnSourceChange != "reset" && job.OnSourceChange != "preserve")
         {
@@ -359,17 +364,64 @@ public static class Rdv3Ledger
         }
     }
 
-    private static Dictionary<string, int> UniqueRows(string[] lines, int identityCol, string side)
+    // ---- row identity ------------------------------------------------------
+    // Every ledger row is told apart by its identity column. One scan finds
+    // the rows by identity, or the first blank / duplicated one; the two
+    // callers below say it differently.
+    private static Dictionary<string, int> ScanIdentities(string[] lines, int identityCol,
+                                                          out int blankRow, out int dupFirst, out int dupSecond)
     {
+        blankRow = -1;
+        dupFirst = -1;
+        dupSecond = -1;
         Dictionary<string, int> rows = new Dictionary<string, int>(lines.Length, StringComparer.Ordinal);
         for (int i = 0; i < lines.Length; i++)
         {
             string identity = FieldOf(lines[i], identityCol);
-            if (identity.Length == 0) { throw new InvalidDataException("blank row identity in " + side); }
-            if (rows.ContainsKey(identity)) { throw new InvalidDataException("duplicate row identity in " + side + ": " + identity); }
+            if (identity.Length == 0) { blankRow = i; return rows; }
+            int first;
+            if (rows.TryGetValue(identity, out first)) { dupFirst = first; dupSecond = i; return rows; }
             rows.Add(identity, i);
         }
         return rows;
+    }
+
+    // the rows by identity, for lines the caller has already validated: a
+    // blank or duplicated identity here is a broken invariant, not user data
+    public static Dictionary<string, int> RowMap(string[] lines, int identityCol, string where)
+    {
+        int blank, first, second;
+        Dictionary<string, int> rows = ScanIdentities(lines, identityCol, out blank, out first, out second);
+        if (blank >= 0) { throw new InvalidDataException("blank row identity in " + where + " at row " + Row(blank)); }
+        if (second >= 0) { throw new InvalidDataException("duplicate row identity in " + where + ": " + FieldOf(lines[second], identityCol)); }
+        return rows;
+    }
+
+    // the saved ledger as read from its file, checked the way a CSV is: a blank
+    // or duplicated identity (a hand edit in Excel, say) is a data error that
+    // names the file, the column and the rows as the sheet numbers them
+    public static void CheckIdentities(string[] lines, int identityCol, string file, string name)
+    {
+        int blank, first, second;
+        ScanIdentities(lines, identityCol, out blank, out first, out second);
+        if (blank >= 0)
+        {
+            throw new Rdv3DataError(Rdv3Text.DataLedgerBlankIdentity
+                .Replace("{file}", file).Replace("{row}", Row(blank)).Replace("{name}", name));
+        }
+        if (second >= 0)
+        {
+            throw new Rdv3DataError(Rdv3Text.DataLedgerDupIdentity
+                .Replace("{file}", file).Replace("{name}", name)
+                .Replace("{key}", FieldOf(lines[second], identityCol))
+                .Replace("{row1}", Row(first)).Replace("{row2}", Row(second)));
+        }
+    }
+
+    // the row number a person sees in the sheet (the header is row 1)
+    private static string Row(int i)
+    {
+        return (i + 2).ToString(CultureInfo.InvariantCulture);
     }
 
     public static Rdv3DeleteResult ApplyDelete(Rdv3Data data, Rdv3ProcessJobDef job,

@@ -6,7 +6,7 @@
 
 - 現役の Reader Data Viewer は **C# / WinForms 版 1 種類**。
 - 製品ソースは `src/csharp/`、設定 (1 枚の `settings.json`: paths / search / watch / jobs / data / screen) は `src/config/`、起動部は `src/launcher/`。
-- CSV の定義 (`data`: 表、キー、結合、台帳の列) と画面 (`screen`: 部品 7 種、値の取り方 3 種、判定規則 3 種) は JSON の名前だけで書き、式やコードは書かせない。
+- CSV の定義 (`data`: 表、キー、結合、台帳の列) と画面 (`screen`: 部品 8 種、値の取り方 3 種、判定規則 3 種) は JSON の名前だけで書き、式やコードは書かせない。
 - `settings.json` は厳格に読む。無い・壊れている・知らないメンバー・範囲外・何も指していない名前は、既定で動かず起動しない (理由をダイアログとログへ)。組込み既定を持ち込まない。
 - `build.bat` と `build/build_dist.ps1` は `dist/app-csharp/` だけを生成する。出荷するデータと画面は**脱色したサンプル** (表A/B/C、`SAMPLE-A-0000001` のような値、中立なラベル) で、業務の色を付けない。
 - 現実的なダミー (販売 / 製造 / 施設予約 + 画面を変えた 2 変種) は `src/samples/<name>/settings.json` + `build/gen_samples.ps1` が `samples/` に生成する検査用の組で、`build/test_samples.ps1` が製品コードに通す。配布物には入れない。
@@ -24,8 +24,8 @@
 - ローカル Windows 上だけで動き、実行時にネットワーク接続しない。
 - UI Automation で対象の入力欄を読み、対象アプリには書き込まない。
 - CSV は `data` の定義どおりに結合する (出荷定義: 3 本、A-B は key1、B-C は key2)。
-- 統合台帳の identity は spine 表のキー (出荷定義では key2)。作業状態 (処理済み列) は identity と内容列が全部一致するときだけ引き継ぐ。
-- CSV は厳格に読む。列数違い・引用符付きの列・キーの空や幅違い・一意キーの重複は、ファイル名と行番号を挙げて拒否し、続行しない。黙ってずらさない。
+- 統合台帳の identity は `data.ledger.identity` (出荷定義では B.key2)。作業状態 (アプリ所有列) はマージで保たれ、入力側の内容が変わった行だけ `onSourceChange` (reset / preserve) に従う。
+- CSV は厳格に読む。列数違い・引用符付きの列・制御文字 (タブ・改行) を含む行・キーの空や幅違い・一意キーの重複は、ファイル名と行番号を挙げて拒否し、続行しない。黙ってずらさない。
 - 判定 (OK/NG) は画面定義の規則で CSV の生データから決め、一致なしは未定義、列なしはエラーとして明示する。暗黙に OK にしない。
 - 検索・結合・保存は worker スレッドで行い、UI スレッドを塞がない。
 - 作業状態の保存中は次の保存と終了を拒否し、成功または失敗が確定した後に解除する。キューや終了時一括保存へ変えない。
@@ -37,8 +37,8 @@
 - `docs/README.md` — 現行ドキュメントの索引
 - `docs/architecture.md` — 現行 C# 版の構成とデータ契約
 - `docs/settings.md` — `settings.json` (paths / search / watch / jobs / data、厳格な読込み)
-- `docs/ui-spec.md` — 手描き UI v2 の画面定義と検査 (履歴。現行 UI の正本ではない)
-- `README.html` — 動く暫定版の説明書。ブラウザで開くだけで読める
+- `docs/ui-spec.md` — `screen` (画面定義) の書き方、振る舞い、標準部品の割り当て
+- `README.html` — 動く説明書。ブラウザで開くだけで読める
 - `archive/README.md` — 退役物の境界と所在
 
 ## 開発コマンド

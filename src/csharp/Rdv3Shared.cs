@@ -131,7 +131,7 @@ public sealed class Rdv3PendingStore
         }
         string[] result = (string[])sharedStates.Clone();
         if (entries.Count == 0) { return result; }
-        Dictionary<string, int> rows = RowMap(lines, identityColumn);
+        Dictionary<string, int> rows = Rdv3Ledger.RowMap(lines, identityColumn, "ledger");
         foreach (KeyValuePair<string, Rdv3PendingEntry> pair in entries)
         {
             int row;
@@ -150,7 +150,7 @@ public sealed class Rdv3PendingStore
             throw new InvalidDataException("ledger lines and states do not match");
         }
         result.States = (string[])sharedStates.Clone();
-        Dictionary<string, int> rows = RowMap(lines, identityColumn);
+        Dictionary<string, int> rows = Rdv3Ledger.RowMap(lines, identityColumn, "ledger");
         List<Rdv3PendingEntry> pending = Snapshot();
         for (int i = 0; i < pending.Count; i++)
         {
@@ -186,19 +186,6 @@ public sealed class Rdv3PendingStore
         u.Identity = identity;
         u.Reason = reason;
         return u;
-    }
-
-    private static Dictionary<string, int> RowMap(string[] lines, int identityColumn)
-    {
-        Dictionary<string, int> rows = new Dictionary<string, int>(StringComparer.Ordinal);
-        for (int i = 0; i < lines.Length; i++)
-        {
-            string identity = Rdv3Ledger.FieldOf(lines[i], identityColumn);
-            if (identity.Length == 0) { throw new InvalidDataException("ledger identity is blank at row " + (i + 1).ToString(CultureInfo.InvariantCulture)); }
-            if (rows.ContainsKey(identity)) { throw new InvalidDataException("ledger identity is duplicated: " + identity); }
-            rows.Add(identity, i);
-        }
-        return rows;
     }
 
     private Dictionary<string, Rdv3PendingEntry> CopyEntries()
@@ -397,7 +384,7 @@ public sealed class Rdv3SharedFiles
     public Rdv3SharedMarker ReadMarker()
     {
         if (!File.Exists(markerPath)) { return null; }
-        string line = File.ReadAllText(markerPath, new UTF8Encoding(false)).TrimEnd('\r', '\n');
+        string line = ReadShared(markerPath).TrimEnd('\r', '\n');
         string[] cells = line.Split('\t');
         if (cells.Length != 10 || !string.Equals(cells[0], MarkerHeader, StringComparison.Ordinal))
         {
@@ -454,7 +441,7 @@ public sealed class Rdv3SharedFiles
         Rdv3LockInfo info = new Rdv3LockInfo();
         try
         {
-            string line = File.ReadAllText(lockPath, new UTF8Encoding(false)).TrimEnd('\r', '\n');
+            string line = ReadShared(lockPath).TrimEnd('\r', '\n');
             string[] cells = line.Split('\t');
             if (cells.Length == 4 && string.Equals(cells[0], LockHeader, StringComparison.Ordinal))
             {
@@ -468,6 +455,18 @@ public sealed class Rdv3SharedFiles
         try { info.TakenUtcTicks = File.GetLastWriteTimeUtc(lockPath).Ticks; }
         catch (Exception) { info.TakenUtcTicks = DateTime.UtcNow.Ticks; }
         return info;
+    }
+
+    // A shared file is read while another copy of the app may be replacing it
+    // (write-temp-then-replace). The open allows that replace, and the copy
+    // that is reading finishes the version it opened.
+    private static string ReadShared(string path)
+    {
+        using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        using (StreamReader reader = new StreamReader(stream, new UTF8Encoding(false)))
+        {
+            return reader.ReadToEnd();
+        }
     }
 
     private static string Encode(string value)

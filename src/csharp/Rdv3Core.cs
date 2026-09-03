@@ -1,16 +1,9 @@
 // ============================================================================
-// Rdv3Core.cs -- clock, CSV tables and the data error of the practical build.
+// Rdv3Core.cs -- clock, CSV tables and the data error.
 //
-// The product build is not a benchmark. Frozen benchmark sources live under
-// archive\comparisons; this directory contains only the selected product
-// implementation:
-//
-//   - one index method only: the standard Dictionary<string, List<int>>.
-//     There is no hand-built hash in this build and no fallback to one.
-//   - the merge runs once, in the background, at startup: its output is the
-//     integrated ledger, which is persisted and searched. Searching does NOT
-//     re-read the CSVs (the old per-trigger re-read contract belongs to the
-//     frozen comparison builds).
+// The CSVs are read once, in the background, when the app starts or the
+// operator asks for an update: their merge is the integrated ledger, which is
+// persisted and searched. Searching never re-reads the CSVs.
 //
 // The CSVs are RAW data and the tables are described by settings.json
 // ("data": which files, which column is the key, how they join -- Rdv3Data).
@@ -19,9 +12,14 @@
 //
 // The reader is STRICT. A row with the wrong number of columns, a field that
 // begins with a quote (this reader does not unquote, so a quoted field would
-// silently shift every column after it), a key of another width, a key with a
-// byte outside ASCII: each is an Rdv3DataError with the file and the row, and
-// the app does not run on that data. Nothing is skipped or repaired.
+// silently shift every column after it), a control character anywhere in a
+// row (a tab would shift the ledger's own tab-separated columns, and the other
+// control characters cannot be stored in the ledger's XML at all), a key of
+// another width, a key with a byte outside ASCII: each is an Rdv3DataError
+// with the file and the row, and the app does not run on that data. Nothing
+// is skipped or repaired. Bytes that are not valid in the declared encoding
+// are the one exception: they are decoded with the replacement character,
+// and the first such row is remembered so the screen can say so.
 //
 // C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
 // See build\pack_app.ps1.
@@ -38,11 +36,6 @@ using System.Text;
 public sealed class Rdv3DataError : Exception
 {
     public Rdv3DataError(string msg) : base(msg) { }
-}
-
-public static class Rdv3Spec
-{
-    public const long Mod = 1000000007L;
 }
 
 public static class Rdv3Clock
@@ -87,6 +80,7 @@ public sealed class Rdv3Table
     public int KeyCol;
     public int[] KeyAt;
     public int KeyLen;
+    public int InvalidEncodingRow;
 
     private static string Fmt(string text, string file, int row)
     {
@@ -110,6 +104,10 @@ public sealed class Rdv3Table
     private static string[] SplitHead(string line, string file)
     {
         if (line.Length > 0 && line[0] == '\uFEFF') { line = line.Substring(1); }
+        for (int i = 0; i < line.Length; i++)
+        {
+            if (line[i] < ' ') { throw new Rdv3DataError(ControlChar(file, 1, (int)line[i])); }
+        }
         string[] h = line.Split(',');
         for (int i = 0; i < h.Length; i++)
         {
@@ -135,6 +133,7 @@ public sealed class Rdv3Table
         t.Path = path;
         t.Enc = enc;
         t.Buf = File.ReadAllBytes(path);
+        t.InvalidEncodingRow = FindInvalidEncodingRow(t.Buf, enc);
         string file = System.IO.Path.GetFileName(path);
 
         byte[] b = t.Buf;
@@ -196,7 +195,11 @@ public sealed class Rdv3Table
             {
                 if (p < re && b[p] == (byte)'"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, row)); }
                 int q = p;
-                while (q < re && b[q] != (byte)',') { q++; }
+                while (q < re && b[q] != (byte)',')
+                {
+                    if (b[q] < 0x20) { throw new Rdv3DataError(ControlChar(file, row, (int)b[q])); }
+                    q++;
+                }
                 if (field == t.KeyCol) { keyAt = p; keyEnd = q; }
                 field++;
                 if (q >= re) { break; }
@@ -224,6 +227,30 @@ public sealed class Rdv3Table
             t.KeyAt[i] = keyAt;
         }
         return t;
+    }
+
+    // a tab, a carriage return or any other control character: named by its code
+    private static string ControlChar(string file, int row, int code)
+    {
+        return Fmt(Rdv3Text.DataControlChar, file, row).Replace("{code}", code.ToString("X2", CultureInfo.InvariantCulture));
+    }
+
+    private static int FindInvalidEncodingRow(byte[] bytes, Encoding enc)
+    {
+        Encoding strict = (Encoding)enc.Clone();
+        strict.DecoderFallback = DecoderFallback.ExceptionFallback;
+        try
+        {
+            strict.GetCharCount(bytes);
+            return 0;
+        }
+        catch (DecoderFallbackException ex)
+        {
+            int stop = Math.Max(0, Math.Min(ex.Index, bytes.Length));
+            int row = 1;
+            for (int i = 0; i < stop; i++) { if (bytes[i] == (byte)'\n') { row++; } }
+            return row;
+        }
     }
 
     // byte offset of field f in row i, -1 if the row has no such field
@@ -255,34 +282,5 @@ public sealed class Rdv3Table
     {
         for (int i = 0; i < Head.Length; i++) { if (Head[i] == name) { return i; } }
         return -1;
-    }
-}
-
-// expected.txt is the generator's independent oracle. The practical build keeps
-// the same verification the comparison builds ran (rows + join checksum); it is
-// logged, and a mismatch is surfaced as an error. Nothing new is checked.
-public sealed class Rdv3Expected
-{
-    public int Rows;
-    public long Checksum = -1;
-    public bool Loaded;
-
-    public static Rdv3Expected Read(string dir)
-    {
-        Rdv3Expected e = new Rdv3Expected();
-        string p = Path.Combine(dir, "expected.txt");
-        if (!File.Exists(p)) { return e; }
-        string[] lines = File.ReadAllLines(p);
-        for (int i = 0; i < lines.Length; i++)
-        {
-            int eq = lines[i].IndexOf('=');
-            if (eq <= 0) { continue; }
-            string k = lines[i].Substring(0, eq);
-            string v = lines[i].Substring(eq + 1);
-            if (k == "rows") { int.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out e.Rows); }
-            else if (k == "joinchecksum") { long.TryParse(v, NumberStyles.Integer, CultureInfo.InvariantCulture, out e.Checksum); }
-        }
-        e.Loaded = (e.Rows > 0);
-        return e;
     }
 }

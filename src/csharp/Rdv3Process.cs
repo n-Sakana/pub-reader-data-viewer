@@ -97,6 +97,13 @@ public static class Rdv3Process
 
     internal static Rdv3PreparedProcess Prepare(Rdv3Data data, Rdv3ProcessJobDef job, string dataDir)
     {
+        return Prepare(data, job, dataDir, null);
+    }
+
+    // tables: the definition's tables the caller has already read and indexed
+    // (definition order), so they are not read twice; null reads every input
+    internal static Rdv3PreparedProcess Prepare(Rdv3Data data, Rdv3ProcessJobDef job, string dataDir, Rdv3Table[] tables)
+    {
         if (data == null || job == null) { throw new ArgumentNullException("data"); }
         Rdv3PreparedProcess prepared = new Rdv3PreparedProcess();
         prepared.Data = data;
@@ -104,9 +111,13 @@ public static class Rdv3Process
         for (int i = 0; i < job.Inputs.Count; i++)
         {
             Rdv3ProcessInputDef input = job.Inputs[i];
-            string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
-            Rdv3Table table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column);
-            new Rdv3Index(table);
+            Rdv3Table table = (input.IsTable && tables != null) ? tables[input.TableOrd] : null;
+            if (table == null)
+            {
+                string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
+                table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column);
+                new Rdv3Index(table);                    // the key must be unique
+            }
             prepared.Inputs.Add(input.Id, input.IsTable
                 ? RelationOfTable(input, table) : RelationOfValues(input, table));
         }
@@ -229,21 +240,12 @@ public static class Rdv3Process
             ValidateLedgerIdentity(data, finalLedger);
         }
         FillResult(result, last);
-        if (result.Update == null && last is Rdv3Relation)
-        {
-            result.Update = new Rdv3UpdateResult();
-            result.Update.Lines = result.Lines;
-            result.Update.States = result.States;
-            result.Update.Deleted = result.Deleted;
-        }
-        else if (result.Update != null)
-        {
-            result.Update.Lines = result.Lines;
-            result.Update.States = result.States;
-            result.Update.Deleted = result.Deleted;
-        }
+        if (result.Update == null && last is Rdv3Relation) { result.Update = new Rdv3UpdateResult(); }
         if (result.Update != null)
         {
+            result.Update.Lines = result.Lines;
+            result.Update.States = result.States;
+            result.Update.Deleted = result.Deleted;
             result.Update.Updated += directUpdated;
             result.Update.ResetLines.AddRange(directReset);
         }

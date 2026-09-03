@@ -1,7 +1,6 @@
 # ---------------------------------------------------------------------------
-# boot-app.ps1 -- bootstrap for the practical build's single .cmd.
+# boot-app.ps1 -- bootstrap for the single-file .cmd / .vbs.
 #
-# Product bootstrap. Earlier variants are frozen under archive\comparisons.
 # It compiles the embedded C# with the in-box csc and hands over to
 # Rdv3Program.Run. Everything about the configuration -- reading settings.json,
 # checking it, resolving the paths in it -- happens in the C#; this script only
@@ -99,6 +98,6 @@ try {
 $RdvSw.Stop()
 $RdvCompileMs = $RdvSw.Elapsed.TotalMilliseconds
 
-# see boot-csharp.ps1: exit does not evaluate a method call in its argument
+# exit does not evaluate a method call in its argument, so the result is taken first
 $RdvRc = [Rdv3Program]::Run($RdvConfig, $RdvHere, $RdvDataArg, $RdvLedgerArg, $RdvLogArg, $RdvCompileMs)
 exit $RdvRc

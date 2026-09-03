@@ -21,7 +21,6 @@ public sealed class Rdv3TableDef
     public string Key = "";
     public int Ord;
     public string[] Head;
-    public int Rows = -1;
 }
 
 public sealed class Rdv3JoinDef

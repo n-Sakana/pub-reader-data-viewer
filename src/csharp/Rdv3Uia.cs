@@ -5,8 +5,8 @@
 // window, walking into the field the operator named, deciding which window has
 // the focus, and reading the text. There is no user32 call in this path -- not
 // GetForegroundWindow, not FindWindowEx, not a message hook, not a mouse or
-// keyboard poll. (The only P/Invoke left in the build is DPI awareness for our
-// OWN window, in Rdv3Ui.cs.)
+// keyboard poll. (The only P/Invoke in the build is DPI awareness for our OWN
+// window, in Rdv3Program, Rdv3App.cs.)
 //
 // A real line-of-business window is not Notepad: the field is usually several
 // levels down, inside a tab, a pane, a grid. So a target is a PATH --

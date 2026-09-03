@@ -1,11 +1,5 @@
 // ============================================================================
-// Rdv3Index.cs -- the ONE index of the practical build: the .NET standard
-// Dictionary<string, List<int>>.
-//
-// Same structure the archived one-to-many comparison measured as "C# Dict"
-// (archive\comparisons\one-to-many\src\csharp\Rdv2IdxDict.cs). The hand-built
-// hash measured next to it is evidence only and is deliberately not in this build:
-// there is no second method here and no fallback.
+// Rdv3Index.cs -- the one index: the .NET standard Dictionary<string, List<int>>.
 //
 // A key owns a set of rows, so the value is a list and nothing is ever
 // overwritten. A TABLE's key column is declared unique by the definition, so

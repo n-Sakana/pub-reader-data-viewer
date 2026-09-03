@@ -33,7 +33,6 @@ public static class Rdv3Text
     public const string StateNoTarget = "監視対象なし";
 
     // ---- the watch segment ----------------------------------------------------
-    public const string LabelNotepad = "メモ帳";
     public const string LabelWatch = "監視";
     public const string WatchConnectedFmt = "接続中（{title}）";
     public const string WatchNone = "未接続";
@@ -57,8 +56,6 @@ public static class Rdv3Text
     public const string NoteDeleteDone = "{n} 件を削除しました";
     public const string NoteNoPending = "未送信の変更はありません";
     public const string NoteNotFound = "見つかりません";
-    public const string TagDone = "完了";
-    public const string TagError = "エラー";
 
     // ---- confirmations ---------------------------------------------------------
     public const string ConfirmUpdateTitle = "更新の確認";
@@ -90,13 +87,11 @@ public static class Rdv3Text
     public const string ErrCheckTimeout = "更新確認がタイムアウトしました (保存済み台帳のまま続行します)";
     public const string ErrPersist = "台帳を書き込めませんでした: ";
     public const string ErrLedgerRead = "台帳を読み込めませんでした: ";
-    public const string ErrOracle = "検算 NG: 統合結果が expected.txt と一致しません";
     public const string ErrNotReady = "更新確認が終わるまで操作できません";
     public const string ErrSaveInFlight = "状態を保存中です。確定するまで次の操作はできません";
-    public const string ErrCloseWhileSaving = "状態を保存中です。確定するまで終了できません";
     public const string ErrCloseWhileWriting = "書き込み中です。結果が確定するまで終了できません";
     public const string ErrSaveOverdue = "状態の保存が想定より長引いています (確定するまで終了しません)";
-    public const string ErrBadKeyFmt = "番号1 が形式 {pattern} に一致しません";
+    public const string ErrBadKeyFmt = "{label} が形式 {pattern} に一致しません";
     public const string ErrBadPattern = "番号の形式（正規表現）が不正です。設定を確認してください";
     public const string ErrNoRecordShown = "{state}にするレコードが表示されていません";
     public const string ErrNoTransition = "このレコードはすでに{state}です";
@@ -136,11 +131,13 @@ public static class Rdv3Text
     public const string DataKeyWidth = "{file} の {row} 行目: キー列 {name} の幅が 1 行目 ({n} 文字) と違います";
     public const string DataDupKey = "{file}: キー列 {name} の値 {key} が {row1} 行目と {row2} 行目にあります (キーは一意である必要があります)";
     public const string DataLedgerHeader = "{file} の見出し行が、作業状態の列と画面定義の台帳列に一致しません";
+    public const string DataControlChar = "{file} の {row} 行目: 制御文字 (0x{code}) があります。タブや改行を含む値は読めません";
+    public const string DataLedgerTab = "{file} の {row} 行目: セルにタブ文字があります";
+    public const string DataLedgerBlankIdentity = "{file} の {row} 行目: {name} が空です";
+    public const string DataLedgerDupIdentity = "{file}: {name} の値 {key} が {row1} 行目と {row2} 行目にあります (台帳の 1 行は {name} で特定します)";
 
     // ---- placeholders and fixed words on the screen ---------------------------
     public const string PanelCand = "候補一覧";
-    public const string CandCount = "候補 {n} 件";
-    public const string SubMulti = "複数ヒット（候補 {n} 件）";
     public const string FieldUnresolved = "列なし";
     public const string StateBlank = "(空)";
     public const string JudgeUndefined = "未定義";
@@ -158,7 +155,7 @@ public static class Rdv3Text
     public const string SharedSendBody = "{user} が {done} 件を処理済、{todo} 件を未処理にしました";
     public const string SharedUpdateTitle = "台帳の更新";
     public const string SharedUpdateBody = "台帳が更新されました。切り替えますか";
-    public const string SharedResetFmt = "中身が変わったため未処理に戻ったレコード: {n} 件";
+    public const string SharedResetFmt = "中身が変わったため{state}に戻ったレコード: {n} 件";
     public const string UnmatchedTitle = "送信できなかったレコード";
     public const string UnmatchedBodyFmt = "共有台帳へ当てられなかった変更が {n} 件あります。未送信のまま残しました。";
     public const string UnmatchedMissing = "行がありません";
@@ -170,7 +167,7 @@ public static class Rdv3Text
     public const string DeleteRecordsTitle = "レコード削除";
     public const string UpdateRecordsHint = "定義されたファイルだけを読み、JSON の手順で統合台帳を更新します。";
     public const string DeleteRecordsHint = "定義されたファイルだけを読み、条件に一致する行を統合台帳から取り除きます。";
-    public const string SecInputs = "取り込むデータ（data＼）";
+    public const string SecInputs = "取り込むデータ（{dir}＼）";
     public const string SecProcess = "処理内容";
     public const string SecOutput = "書き出し先";
     public const string ColInput = "表";
@@ -188,6 +185,7 @@ public static class Rdv3Text
     public const string ValidationColumnsMatch = "列一致";
     public const string ValidationMissing = "ファイルなし";
     public const string ValidationError = "不一致";
+    public const string ValidationEncodingMismatch = "文字コード不一致（{row} 行目）";
     public const string LblPath = "パス";
     public const string LblFileName = "ファイル名";
     public const string LblLastWrite = "最終更新";
@@ -244,7 +242,6 @@ public static class Rdv3Text
             case "either": return "どちらか";
             case "both": return "両方";
             case "exclude": return "除く";
-            case "content": return "内容も一致";
         }
         return (condition == null || condition.Length == 0) ? Dash : condition;
     }
@@ -331,18 +328,10 @@ public static class Rdv3Text
     public const string SecTargets = "監視対象";
     public const string SecTarget = "対象の指定";
     public const string BtnInspect = "画面から選ぶ";
-    public const string NoteReadTarget = "読み取り対象:  {sum}（「画面から選ぶ」で自動設定されます）";
     public const string NoteTargetSummary = "{name}（{kind} = {value}）";
     public const string NoteNoTargetShort = "監視対象がありません";
-    public const string LblDisabled = "（無効）";
-    public const string SecKeyPattern = "形式（正規表現）";
-    public const string NoteKeyPattern = "入力がこの正規表現に一致したときだけ、番号として確定し検索します。";
-    public const string SecPaths = "ファイル";
-    public const string LblDataDir = "データ (CSV) フォルダー";
     public const string LblLedger = "統合台帳";
     public const string LblLog = "ログ";
-    public const string NoteFilesBase = "相対パスはプログラムと同じフォルダーが基準です。変更は次回の起動から有効になります。";
-    public const string BtnSave = "保存";
     public const string BtnCancel = "キャンセル";
     public const string NoValue = "N/A";
 
@@ -350,7 +339,6 @@ public static class Rdv3Text
     public const string PickTitle = "画面から選ぶ";
     public const string PickHow = "対象の欄にカーソルを合わせて  Ctrl + Shift  を押す";
     public const string PickEsc = "Esc で中止";
-    public const string TagTopMost = "最前面";
     public const string LblControlTypes = "種類";
     public const string LblAutomationId = "AutomationId";
     public const string LblClassName = "クラス名";
