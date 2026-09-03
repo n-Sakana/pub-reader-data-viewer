@@ -4,7 +4,7 @@
 #   dist\app-csharp\ReaderDataViewer.cmd            self-contained
 #   dist\app-csharp\settings.json                   the one settings file
 #   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    initial ledger (all FALSE)
-#   dist\app-csharp\data\table{A,B,C}.csv
+#   dist\app-csharp\data\table{A,B,C}.csv plus the two delete-job inputs
 #
 # It never touches archive\ and writes only under
 # dist\app-csharp.
@@ -30,7 +30,9 @@ function Head([string] $t) {
 
 # --- data: the verified 100k set, generated only if absent ------------------
 $dataSrc = Join-Path $Root 'data-100k'
-if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv'))) {
+if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv')) -or
+    -not (Test-Path -LiteralPath (Join-Path $dataSrc 'delete.csv')) -or
+    -not (Test-Path -LiteralPath (Join-Path $dataSrc 'delete-ref.csv'))) {
   Head 'data (100,000 rows x 3 tables -- gen_data2.ps1, the verified set)'
   & (Join-Path $Root 'build\gen_data2.ps1')
 }
@@ -41,7 +43,7 @@ if (-not (Test-Path -LiteralPath (Join-Path $dataSrc 'tableA.csv'))) {
 Head 'preflight: ps1 encoding'
 foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_dist.ps1', 'build\sources.ps1',
                   'build\compile_check.ps1', 'build\gen_data2.ps1', 'build\test_exit_guard.ps1',
-                  'build\test_ui_geometry.ps1', 'build\test_settings_geometry.ps1',
+                  'build\test_settings_geometry.ps1',
                   'build\test_settings_contract.ps1', 'build\gen_samples.ps1', 'build\test_samples.ps1',
                   'src\launcher\boot-app.ps1')) {
   $p = Join-Path $Root $ps
@@ -57,10 +59,10 @@ foreach ($ps in @('build\build_app.ps1', 'build\pack_app.ps1', 'build\build_dist
 function Copy-Data([string] $destRoot) {
   $d = Join-Path $destRoot 'data'
   if (-not (Test-Path -LiteralPath $d)) { New-Item -ItemType Directory -Path $d | Out-Null }
-  foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv') {
+  foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'delete-ref.csv') {
     Copy-Item -LiteralPath (Join-Path $dataSrc $f) -Destination (Join-Path $d $f) -Force
   }
-  Write-Output ("  data: 3 CSVs -> {0}" -f $d)
+  Write-Output ("  data: 5 CSVs -> {0}" -f $d)
 }
 
 # --- C# product --------------------------------------------------------------

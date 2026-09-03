@@ -48,7 +48,9 @@ if (-not [IO.Path]::IsPathRooted($OutDir)) { $OutDir = Join-Path $root $OutDir }
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
 $marker = Join-Path $OutDir 'expected.txt'
-if ((Test-Path -LiteralPath $marker) -and -not $Force) {
+if ((Test-Path -LiteralPath $marker) -and
+    (Test-Path -LiteralPath (Join-Path $OutDir 'delete.csv')) -and
+    (Test-Path -LiteralPath (Join-Path $OutDir 'delete-ref.csv')) -and -not $Force) {
   $have = Select-String -LiteralPath $marker -Pattern '^rows=(\d+)$' | Select-Object -First 1
   if ($have -and [int]$have.Matches[0].Groups[1].Value -eq $Rows) {
     Write-Output "already generated: $OutDir (rows=$Rows). -Force to rebuild."
@@ -246,6 +248,18 @@ public static class RdvGen2
         for (int k = 1; k <= N; k++) { w.WriteLine(RowC(k)); }
         w.Flush(); w.Close();
 
+        // Deterministic inputs for the shipped delete-job preview. They are
+        // deliberately small, and every value is already present in table B.
+        w = Open(Path.Combine(dir, "delete.csv"));
+        w.WriteLine("key2");
+        for (int i = 0; i < Math.Min(342, N); i++) { w.WriteLine(Pad(Perm(i + 1), 8)); }
+        w.Flush(); w.Close();
+
+        w = Open(Path.Combine(dir, "delete-ref.csv"));
+        w.WriteLine("b_ref");
+        for (int n = 1; n <= Math.Min(18, N); n++) { w.WriteLine("REF-" + Pad(n, 8)); }
+        w.Flush(); w.Close();
+
         StringBuilder exp = new StringBuilder();
         exp.Append("rows=").Append(N.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
         exp.Append("fields=10\r\n");
@@ -291,7 +305,7 @@ $chk = [RdvGen2]::Run($OutDir, $Rows)
 $sw.Stop()
 
 Write-Output ("done in {0:N1} s   joinchecksum={1}" -f $sw.Elapsed.TotalSeconds, $chk)
-foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'expected.txt') {
+foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'delete-ref.csv', 'expected.txt') {
   $fi = Get-Item -LiteralPath (Join-Path $OutDir $f)
   Write-Output ("  {0,-14} {1,14:N0} bytes" -f $fi.Name, $fi.Length)
 }

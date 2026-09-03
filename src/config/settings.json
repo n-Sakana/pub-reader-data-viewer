@@ -8,8 +8,7 @@
 //   search    what a number looks like, how many candidates to list
 //   watch     which windows to read the number from (UI Automation)
 //   jobs      time limits of the background jobs
-//   data      what the CSVs are and how they become the ledger (tables, keys,
-//             joins, the ledger columns)
+//   data      what the input tables are and how ordered jobs update the ledger
 //   screen    what the screen shows (sections, values, judgments, work
 //             states, the candidate list)
 //
@@ -34,7 +33,7 @@
 // worked examples are in src\samples (販売 / 製造 / 施設予約).
 // ============================================================================
 {
-  "schema": 2,
+  "schema": 3,
 
   "paths": {
     "dataDir": "data",
@@ -99,18 +98,19 @@
     "searchTimeoutMs": 30000,
     "saveTimeoutMs": 60000,
     "markOverdueMs": 180000,
-    "pumpMs": 1000
+    "pumpMs": 1000,
+    "lockRetryMs": 250,
+    "markerPollMs": 3000
   },
 
   // THE DATA.
   //
   // "tables": each CSV in paths.dataDir, by a short id, with the column that
-  // identifies one row of it ("key", unique). "spine": the table whose rows
-  // are the ledger rows, one each; its key is the row identity that the work
-  // state and the carry-over key on. "joins": for each other table, the spine
-  // column that holds that table's key (B.key1 -> A.key, B.key2 -> C.key).
-  // "ledger.columns": the ledger row, as "<table>.<column>", in the order the
-  // xlsx has them; "ledger.search": the column the search box looks up.
+  // identifies one row of it ("key", unique). "labels": the screen names used
+  // by the process and export dialogs. "jobs": the ordered inputs and steps
+  // behind each update/delete button; the user does not select a job.
+  // "ledger.columns" separates source-owned columns from the application-owned
+  // work state. "ledger.search" names one or more columns and exact/contains.
   //
   // Column names are the CSV header rows. Every name here is checked against
   // the headers before the window opens. "encoding" is "utf-8" (default) or
@@ -118,23 +118,87 @@
   "data": {
     "encoding": "utf-8",
     "tables": {
-      "A": { "file": "tableA.csv", "key": "key1" },
-      "B": { "file": "tableB.csv", "key": "key2" },
-      "C": { "file": "tableC.csv", "key": "key2" }
+      "A": { "label": "表A", "file": "tableA.csv", "key": "key1" },
+      "B": { "label": "表B", "file": "tableB.csv", "key": "key2" },
+      "C": { "label": "表C", "file": "tableC.csv", "key": "key2" }
     },
-    "spine": "B",
-    "joins": [
-      { "table": "A", "on": "key1" },
-      { "table": "C", "on": "key2" }
+    "labels": {
+      "B.key1": "番号1",
+      "B.key2": "番号2",
+      "B.b_line": "行番号",
+      "B.b_ref": "参照番号",
+      "B.b_date": "日付",
+      "B.b_qty": "数量",
+      "B.b_unit": "単位",
+      "B.b_total": "合計",
+      "B.b_status": "状態",
+      "B.b_memo": "メモ",
+      "A.a_name": "名称",
+      "A.a_code": "コード",
+      "A.a_grade": "区分",
+      "A.a_dept": "部門",
+      "A.a_amount": "金額",
+      "C.c_code": "コード",
+      "C.c_name": "名称",
+      "C.c_cat": "分類",
+      "C.c_price": "単価",
+      "C.c_stock": "在庫",
+      "A.key1": "番号1",
+      "C.key2": "番号2",
+      "ledger": "統合台帳",
+      "middle1": "中間1",
+      "middle2": "中間2",
+      "target1": "対象1",
+      "target2": "対象2",
+      "target": "対象"
+    },
+    "jobs": [
+      {
+        "id": "merge-ledger",
+        "name": "3表を統合して台帳へマージする",
+        "kind": "update",
+        "inputs": [
+          { "table": "A" },
+          { "table": "B" },
+          { "table": "C" }
+        ],
+        "steps": [
+          { "operation": "join", "target1": "B", "target2": "A", "keys": ["B.key1", "A.key1"], "condition": "left", "output": "middle1" },
+          { "operation": "join", "target1": "middle1", "target2": "C", "keys": ["B.key2", "C.key2"], "condition": "left", "output": "middle2" },
+          { "operation": "merge", "target1": "middle2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger",
+            "sourceOnly": "add", "both": "update", "targetOnly": "keep" }
+        ]
+      },
+      {
+        "id": "delete-listed-records",
+        "name": "指定ファイルに一致するレコードを削除",
+        "kind": "delete",
+        "inputs": [
+          { "id": "D1", "label": "delete.csv", "file": "delete.csv", "column": "key2", "key": "B.key2" },
+          { "id": "D2", "label": "delete-ref.csv", "file": "delete-ref.csv", "column": "b_ref", "key": "B.b_ref" }
+        ],
+        "steps": [
+          { "operation": "extract", "target1": "ledger", "target2": "D1", "keys": ["B.key2", "B.key2"], "condition": "match", "output": "target1" },
+          { "operation": "extract", "target1": "ledger", "target2": "D2", "keys": ["B.b_ref", "B.b_ref"], "condition": "match", "output": "target2" },
+          { "operation": "extract", "target1": "target1", "target2": "target2", "condition": "either", "output": "target" },
+          { "operation": "delete", "target1": "ledger", "target2": "target", "condition": "", "output": "ledger" }
+        ]
+      }
     ],
     "ledger": {
-      "search": "B.key1",
-      "columns": [
+      "identity": "B.key2",
+      "search": { "columns": ["B.key1"], "match": "exact" },
+      "columns": {
+        "application": [
+          { "name": "workState", "onSourceChange": "reset" }
+        ],
+        "source": [
         "B.key1", "B.key2",
         "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note",
         "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo",
         "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"
-      ]
+        ]
+      }
     }
   },
 
@@ -161,11 +225,11 @@
   //               "startSize" is the window's client size at start-up (CSS px);
   //               the screen reflows to whatever the window is resized to.
   //
-  //   sections    titleBar | keyPanel | columns | fieldList | textBox | statusBand | statusBar
+  //   sections    titleBar | keyPanel | columns | fieldList | textBox | statusBand | sendBar | statusBar
   //               in display order. Sizes are CSS px of the reference screen
   //               (docs/ui-reference/v2.html) and scale with the Windows display.
   "screen": {
-    "card": { "width": 1240, "startSize": [840, 830], "gap": 17, "padding": [14.3, 14.3, 14.2], "font": "Yu Gothic UI" },
+    "card": { "width": 780, "startSize": [780, 614], "gap": 8, "padding": [8], "font": "MS UI Gothic" },
     "toast": { "durationMs": 3600 },
 
     "judgments": {
@@ -194,30 +258,32 @@
       "transitions": [
         { "from": "todo", "to": "done",
           "confirm": "表示中のレコード (番号2 = {B.key2}) を処理済にします。よろしいですか?",
-          "done": "処理済の保存が完了しました" }
+          "done": "処理済の保存が完了しました" },
+        { "from": "done", "to": "todo",
+          "done": "未処理に戻しました" }
       ],
-      "button": { "text": "{state}", "tip": "表示中のレコードを処理済にします (確認あり)" }
+      "button": { "text": "{state}(&W)", "tip": "表示中のレコードの処理状態を切り替えます" }
     },
 
     "sections": [
-      { "type": "keyPanel",
-        "figure": { "label": "現在の番号（番号1）", "value": { "state": "searchKey" } },
-        "input": { "placeholder": "番号1 を入力", "width": 220, "maxLength": 64 },
+      { "type": "keyPanel", "title": "検索",
+        "figure": { "label": "現在の番号（番号1）:", "value": { "state": "searchKey" } },
+        "input": { "label": "番号1(&N):", "placeholder": "", "width": 150, "maxLength": 64 },
         "buttons": [
-          { "action": "search", "text": "検索", "icon": "search", "primary": true, "tip": "入力した番号1 で統合台帳を検索します" },
-          { "action": "clear", "text": "クリア", "tip": "入力と結果表示を消します (台帳と処理済は消えません)" },
+          { "action": "search", "text": "検索(&S)", "primary": true, "tip": "入力した番号1 で統合台帳を検索します" },
+          { "action": "clear", "text": "クリア(&C)", "tip": "入力と結果表示を消します (台帳と処理済は消えません)" },
           { "action": "workState" }
         ] },
 
-      { "type": "columns", "weights": [1, 1], "gap": 17,
+      { "type": "columns", "weights": [1, 1], "gap": 8,
         "items": [
-          { "type": "fieldList", "title": "番号", "labelWidth": 104, "rowHeight": 44,
+          { "type": "fieldList", "title": "番号", "labelWidth": 64, "rowHeight": 24,
             "rows": [
               { "label": "番号1", "value": { "field": "B.key1" } },
               { "label": "番号2", "value": { "field": "B.key2" } },
               { "label": "行番号", "value": { "field": "B.b_line" } }
             ] },
-          { "type": "fieldList", "title": "表A の項目", "labelWidth": 128, "rowHeight": 44,
+          { "type": "fieldList", "title": "表A の項目", "labelWidth": 78, "rowHeight": 24,
             "rows": [
               { "label": "名称", "value": { "field": "A.a_name" } },
               { "label": "コード", "value": { "field": "A.a_code" } },
@@ -232,35 +298,43 @@
       { "type": "textBox", "title": "メモ（表B: b_memo）", "lines": 4, "value": { "field": "B.b_memo" } },
       { "type": "textBox", "title": "備考（表C: c_remark）", "lines": 2, "value": { "field": "C.c_remark" } },
 
-      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 84,
+      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 38,
         "sub": [ { "field": "B.b_status" }, { "state": "workState" } ], "joiner": " ・ " },
 
-      { "type": "statusBar", "height": 48,
+      { "type": "sendBar", "height": 31, "value": { "state": "pendingCount" },
+        "buttons": [
+          { "action": "sendChanges", "text": "送信(&U)", "primary": true, "tip": "未送信の処理状態を共有台帳へ送信します" }
+        ] },
+
+      { "type": "statusBar", "height": 20,
         "segments": [
-          { "value": { "state": "appState" }, "bold": true, "dot": true },
+          { "value": { "state": "appState" }, "bold": true },
           { "prefix": "", "value": { "state": "watchLabel" } },
-          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } }
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } },
+          { "prefix": "", "value": { "state": "clock" } }
         ],
         "buttons": [
-          { "action": "refreshLedger", "text": "台帳更新", "icon": "refresh", "tip": "CSV の変更を確認して統合台帳を更新します" },
-          { "action": "settings", "text": "設定", "icon": "gear", "tip": "監視対象や動作の設定を変更します" }
+          { "action": "tableExport", "text": "テーブル出力(&T)...", "tip": "統合台帳を CSV に出力します" },
+          { "action": "updateRecords", "job": "merge-ledger", "text": "レコード更新(&R)...", "tip": "JSON に定義された更新ジョブを表示します" },
+          { "action": "deleteRecords", "job": "delete-listed-records", "text": "レコード削除(&D)...", "tip": "JSON に定義された削除ジョブを表示します" },
+          { "action": "settings", "text": "設定(&S)...", "tip": "監視対象や動作の設定を変更します" }
         ] }
     ],
 
     "candidates": {
       "title": "候補一覧", "hint": "行をクリックするとレコード詳細を表示します",
-      "width": 980, "maxHeight": 340, "rowHeight": 46, "headerHeight": 38,
+      "width": 744, "maxHeight": 168, "rowHeight": 20, "headerHeight": 20,
       "columns": [
-        { "header": "#", "width": 34, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
-        { "header": "番号2", "width": 108, "value": { "field": "B.key2" }, "bold": true },
-        { "header": "行番号", "width": 80, "align": "right", "value": { "field": "B.b_line" } },
-        { "header": "参照番号", "width": 128, "value": { "field": "B.b_ref" } },
-        { "header": "日付", "width": 100, "value": { "field": "B.b_date" } },
-        { "header": "数量", "width": 68, "align": "right", "value": { "field": "B.b_qty" } },
-        { "header": "状態", "width": 92, "value": { "field": "B.b_status" }, "render": "tag",
+        { "header": "#", "width": 26, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "番号2", "width": 84, "value": { "field": "B.key2" }, "bold": true },
+        { "header": "行番号", "width": 54, "align": "right", "value": { "field": "B.b_line" } },
+        { "header": "参照番号", "width": 96, "value": { "field": "B.b_ref" } },
+        { "header": "日付", "width": 76, "value": { "field": "B.b_date" } },
+        { "header": "数量", "width": 50, "align": "right", "value": { "field": "B.b_qty" } },
+        { "header": "状態", "width": 64, "value": { "field": "B.b_status" }, "render": "tag",
           "looks": { "DONE": "accent", "HOLD": "outline", "VOID": "faded", "*": "neutral" } },
-        { "header": "コード", "width": 100, "value": { "field": "C.c_code" } },
-        { "header": "名称", "width": 118, "value": { "field": "C.c_name" } },
+        { "header": "コード", "width": 72, "value": { "field": "C.c_code" } },
+        { "header": "名称", "width": 94, "value": { "field": "C.c_name" } },
         { "header": "処理済", "value": { "state": "workStateShort" }, "render": "tag" }
       ]
     }

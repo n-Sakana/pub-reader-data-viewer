@@ -129,7 +129,8 @@ foreach ($name in $want) {
   Ok 'the xlsx header is the CSV names'    ($mr.Head[0] -eq $data.Columns[0].Column) ($mr.Head -join ',')
 
   # ---- search -----------------------------------------------------------------------
-  $ix = New-Object Rdv3Index (,[Rdv3Ledger]::Column($mr.Lines, $data.SearchCol))
+  $searchCtor = [Rdv3Index].GetConstructor([Type[]]@([string[]], [int[]], [string]))
+  $ix = $searchCtor.Invoke([object[]]@($mr.Lines, $data.SearchCols, $data.SearchMatch))
   foreach ($probeName in 'multi', 'single') {
     $key = $facts['probe.' + $probeName + '.key']
     $hits = $ix.Find($key)
@@ -223,11 +224,10 @@ foreach ($name in $want) {
   $oldStates[$probeRow] = $lastStored                             # it had been worked
   $other = $(if ($probeRow -eq 0) { 1 } else { 0 })
   $oldStates[$other] = $lastStored                                # so had an unchanged one
-  $st = New-Object Rdv3Ledger+CarryStats
-  $ns = [Rdv3Ledger]::CarryStates($mr.Lines, $oldStates, $newLines, $idCol, $initial, $st)
-  Ok 'carry-over: the changed row goes back to the initial state' ($ns[$probeRow] -eq $initial) $ns[$probeRow]
-  Ok 'carry-over: the unchanged row keeps its state'            ($ns[$other] -eq $lastStored) $ns[$other]
-  Ok 'carry-over: the counts say so'                             (($st.Carried -eq 1) -and ($st.Reset -eq 1) -and ($st.New -eq 0) -and ($st.Dropped -eq 0)) ("{0}/{1}/{2}/{3}" -f $st.Carried, $st.Reset, $st.New, $st.Dropped)
+  $updated = [Rdv3Ledger]::ApplyUpdate($data.UpdateJob, $mr.Lines, $oldStates, $newLines, $idCol, $initial)
+  Ok 'update: the changed row goes back to the initial state' ($updated.States[$probeRow] -eq $initial) $updated.States[$probeRow]
+  Ok 'update: the unchanged row keeps its state'            ($updated.States[$other] -eq $lastStored) $updated.States[$other]
+  Ok 'update: the counts say so'                             (($updated.Unchanged -eq ($mr.Lines.Length - 1)) -and ($updated.Updated -eq 1) -and ($updated.ResetLines.Count -eq 1) -and ($updated.Deleted -eq 0)) ("{0}/{1}/{2}" -f $updated.Unchanged, $updated.Updated, $updated.ResetLines.Count)
 }
 
 Write-Output ''

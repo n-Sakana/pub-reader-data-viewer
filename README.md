@@ -1,6 +1,6 @@
 # Reader Data Viewer
 
-Windows 上で動く C# / WinForms アプリです。UI Automation で監視対象の入力欄を読み、3 本の CSV を結合して検索結果を表示します。画面は JSON の画面定義から組み立てます。
+Windows 上で動く C# / WinForms アプリです。UI Automation で監視対象の入力欄を読み、CSV に JSON で並べた表操作を適用して検索結果を表示します。画面も JSON の画面定義から組み立てます。
 
 現在の製品版は **C# 版 1 種類**です。VBA 版、方式比較、方式選定ベンチ、旧 UI 案、VBA Pixel Bridge 展示は
 すべて [`archive/`](archive/) に保全してあり、通常のビルドには入りません。
@@ -33,7 +33,10 @@ Windows PowerShell 5.1 と、Windows に含まれる .NET Framework の C# コ�
 2. 監視対象の入力欄へ番号を入れるか、画面の検索欄へ直接入力します。
 3. 複数候補がある場合は候補一覧から 1 件を選びます。
 4. 判定 (OK / NG / 未定義) は画面定義の規則で CSV の値から決まります。
-5. 作業状態 (未処理 → 処理済) はボタンで変え、確認後に台帳へ即時保存されます。
+5. 作業状態 (未処理 → 処理済) は手元へ控えられ、「送信」を押したときだけ共有台帳へ反映されます。
+
+ジョブは結合、抽出、追加、更新、削除、列操作、計算、集計、並べ替え、重複除去、マージ、置換を順に組み合わせます。
+台帳へマージするときの3方向の行き先、入力側の列が変わったときのアプリ所有列、検索列と完全一致／部分一致も JSON で指定します。
 
 アプリはローカルだけで動き、実行時にネットワークへ接続しません。監視対象は UI Automation だけで読み取り、対象アプリへ書き込みません。
 
@@ -57,7 +60,7 @@ archive/        退役物の保全。現行製品からは参照しない
 - [現行ドキュメント一覧](docs/README.md)
 - [アーキテクチャ](docs/architecture.md)
 - [設定ファイル](docs/settings.md)
-- [画面定義と UI 仕様](docs/ui-spec.md)
+- [旧画面定義と UI 仕様（v2・履歴）](docs/ui-spec.md)
 - [アーカイブ案内](archive/README.md)
 
 ## 開発時の確認
@@ -66,8 +69,8 @@ archive/        退役物の保全。現行製品からは参照しない
 powershell -NoProfile -ExecutionPolicy Bypass -File build\build_dist.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\compile_check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_contract.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_ui_geometry.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_geometry.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_exit_guard.ps1
 ```
 

@@ -52,7 +52,7 @@ public sealed class Rdv3Bind
     {
         "searchKey", "candidateCount", "workState", "workStateShort", "rowNumber",
         "appState", "watchLabel", "watchDetail", "ledgerFile", "ledgerRows", "ledgerSaved",
-        "mergeMs", "searchMs", "pid", "logName", "clock", "userName", "hostName"
+        "pendingCount", "mergeMs", "searchMs", "pid", "logName", "clock", "userName", "hostName"
     };
 
     public static bool IsStateName(string s)
@@ -332,13 +332,15 @@ public sealed class Rdv3TagDef
 
 public sealed class Rdv3ButtonDef
 {
-    public string Action = "";               // search | clear | workState | refreshLedger | settings
+    public string Action = "";               // a named action implemented by the main form
     public string Text = "";
     public string Icon = "";                 // "" | search | refresh | gear
     public string Tip = "";
+    public string Job = "";
     public bool Primary;
 
-    public static readonly string[] Actions = { "search", "clear", "workState", "refreshLedger", "settings" };
+    public static readonly string[] Actions =
+    { "search", "clear", "workState", "tableExport", "updateRecords", "deleteRecords", "sendChanges", "refreshLedger", "settings" };
 }
 
 public sealed class Rdv3RowDef
@@ -381,6 +383,7 @@ public sealed class Rdv3Section
     public string Label = "";
     public Rdv3Bind Value;
     public string Placeholder = "";
+    public string InputLabel = "";
     public double InputWidth = 220;
     public int MaxLength = 64;
     // columns
@@ -395,7 +398,7 @@ public sealed class Rdv3Section
     public List<Rdv3RowDef> Rows = new List<Rdv3RowDef>();
     // textBox: so many lines of text (the card fits around the box)
     public int Lines = 2;
-    // statusBand / statusBar
+    // statusBand / sendBar / statusBar
     public double Height;
     // statusBand
     public string Judgment = "";
@@ -405,7 +408,7 @@ public sealed class Rdv3Section
     public List<Rdv3SegmentDef> Segments = new List<Rdv3SegmentDef>();
 
     public static readonly string[] Types =
-    { "titleBar", "keyPanel", "columns", "fieldList", "textBox", "statusBand", "statusBar" };
+    { "titleBar", "keyPanel", "columns", "fieldList", "textBox", "statusBand", "sendBar", "statusBar" };
 
     public static Rdv3Section Read(Rdv3Json o, bool nested)
     {
@@ -436,7 +439,8 @@ public sealed class Rdv3Section
         }
         else if (s.Type == "keyPanel")
         {
-            o.Only("type", "margin", "figure", "input", "buttons");
+            o.Only("type", "margin", "title", "figure", "input", "buttons");
+            s.Title = o.StrOr("title", "");
             Rdv3Json fig = o.Obj("figure", true);
             fig.Only("label", "value");
             s.Label = fig.StrOr("label", "");
@@ -444,7 +448,8 @@ public sealed class Rdv3Section
             Rdv3Json inp = o.Obj("input", false);
             if (inp != null)
             {
-                inp.Only("placeholder", "width", "maxLength");
+                inp.Only("label", "placeholder", "width", "maxLength");
+                s.InputLabel = inp.StrOr("label", "");
                 s.Placeholder = inp.StrOr("placeholder", "");
                 s.InputWidth = inp.DblOr("width", s.InputWidth, 60, 2000);
                 s.MaxLength = inp.IntOr("maxLength", s.MaxLength, 1, 256);
@@ -502,11 +507,22 @@ public sealed class Rdv3Section
         {
             o.Only("type", "margin", "label", "height", "judgment", "joiner", "sub");
             s.Label = o.StrOr("label", "");
-            s.Height = o.DblOr("height", 84, 40, 500);
+            s.Height = o.DblOr("height", 84, 30, 500);
             s.Judgment = o.Need("judgment");
             s.Joiner = o.StrOr("joiner", s.Joiner);
             List<Rdv3Json> sub = o.Objs("sub", false);
             for (int i = 0; i < sub.Count; i++) { s.Sub.Add(Rdv3Bind.Read(sub[i])); }
+        }
+        else if (s.Type == "sendBar")
+        {
+            o.Only("type", "margin", "height", "value", "buttons");
+            s.Height = o.DblOr("height", 31, 24, 200);
+            s.Value = Rdv3Bind.Read(o.Obj("value", true));
+            s.Buttons = ReadButtons(o.Objs("buttons", true));
+            if (s.Buttons.Count != 1 || s.Buttons[0].Action != "sendChanges")
+            {
+                throw o.Member("buttons").Fail("must hold one sendChanges button");
+            }
         }
         else if (s.Type == "statusBar")
         {
@@ -534,13 +550,14 @@ public sealed class Rdv3Section
         for (int i = 0; i < a.Count; i++)
         {
             Rdv3Json b = a[i];
-            b.Only("action", "text", "icon", "tip", "primary");
+            b.Only("action", "text", "icon", "tip", "primary", "job");
             Rdv3ButtonDef d = new Rdv3ButtonDef();
             d.Action = b.Word("action", "", Rdv3ButtonDef.Actions);
             if (d.Action.Length == 0) { throw b.Fail("action is required"); }
             d.Text = b.StrOr("text", "");
             d.Icon = b.Word("icon", "", "", "search", "refresh", "gear");
             d.Tip = b.StrOr("tip", "");
+            d.Job = b.StrOr("job", "");
             d.Primary = b.BoolOr("primary", false);
             if (d.Text.Length == 0 && d.Action != "workState") { throw b.Fail("text is required"); }
             list.Add(d);
@@ -724,6 +741,27 @@ public sealed class Rdv3Screen
             CheckTemplate(t.Confirm, data, t.Line);
             CheckTemplate(t.Done, data, t.Line);
         }
+        for (int i = 0; i < Sections.Count; i++) { CheckButtons(Sections[i], data); }
+    }
+
+    private static void CheckButtons(Rdv3Section section, Rdv3Data data)
+    {
+        for (int i = 0; i < section.Buttons.Count; i++)
+        {
+            Rdv3ButtonDef button = section.Buttons[i];
+            bool process = button.Action == "updateRecords" || button.Action == "deleteRecords";
+            if (!process)
+            {
+                if (button.Job.Length > 0) { throw new Rdv3LoadError("screen: only updateRecords/deleteRecords buttons may name a job", section.Line); }
+                continue;
+            }
+            Rdv3ProcessJobDef job = data.JobOf(button.Job);
+            string kind = (button.Action == "updateRecords") ? "update" : "delete";
+            if (job == null) { throw new Rdv3LoadError("screen: button job " + button.Job + " is not one of data.jobs", section.Line); }
+            if (job.Kind != kind) { throw new Rdv3LoadError("screen: button job " + button.Job + " is " + job.Kind + ", not " + kind, section.Line); }
+            if (job.FinalKind != "ledger") { throw new Rdv3LoadError("screen: button job " + button.Job + " does not produce ledger", section.Line); }
+        }
+        for (int i = 0; i < section.Items.Count; i++) { CheckButtons(section.Items[i], data); }
     }
 
     private static void CheckTemplate(string text, Rdv3Data data, int line)

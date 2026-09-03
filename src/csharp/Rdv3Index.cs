@@ -22,16 +22,22 @@ using System.Text;
 public sealed class Rdv3Index
 {
     private readonly Dictionary<string, List<int>> map;
+    private readonly string[] scanLines;
+    private readonly int[] scanColumns;
+    private readonly bool contains;
     // the width of the key this index was built on (0 for a string index)
     private readonly int keyLen;
 
-    public int Keys { get { return map.Count; } }
+    public int Keys { get { return (map == null) ? 0 : map.Count; } }
     public int KeyLen { get { return keyLen; } }
 
     // index a CSV table by its key column, at the width the table itself
     // declares; the key is unique, and a duplicate is a data error
     public Rdv3Index(Rdv3Table t)
     {
+        scanLines = null;
+        scanColumns = null;
+        contains = false;
         keyLen = t.KeyLen;
         map = new Dictionary<string, List<int>>(t.Rows, StringComparer.Ordinal);
         byte[] b = t.Buf;
@@ -57,6 +63,9 @@ public sealed class Rdv3Index
     // index arbitrary row keys (the ledger's search column: one key, many rows)
     public Rdv3Index(string[] keys)
     {
+        scanLines = null;
+        scanColumns = null;
+        contains = false;
         map = new Dictionary<string, List<int>>(keys.Length, StringComparer.Ordinal);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -70,8 +79,57 @@ public sealed class Rdv3Index
         }
     }
 
+    // A ledger search can name several columns. Exact matching keeps the
+    // dictionary path; contains matching deliberately scans the configured
+    // columns and is measured by the caller on real data.
+    public Rdv3Index(string[] lines, int[] columns, string match)
+    {
+        keyLen = 0;
+        scanLines = lines ?? new string[0];
+        scanColumns = columns ?? new int[0];
+        contains = string.Equals(match, "contains", StringComparison.Ordinal);
+        if (contains)
+        {
+            map = null;
+            return;
+        }
+        map = new Dictionary<string, List<int>>(scanLines.Length, StringComparer.Ordinal);
+        for (int row = 0; row < scanLines.Length; row++)
+        {
+            List<string> seen = new List<string>(scanColumns.Length);
+            for (int c = 0; c < scanColumns.Length; c++)
+            {
+                string value = Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]);
+                if (seen.Contains(value)) { continue; }
+                seen.Add(value);
+                List<int> rows;
+                if (!map.TryGetValue(value, out rows))
+                {
+                    rows = new List<int>(1);
+                    map.Add(value, rows);
+                }
+                rows.Add(row);
+            }
+        }
+    }
+
     public List<int> Find(string key)
     {
+        if (contains)
+        {
+            List<int> hits = new List<int>();
+            for (int row = 0; row < scanLines.Length; row++)
+            {
+                for (int c = 0; c < scanColumns.Length; c++)
+                {
+                    string value = Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]);
+                    if (value.IndexOf(key, StringComparison.Ordinal) < 0) { continue; }
+                    hits.Add(row);
+                    break;
+                }
+            }
+            return (hits.Count == 0) ? null : hits;
+        }
         List<int> rows;
         if (!map.TryGetValue(key, out rows)) { return null; }
         return rows;

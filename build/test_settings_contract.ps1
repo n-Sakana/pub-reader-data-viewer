@@ -91,17 +91,22 @@ function Refused([string] $name, [string] $path, [string] $pattern) {
 # ===========================================================================
 Section 'the shipped settings.json loads, and it is the only definition there is'
 $cfg = [Rdv3Config]::Load($shippedPath)
-Ok 'paths / search / watch / jobs are read' (($cfg.DataDir -eq 'data') -and ($cfg.KeyPattern -eq '^[0-9]{8}$') -and ($cfg.PollMs -eq 40) -and ($cfg.PumpMs -eq 1000) -and ($cfg.CandidateRowsShown -eq 100)) $cfg.Describe()
+Ok 'paths / search / watch / jobs are read' (($cfg.DataDir -eq 'data') -and ($cfg.KeyPattern -eq '^[0-9]{8}$') -and ($cfg.PollMs -eq 40) -and ($cfg.PumpMs -eq 1000) -and ($cfg.LockRetryMs -eq 250) -and ($cfg.MarkerPollMs -eq 3000) -and ($cfg.CandidateRowsShown -eq 100)) $cfg.Describe()
 Ok 'one target, watched'                 (($cfg.Targets.Count -eq 1) -and $cfg.Targets[0].IsWatchable) $cfg.Describe()
-Ok 'data: 3 tables, spine B, 2 joins'    (($cfg.Data.Tables.Count -eq 3) -and ($cfg.Data.Spine -eq 'B') -and ($cfg.Data.Joins.Count -eq 2)) $cfg.Data.Describe()
+Ok 'data: schema 3 has two named jobs'   (($cfg.Data.Jobs.Count -eq 2) -and ($cfg.Data.Jobs[0].Id -eq 'merge-ledger') -and ($cfg.Data.Jobs[1].Id -eq 'delete-listed-records')) $cfg.Data.Describe()
+Ok 'data: update job compiles to spine B and 2 joins' (($cfg.Data.Tables.Count -eq 3) -and ($cfg.Data.Spine -eq 'B') -and ($cfg.Data.Joins.Count -eq 2)) $cfg.Data.Describe()
 Ok 'data: 28 ledger columns'             ($cfg.Data.Columns.Count -eq 28) ("columns " + $cfg.Data.Columns.Count)
-Ok 'identity is B.key2 (column 1), search is B.key1 (column 0)' (($cfg.Data.IdentityCol -eq 1) -and ($cfg.Data.SearchCol -eq 0)) $cfg.Data.Describe()
+Ok 'the update is merge: add / update / keep' (($cfg.Data.UpdateJob.ApplyStep.Operation -eq 'merge') -and ($cfg.Data.UpdateJob.ApplyStep.SourceOnly -eq 'add') -and ($cfg.Data.UpdateJob.ApplyStep.Both -eq 'update') -and ($cfg.Data.UpdateJob.ApplyStep.TargetOnly -eq 'keep')) $cfg.Data.Describe()
+Ok 'source and application columns are separated with an explicit change rule' (($cfg.Data.ApplicationColumns.Count -eq 1) -and $cfg.Data.WorkStateIsApplicationOwned -and ($cfg.Data.WorkStateOnSourceChange -eq 'reset')) (($cfg.Data.ApplicationColumns -join ',') + '/' + $cfg.Data.WorkStateOnSourceChange)
+Ok 'identity is B.key2; exact search names B.key1' (($cfg.Data.IdentityCol -eq 1) -and ($cfg.Data.SearchCols.Count -eq 1) -and ($cfg.Data.SearchCols[0] -eq 0) -and ($cfg.Data.SearchMatch -eq 'exact')) $cfg.Data.Describe()
 Ok 'the xlsx header is the CSV names'    (($cfg.Data.Head[0] -eq 'key1') -and ($cfg.Data.Head[2] -eq 'a_code') -and ($cfg.Data.Head[27] -eq 'c_remark')) ($cfg.Data.Head -join ',')
 $types = @($cfg.Screen.Sections | ForEach-Object { $_.Type }) -join ','
-Ok 'screen: the sections in reference order' ($types -eq 'keyPanel,columns,textBox,textBox,statusBand,statusBar') $types
+Ok 'screen: the sections in reference order' ($types -eq 'keyPanel,columns,textBox,textBox,statusBand,sendBar,statusBar') $types
 Ok 'screen: judgment, 2 states, 10 candidate columns' (($cfg.Screen.Judgments.Count -eq 1) -and ($cfg.Screen.Work.States.Count -eq 2) -and ($cfg.Screen.Candidates.Columns.Count -eq 10)) $cfg.Screen.Describe()
 Ok 'the key panel carries its three buttons' (($cfg.Screen.Sections[0].Buttons.Count -eq 3) -and ($cfg.Screen.Sections[0].Buttons[2].Action -eq 'workState')) 'buttons'
-Ok 'the status bar carries the two actions'  (($cfg.Screen.Sections[5].Buttons.Count -eq 2) -and ($cfg.Screen.Sections[5].Buttons[0].Action -eq 'refreshLedger')) 'buttons'
+Ok 'the send band carries one direct action' (($cfg.Screen.Sections[5].Buttons.Count -eq 1) -and ($cfg.Screen.Sections[5].Buttons[0].Action -eq 'sendChanges')) 'send button'
+Ok 'the status bar carries four actions'  (($cfg.Screen.Sections[6].Buttons.Count -eq 4) -and ($cfg.Screen.Sections[6].Buttons[0].Action -eq 'tableExport') -and ($cfg.Screen.Sections[6].Buttons[3].Action -eq 'settings')) 'buttons'
+Ok 'update/delete buttons name their jobs directly' (($cfg.Screen.Sections[6].Buttons[1].Job -eq 'merge-ledger') -and ($cfg.Screen.Sections[6].Buttons[2].Job -eq 'delete-listed-records')) 'button jobs'
 Ok 'there is no built-in copy to fall back on' ($null -eq ([Rdv3Screen].GetMethod('Defaults')) -and $null -eq ([Rdv3Config].GetMethod('Defaults'))) 'Defaults() exists'
 
 # ===========================================================================
@@ -114,17 +119,21 @@ Refused 'a value of the wrong kind'              (Variant 'kind' '"pollMs": 40' 
 Refused 'a whole number written as a fraction'   (Variant 'frac' '"pumpMs": 1000' '"pumpMs": 1000.5') 'pumpMs.*whole number'
 Refused 'an unusable search pattern'             (Variant 'regex' '"pattern": "^[0-9]{8}$"' '"pattern": "([0-9]"') 'pattern.*regular expression'
 Refused 'a member written twice'                 (Variant 'twice' '"pumpMs": 1000' '"pumpMs": 1000, "pumpMs": 2000') 'written twice'
-Refused 'the old schema'                         (Variant 'schema' '"schema": 2' '"schema": 1') 'schema'
+Refused 'the old schema'                         (Variant 'schema' '"schema": 3' '"schema": 2') 'schema'
 Refused 'a missing top-level part'               (Variant 'nojobs' '"jobs": {' '"jobz": {') 'jobz|jobs'
 Refused 'a target that matches nothing'          (Variant 'blankwin' '"window": { "className": "Notepad", "scope": "children" }' '"window": { }') 'matches nothing'
 Refused 'a control type UI Automation lacks'     (Variant 'ctype' '["Document", "Edit"]' '["Document", "Edti"]') 'Edti'
-Refused 'data: a spine that is not a table'      (Variant 'spine' '"spine": "B"' '"spine": "X"') 'spine.*not one of the tables'
-Refused 'data: a join to an unknown table'       (Variant 'jointbl' '{ "table": "A", "on": "key1" }' '{ "table": "Z", "on": "key1" }') 'not one of the tables'
-Refused 'data: a table neither spine nor joined' (Variant 'unused' '{ "table": "C", "on": "key2" }' '{ "table": "A", "on": "key2" }') 'joined twice|neither the spine'
+Refused 'data: a job input names an unknown table' (Variant 'jobinput' '{ "table": "A" }' '{ "table": "Z" }') 'not one of the tables'
+Refused 'data: a step consumes an unknown target' (Variant 'steptarget' '"target2": "A", "keys": ["B.key1", "A.key1"]' '"target2": "Z", "keys": ["B.key1", "A.key1"]') 'has not been defined'
+Refused 'data: operations require matching value types' (Variant 'valuetype' '"operation": "extract", "target1": "target1", "target2": "target2"' '"operation": "append", "target1": "target1", "target2": "target2"') 'requires two tables'
+Refused 'screen: a process button names no job'  (Variant 'buttonjob' '"job": "merge-ledger"' '"job": "missing-job"') 'missing-job.*data.jobs'
 Refused 'data: a column written without its table' (Variant 'noref' '"A.a_code",' '"a_code",') '<table>.<column>'
 Refused 'data: a ledger column listed twice'     (Variant 'dupcol' '"A.a_code",' '"A.a_code", "A.a_code",') 'listed twice'
 Refused 'data: the identity missing from the ledger' (Variant 'noid' '"B.key1", "B.key2",' '"B.key1",') 'B.key2'
-Refused 'data: a search column outside the ledger' (Variant 'search' '"search": "B.key1"' '"search": "B.b_unit2"') 'B.b_unit2'
+Refused 'data: a search column outside the ledger' (Variant 'search' '"columns": ["B.key1"], "match": "exact"' '"columns": ["B.b_unit2"], "match": "exact"') 'B.b_unit2'
+Refused 'data: application ownership is explicit' (Variant 'owner' '{ "name": "workState", "onSourceChange": "reset" }' '') 'application.*no application-owned column'
+Refused 'data: merge row destinations are strict' (Variant 'rowdest' '"targetOnly": "keep"' '"targetOnly": "drop"') 'targetOnly.*keep / delete'
+Refused 'data: delete cannot target the whole ledger directly' (Variant 'unboundeddelete' '"operation": "delete", "target1": "ledger", "target2": "target"' '"operation": "delete", "target1": "ledger", "target2": "ledger"') 'requires a table and rows selected'
 Refused 'data: an encoding the machine lacks'    (Variant 'enc' '"encoding": "utf-8"' '"encoding": "klingon"') 'encoding'
 Refused 'screen: a value naming a column the ledger lacks' (Variant 'col' '{ "field": "A.a_name" }' '{ "field": "A.a_phone" }') 'A.a_phone.*data.ledger.columns'
 Refused 'screen: a section type nobody knows'    (Variant 'wizard' '"type": "textBox", "title": "メモ' '"type": "wizard", "title": "摘要') 'type.*must be one of'
@@ -145,6 +154,9 @@ Ok '6 digits is a key'              ($c.IsKey('123456')) 'IsKey'
 Ok '8 digits is not'                (-not $c.IsKey('12345678')) 'IsKey'
 Ok 'letters are not'                (-not $c.IsKey('12345A')) 'IsKey'
 Ok 'the shipped pattern: 8 digits'  ($cfg.IsKey('00021001') -and -not $cfg.IsKey('0002100')) 'IsKey'
+$multiSearch = [Rdv3Config]::Load((Variant 'multisearch' '"columns": ["B.key1"], "match": "exact"' '"columns": ["B.key1", "B.key2"], "match": "contains"'))
+Ok 'ledger search accepts several columns' (($multiSearch.Data.SearchCols.Count -eq 2) -and ($multiSearch.Data.SearchRefs[1] -eq 'B.key2')) ($multiSearch.Data.SearchRefs -join ',')
+Ok 'ledger search accepts contains matching' ($multiSearch.Data.SearchMatch -eq 'contains') $multiSearch.Data.SearchMatch
 
 # ===========================================================================
 Section 'watch.targets is watched AS WRITTEN'
@@ -293,7 +305,7 @@ $w = $cfg.Screen.Work
 Ok 'FALSE is todo, TRUE is done'      (($w.ByStored('FALSE').Id -eq 'todo') -and ($w.ByStored('TRUE').Id -eq 'done')) 'ByStored'
 Ok 'the initial state is todo'        ($w.InitialStored -eq 'FALSE') $w.InitialStored
 Ok 'todo moves to done'               ($w.FromState('todo').To -eq 'done') 'FromState'
-Ok 'done moves nowhere'               ($null -eq $w.FromState('done')) 'FromState'
+Ok 'done moves back to todo'           ($w.FromState('done').To -eq 'todo') 'FromState'
 Ok 'MAYBE is no state'                ($null -eq $w.ByStored('MAYBE')) 'ByStored'
 $vw = New-Object Rdv3View; $vw.Record = [Rdv3Ledger]::SplitLine($line); $vw.StoredState = 'MAYBE'
 $v = [Rdv3Eval]::WorkStateValue($vw, $w, $false)
@@ -316,11 +328,36 @@ $old = @("k1`tK2A`tx", "k1`tK2B`ty", "k1`tK2C`tz")
 $oldStates = @('TRUE', 'TRUE', 'FALSE')
 $new = @("k1`tK2A`tx", "k1`tK2B`tCHANGED", "k1`tK2D`tnew")
 $stats = New-Object Rdv3Ledger+CarryStats
-$ns = [Rdv3Ledger]::CarryStates($old, $oldStates, $new, 1, 'FALSE', $stats)
+$ns = [Rdv3Ledger]::CarryStates($old, $oldStates, $new, 1, 'FALSE', 'reset', $stats)
 Ok 'identical content keeps TRUE'     ($ns[0] -eq 'TRUE') $ns[0]
 Ok 'changed content resets'           ($ns[1] -eq 'FALSE') $ns[1]
 Ok 'a new row starts at the initial'  ($ns[2] -eq 'FALSE') $ns[2]
 Ok 'the counts say what happened'     (($stats.Carried -eq 1) -and ($stats.Reset -eq 1) -and ($stats.New -eq 1) -and ($stats.Dropped -eq 1)) ("{0}/{1}/{2}/{3}" -f $stats.Carried, $stats.Reset, $stats.New, $stats.Dropped)
+$stats = New-Object Rdv3Ledger+CarryStats
+$ns = [Rdv3Ledger]::CarryStates($old, $oldStates, $new, 1, 'FALSE', 'preserve', $stats)
+Ok 'the configured preserve rule keeps state across changed source columns' ($ns[1] -eq 'TRUE') ($ns -join ',')
+
+# ===========================================================================
+Section 'merge grows one ledger, preserves application state, and resets changed rows'
+$april = [string[]]@("APR`tID-APR-1`told-a", "APR`tID-APR-2`told-b")
+$aprilStates = [string[]]@('TRUE', 'TRUE')
+$may = [string[]]@("MAY`tID-APR-2`tchanged-b", "MAY`tID-MAY-1`tnew-c")
+$grown = [Rdv3Ledger]::ApplyUpdate($cfg.Data.UpdateJob, $april, $aprilStates, $may, 1, 'FALSE')
+Ok 'April plus May stays in one ledger' (($grown.Lines.Length -eq 3) -and ($grown.Lines[0] -eq $april[0]) -and ($grown.Lines[1] -eq $may[0]) -and ($grown.Lines[2] -eq $may[1])) ($grown.Lines -join '|')
+Ok 'a destination-only April row and its mark remain' (($grown.States[0] -eq 'TRUE') -and ($grown.Kept -eq 1)) (($grown.States -join ',') + ' kept=' + $grown.Kept)
+Ok 'changed source content returns a processed row to initial' (($grown.States[1] -eq 'FALSE') -and ($grown.Updated -eq 1) -and ($grown.ResetLines.Count -eq 1)) (($grown.States -join ',') + ' reset=' + $grown.ResetLines.Count)
+Ok 'a May-only row is appended in the initial state' (($grown.States[2] -eq 'FALSE') -and ($grown.Added -eq 1)) (($grown.States -join ',') + ' added=' + $grown.Added)
+$again = [Rdv3Ledger]::ApplyUpdate($cfg.Data.UpdateJob, $grown.Lines, $grown.States, $may, 1, 'FALSE')
+Ok 'applying the same month again is idempotent' ([Rdv3Ledger]::SameLedger($grown.Lines, $grown.States, $again.Lines, $again.States)) ($again.Lines -join '|')
+$preserveCfg = [Rdv3Config]::Load((Variant 'preserve-state' '"onSourceChange": "reset"' '"onSourceChange": "preserve"'))
+$preserved = [Rdv3Ledger]::ApplyUpdate($preserveCfg.Data.UpdateJob, $april, $aprilStates, $may, 1, 'FALSE')
+Ok 'merge uses the configured preserve rule rather than a built-in reset' (($preserved.States[1] -eq 'TRUE') -and ($preserved.ResetLines.Count -eq 0)) (($preserved.States -join ',') + ' reset=' + $preserved.ResetLines.Count)
+$defaultKeep = [Rdv3Config]::Load((Variant 'defaultkeep' ', "targetOnly": "keep" }' ' }'))
+Ok 'destination-only rows default to keep' ($defaultKeep.Data.UpdateJob.ApplyStep.TargetOnly -eq 'keep') $defaultKeep.Data.UpdateJob.ApplyStep.TargetOnly
+$cfg.Data.UpdateJob.ApplyStep.TargetOnly = 'delete'
+$synced = [Rdv3Ledger]::ApplyUpdate($cfg.Data.UpdateJob, $april, $aprilStates, $may, 1, 'FALSE')
+Ok 'destination-only rows are deleted only when the step says delete' (($synced.Lines.Length -eq 2) -and ($synced.Deleted -eq 1)) (($synced.Lines -join '|') + ' deleted=' + $synced.Deleted)
+$cfg.Data.UpdateJob.ApplyStep.TargetOnly = 'keep'
 
 # ===========================================================================
 Section 'the CSV reader is strict: what it refuses, it refuses by file and row'
@@ -385,15 +422,166 @@ $tb = [Rdv3Table]::Read($bom, 'bom', $utf8, 'key1')
 Ok 'a UTF-8 BOM is skipped'                      (($tb.Head[0] -eq 'key1') -and ([Rdv3Table]::ReadHead($bom, $utf8)[0] -eq 'key1')) ($tb.Head -join ',')
 
 # ===========================================================================
+Section 'every table-operation word is reachable through one typed pipeline'
+$vocabDir = Join-Path $work 'vocabulary'
+New-Item -ItemType Directory -Path $vocabDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $vocabDir 'x.csv'), "id,grp,qty,price,status`r`nX1,G1,2,5,OPEN`r`nX2,G1,3,4,CLOSED`r`nX3,G2,1,7,OPEN`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $vocabDir 'y.csv'), "id,grp,qty,price,status`r`nX1,G1,2,2,OPEN`r`nY2,G2,1,8,OPEN`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $vocabDir 'z.csv'), "id,note`r`nX1,N1`r`nZ1,NZ`r`n", $utf8)
+$vocabJson = @'
+{
+  "tables": {
+    "X": { "label": "X", "file": "x.csv", "key": "id" },
+    "Y": { "label": "Y", "file": "y.csv", "key": "id" },
+    "Z": { "label": "Z", "file": "z.csv", "key": "id" }
+  },
+  "labels": {
+    "X.id": "X id", "Y.id": "Y id", "Z.id": "Z id", "X.grp": "group",
+    "X.qty": "quantity", "X.price": "price", "X.status": "status", "Z.note": "note",
+    "ledger": "ledger", "baseStacked": "base stacked", "baseRows": "base rows", "stacked": "stacked",
+    "picked": "picked", "picked.group": "group", "picked.id": "id",
+    "picked.qty": "quantity", "picked.price": "price", "picked.status": "status",
+    "priced": "priced", "priced.amount": "amount", "openRows": "open rows",
+    "groupOneRows": "group one rows", "openGroupOneRows": "open group one rows",
+    "openOutsideGroupOneRows": "open outside group one rows",
+    "revised": "revised", "dedup": "deduplicated", "totals": "totals",
+    "totals.total": "total", "totals.count": "count", "ordered": "ordered",
+    "innerRows": "inner rows", "leftRows": "left rows", "fullRows": "full rows",
+    "rightOnly": "right-only rows", "sortedLedger": "sorted ledger",
+    "uniqueLedger": "unique ledger", "ledgerOpen": "open ledger rows"
+  },
+  "jobs": [
+    {
+      "id": "base", "name": "base", "kind": "update",
+      "inputs": [ { "table": "X" }, { "table": "Y" } ],
+      "steps": [
+        { "operation": "append", "target1": "X", "target2": "Y", "condition": "", "output": "baseStacked" },
+        { "operation": "distinct", "target1": "baseStacked", "condition": "", "columns": ["X.id"], "output": "baseRows" },
+        { "operation": "replace", "target1": "baseRows", "target2": "ledger", "keys": ["X.id", "X.id"], "condition": "", "output": "ledger" }
+      ]
+    },
+    {
+      "id": "alternate", "name": "alternate", "kind": "update",
+      "inputs": [ { "table": "X" } ],
+      "steps": [
+        { "operation": "replace", "target1": "X", "target2": "ledger", "keys": ["X.id", "X.id"], "condition": "", "output": "ledger" }
+      ]
+    },
+    {
+      "id": "table-words", "name": "table words", "kind": "delete",
+      "inputs": [ { "table": "X" }, { "table": "Y" } ],
+      "steps": [
+        { "operation": "append", "target1": "X", "target2": "Y", "condition": "", "output": "stacked" },
+        { "operation": "select", "target1": "stacked", "condition": "", "columns": [
+          { "column": "X.grp", "as": "group" }, { "column": "X.id", "as": "id" },
+          { "column": "X.qty", "as": "qty" }, { "column": "X.price", "as": "price" },
+          { "column": "X.status", "as": "status" }
+        ], "output": "picked" },
+        { "operation": "calculate", "target1": "picked", "condition": "", "column": "amount", "expression": "picked.qty * picked.price", "output": "priced" },
+        { "operation": "extract", "target1": "priced", "condition": "", "where": { "column": "picked.status", "operator": "equals", "value": "OPEN" }, "output": "openRows" },
+        { "operation": "extract", "target1": "priced", "condition": "", "where": { "column": "picked.group", "operator": "equals", "value": "G1" }, "output": "groupOneRows" },
+        { "operation": "extract", "target1": "openRows", "target2": "groupOneRows", "condition": "both", "output": "openGroupOneRows" },
+        { "operation": "extract", "target1": "openRows", "target2": "groupOneRows", "condition": "exclude", "output": "openOutsideGroupOneRows" },
+        { "operation": "update", "target1": "priced", "target2": "openRows", "condition": "", "set": [
+          { "column": "priced.amount", "expression": "priced.amount + 1" },
+          { "column": "picked.status", "expression": "'ACTIVE'" }
+        ], "output": "revised" },
+        { "operation": "distinct", "target1": "revised", "condition": "", "columns": ["picked.id"], "output": "dedup" },
+        { "operation": "aggregate", "target1": "dedup", "condition": "", "groupBy": ["picked.group"], "aggregates": [
+          { "function": "sum", "column": "priced.amount", "as": "total" },
+          { "function": "count", "as": "count" }
+        ], "output": "totals" },
+        { "operation": "sort", "target1": "totals", "condition": "", "orders": [
+          { "column": "totals.total", "direction": "descending", "type": "number" }
+        ], "output": "ordered" }
+      ]
+    },
+    {
+      "id": "join-words", "name": "join words", "kind": "delete",
+      "inputs": [ { "table": "X" }, { "table": "Z" } ],
+      "steps": [
+        { "operation": "join", "target1": "X", "target2": "Z", "keys": ["X.id", "Z.id"], "condition": "match", "output": "innerRows" },
+        { "operation": "join", "target1": "X", "target2": "Z", "keys": ["X.id", "Z.id"], "condition": "left", "output": "leftRows" },
+        { "operation": "join", "target1": "X", "target2": "Z", "keys": ["X.id", "Z.id"], "condition": "full", "output": "fullRows" },
+        { "operation": "extract", "target1": "fullRows", "condition": "", "where": { "column": "X.id", "operator": "empty" }, "output": "rightOnly" }
+      ]
+    },
+    {
+      "id": "direct-ledger-update", "name": "direct ledger update", "kind": "delete",
+      "inputs": [],
+      "steps": [
+        { "operation": "sort", "target1": "ledger", "condition": "", "orders": [
+          { "column": "X.id", "direction": "ascending", "type": "text" }
+        ], "output": "sortedLedger" },
+        { "operation": "distinct", "target1": "sortedLedger", "condition": "", "columns": ["X.id"], "output": "uniqueLedger" },
+        { "operation": "extract", "target1": "uniqueLedger", "condition": "", "where": { "column": "X.status", "operator": "equals", "value": "OPEN" }, "output": "ledgerOpen" },
+        { "operation": "update", "target1": "uniqueLedger", "target2": "ledgerOpen", "condition": "", "set": [
+          { "column": "X.price", "expression": "X.price + 1" }
+        ], "output": "ledger" }
+      ]
+    }
+  ],
+  "ledger": {
+    "identity": "X.id",
+    "search": { "columns": ["X.id"], "match": "exact" },
+    "columns": {
+      "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+      "source": ["X.id", "X.grp", "X.qty", "X.price", "X.status", "Z.note"]
+    }
+  }
+}
+'@
+$vocab = [Rdv3Data]::Read([Rdv3Json]::Parse($vocabJson))
+$vocab.Bind(@(
+  [string[]]@('id','grp','qty','price','status'),
+  [string[]]@('id','grp','qty','price','status'),
+  [string[]]@('id','note')))
+$genericMerge = [Rdv3Ledger]::BuildFromCsv($vocab, $vocabDir)
+Ok 'an update job can execute append and distinct before its ledger write' ((-not $vocab.UpdateJob.FastJoinPlan) -and ($genericMerge.Rows -eq 4) -and ($genericMerge.Lines[3] -match '^Y2')) ($genericMerge.Lines -join '|')
+$alternateMerge = [Rdv3Ledger]::BuildFromCsv($vocab, $vocab.JobOf('alternate'), $vocabDir)
+Ok 'the requested update job runs instead of silently returning to the first one' (($alternateMerge.Rows -eq 3) -and (($alternateMerge.Lines -join '|') -notmatch 'Y2')) ($alternateMerge.Lines -join '|')
+$wordRun = [Rdv3Process]::Run($vocab, $vocab.JobOf('table-words'), $vocabDir, [string[]]@(), [string[]]@(), 'FALSE')
+Ok 'append is executable, not a declared-only word' (($wordRun.ValueOf('stacked').Count -eq 5) -and ($wordRun.ValueOf('stacked').Lines[3] -match '^X1')) ($wordRun.ValueOf('stacked').Lines -join '|')
+Ok 'select chooses, reorders, and renames columns' (($wordRun.ValueOf('picked').Columns -join ',') -eq 'picked.group,picked.id,picked.qty,picked.price,picked.status') ($wordRun.ValueOf('picked').Columns -join ',')
+Ok 'calculate evaluates the configured arithmetic expression' (($wordRun.ValueOf('priced').Lines[0] -eq "G1`tX1`t2`t5`tOPEN`t10") -and ($wordRun.ValueOf('priced').Lines[1] -match "`t12$")) ($wordRun.ValueOf('priced').Lines -join '|')
+Ok 'extract filters a table column into a bounded row set' ($wordRun.ValueOf('openRows').Count -eq 4) $wordRun.ValueOf('openRows').Count
+Ok 'row-set both keeps the intersection' ($wordRun.ValueOf('openGroupOneRows').Count -eq 2) $wordRun.ValueOf('openGroupOneRows').Count
+Ok 'row-set exclude removes the second set from the first' ($wordRun.ValueOf('openOutsideGroupOneRows').Count -eq 2) $wordRun.ValueOf('openOutsideGroupOneRows').Count
+Ok 'update rewrites only the selected rows and is reachable in a delete-kind job' (($wordRun.ValueOf('revised').Lines[0] -eq "G1`tX1`t2`t5`tACTIVE`t11") -and ($wordRun.ValueOf('revised').Lines[1] -eq "G1`tX2`t3`t4`tCLOSED`t12")) ($wordRun.ValueOf('revised').Lines -join '|')
+Ok 'distinct keeps the first row for each configured column tuple' ($wordRun.ValueOf('dedup').Count -eq 4) ($wordRun.ValueOf('dedup').Lines -join '|')
+Ok 'aggregate provides sum and count by configured groups' (($wordRun.ValueOf('totals').Lines -join '|') -eq "G1`t23`t2|G2`t17`t2") ($wordRun.ValueOf('totals').Lines -join '|')
+Ok 'sort orders by configured numeric descending order' (($wordRun.Lines[0] -eq "G1`t23`t2") -and ($wordRun.Lines[1] -eq "G2`t17`t2")) ($wordRun.Lines -join '|')
+$joinRun = [Rdv3Process]::Run($vocab, $vocab.JobOf('join-words'), $vocabDir, [string[]]@(), [string[]]@(), 'FALSE')
+Ok 'inner join keeps only paired rows' ($joinRun.ValueOf('innerRows').Count -eq 1) ($joinRun.ValueOf('innerRows').Lines -join '|')
+Ok 'left outer join keeps every left row' (($joinRun.ValueOf('leftRows').Count -eq 3) -and ($joinRun.ValueOf('leftRows').Lines[1] -match "`t`t$")) ($joinRun.ValueOf('leftRows').Lines -join '|')
+Ok 'full outer join also keeps right-only rows' (($joinRun.ValueOf('fullRows').Count -eq 4) -and ($joinRun.ValueOf('fullRows').Lines[3] -match "^`t`t`t`t`tZ1`tNZ$")) ($joinRun.ValueOf('fullRows').Lines -join '|')
+Ok 'outer-join blanks can be filtered like ordinary empty fields' ($joinRun.ValueOf('rightOnly').Count -eq 1) $joinRun.ValueOf('rightOnly').Count
+$directInput = [string[]]@("X9`tG9`t1`t4`tOPEN`t")
+$directStates = [string[]]@('TRUE')
+$directRun = [Rdv3Process]::Run($vocab, $vocab.JobOf('direct-ledger-update'), $vocabDir, $directInput, $directStates, 'FALSE')
+Ok 'a direct source-column update obeys the configured reset rule' (($directRun.Lines[0] -eq "X9`tG9`t1`t5`tOPEN`t") -and ($directRun.States[0] -eq 'FALSE') -and ($directRun.Update.Updated -eq 1) -and ($directRun.Update.ResetLines.Count -eq 1)) (($directRun.Lines -join '|') + ' / ' + ($directRun.States -join ','))
+$vocabPreserve = [Rdv3Data]::Read([Rdv3Json]::Parse($vocabJson.Replace('"onSourceChange": "reset"', '"onSourceChange": "preserve"')))
+$vocabPreserve.Bind(@(
+  [string[]]@('id','grp','qty','price','status'),
+  [string[]]@('id','grp','qty','price','status'),
+  [string[]]@('id','note')))
+$directPreserved = [Rdv3Process]::Run($vocabPreserve, $vocabPreserve.JobOf('direct-ledger-update'), $vocabDir, $directInput, $directStates, 'FALSE')
+Ok 'a direct source-column update obeys the configured preserve rule' (($directPreserved.States[0] -eq 'TRUE') -and ($directPreserved.Update.ResetLines.Count -eq 0)) (($directPreserved.States -join ',') + ' reset=' + $directPreserved.Update.ResetLines.Count)
+
+# ===========================================================================
 Section 'the merge follows the definition: spine, joins, ledger columns'
 $dd = Join-Path $work 'tiny'
 New-Item -ItemType Directory -Path $dd | Out-Null
 [IO.File]::WriteAllText((Join-Path $dd 'a.csv'), "key1,a_x`r`n0001,AX1`r`n0002,AX2`r`n", $utf8)
 [IO.File]::WriteAllText((Join-Path $dd 'b.csv'), "key1,key2,b_x`r`n0001,K1,B1`r`n0001,K2,B2`r`n0009,K3,B3`r`n", $utf8)
 [IO.File]::WriteAllText((Join-Path $dd 'c.csv'), "key2,c_x,c_y`r`nK1,C1,Y1`r`nK3,C3,Y3`r`n", $utf8)
-$defJson = '{ "tables": { "A": { "file": "a.csv", "key": "key1" }, "B": { "file": "b.csv", "key": "key2" }, "C": { "file": "c.csv", "key": "key2" } },' +
-           '  "spine": "B", "joins": [ { "table": "A", "on": "key1" }, { "table": "C", "on": "key2" } ],' +
-           '  "ledger": { "search": "B.key1", "columns": [ "B.key2", "C.c_y", "A.a_x", "B.b_x", "B.key1" ] } }'
+$defJson = '{ "tables": { "A": { "label": "A", "file": "a.csv", "key": "key1" }, "B": { "label": "B", "file": "b.csv", "key": "key2" }, "C": { "label": "C", "file": "c.csv", "key": "key2" } },' +
+           '  "labels": { "A.key1": "A key1", "B.key1": "key1", "B.key2": "key2", "C.key2": "C key2", "ledger": "ledger", "previousLedger": "previous", "m1": "m1", "m2": "m2" },' +
+           '  "jobs": [ { "id": "replace", "name": "replace", "kind": "update", "inputs": [ { "table": "A" }, { "table": "B" }, { "table": "C" } ], "steps": [' +
+           '    { "operation": "join", "target1": "B", "target2": "A", "keys": ["B.key1", "A.key1"], "condition": "left", "output": "m1" },' +
+           '    { "operation": "join", "target1": "m1", "target2": "C", "keys": ["B.key2", "C.key2"], "condition": "left", "output": "m2" },' +
+           '    { "operation": "replace", "target1": "m2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger" } ] } ],' +
+           '  "ledger": { "identity": "B.key2", "search": { "columns": ["B.key1"], "match": "exact" }, "columns": { "application": [ { "name": "workState", "onSourceChange": "reset" } ], "source": [ "B.key2", "C.c_y", "A.a_x", "B.b_x", "B.key1" ] } } }'
 $def = [Rdv3Data]::Read([Rdv3Json]::Parse($defJson))
 $mr = [Rdv3Ledger]::BuildFromCsv($def, $dd)
 Ok 'one ledger row per spine row'        ($mr.Rows -eq 3) ("rows " + $mr.Rows)
@@ -402,8 +590,13 @@ Ok 'a row whose join finds nothing is blank there' ($mr.Lines[1] -eq "K2`t`tAX1`
 Ok 'a spine key nobody has leaves A blank' ($mr.Lines[2] -eq "K3`tY3`t`tB3`t0009") $mr.Lines[2]
 Ok 'the matched counts say so'           (($mr.Matched[0] -eq 2) -and ($mr.Matched[1] -eq 2)) ($mr.Matched -join ',')
 Ok 'the xlsx header is the CSV names'    (($mr.Head -join ',') -eq 'key2,c_y,a_x,b_x,key1') ($mr.Head -join ',')
-Ok 'identity and search columns follow'  (($def.IdentityCol -eq 0) -and ($def.SearchCol -eq 4)) ("{0}/{1}" -f $def.IdentityCol, $def.SearchCol)
-$m = ErrorOf { [Rdv3Data]::Read([Rdv3Json]::Parse($defJson.Replace('"columns": [ "B.key2",', '"columns": ['))) }
+Ok 'identity and search columns follow'  (($def.IdentityCol -eq 0) -and ($def.SearchCols[0] -eq 4)) ("{0}/{1}" -f $def.IdentityCol, $def.SearchCols[0])
+$replaceOld = [string[]]@("OLD`told", $mr.Lines[0])
+$replaceStates = [string[]]@('TRUE', 'TRUE')
+$replaced = [Rdv3Ledger]::ApplyUpdate($def.UpdateJob, $replaceOld, $replaceStates, $mr.Lines, 0, 'FALSE')
+Ok 'replace remains available and follows source order' (($replaced.Lines.Length -eq 3) -and ($replaced.Lines[0] -eq $mr.Lines[0]) -and ($replaced.Deleted -eq 1)) (($replaced.Lines -join '|') + ' deleted=' + $replaced.Deleted)
+Ok 'replace also preserves an unchanged application-owned value' ($replaced.States[0] -eq 'TRUE') ($replaced.States -join ',')
+$m = ErrorOf { [Rdv3Data]::Read([Rdv3Json]::Parse($defJson.Replace('"source": [ "B.key2",', '"source": ['))) }
 Ok 'a ledger without the identity is refused' ($m -match 'B.key2') $m
 $def2 = [Rdv3Data]::Read([Rdv3Json]::Parse($defJson.Replace('"C.c_y"', '"C.c_z"')))
 $m = ErrorOf { [Rdv3Ledger]::BuildFromCsv($def2, $dd) }
@@ -411,6 +604,36 @@ Ok 'a column the CSV lacks stops the merge, naming the file' ($m -match 'c.csv.*
 [IO.File]::WriteAllText((Join-Path $dd 'a.csv'), "key1,a_x`r`n0001,AX1`r`n0001,AX2`r`n", $utf8)
 $m = ErrorOf { [Rdv3Ledger]::BuildFromCsv($def, $dd) }
 Ok 'a duplicate key in a joined table stops the merge' ($m -match 'a.csv.*0001') $m
+
+# The same physical xlsx grows from an April-only source to April + May.
+$replaceStep = '{ "operation": "replace", "target1": "m2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger" }'
+$mergeStep = '{ "operation": "merge", "target1": "m2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger", "sourceOnly": "add", "both": "update", "targetOnly": "keep" }'
+$mergeDef = [Rdv3Data]::Read([Rdv3Json]::Parse($defJson.Replace($replaceStep, $mergeStep)))
+$monthPath = Join-Path $work 'month-ledger.xlsx'
+$aprilLines = [string[]]@("K1`tY1`tAX1`tB1`t0001", "K2`t`tAX1`tB2`t0001")
+[Rdv3Xlsx]::Write($monthPath, $mr.Head, 'state', $aprilLines, [string[]]@('TRUE','TRUE'), 'april')
+$monthLines = $null; $monthStates = $null
+[Rdv3Xlsx]::Read($monthPath, $mr.Head, 'state', [ref]$monthLines, [ref]$monthStates)
+$mayLines = [string[]]@("K2`t`tAX1`tB2-NEW`t0001", "K3`tY3`t`tB3`t0009")
+$monthResult = [Rdv3Ledger]::ApplyUpdate($mergeDef.UpdateJob, $monthLines, $monthStates, $mayLines, 0, 'FALSE')
+[Rdv3Xlsx]::Write($monthPath, $mr.Head, 'state', $monthResult.Lines, $monthResult.States, 'may')
+$grownLines = $null; $grownStates = $null
+[Rdv3Xlsx]::Read($monthPath, $mr.Head, 'state', [ref]$grownLines, [ref]$grownStates)
+Ok 'one xlsx grows from April to April plus May' (($grownLines.Length -eq 3) -and ($grownLines[0] -eq $aprilLines[0]) -and ($grownLines[1] -eq $mayLines[0]) -and ($grownLines[2] -eq $mayLines[1])) ($grownLines -join '|')
+Ok 'the same-file merge keeps old marks and resets changed content' (($grownStates -join ',') -eq 'TRUE,FALSE,FALSE') ($grownStates -join ',')
+
+# ===========================================================================
+Section 'search uses every configured column and either exact or contains matching'
+$searchLines = [string[]]@("AA100`tZZ900", "BB200`tALPHA", "ALPHA`tALPHA", "CC300`tOMEGA")
+$ctor = [Rdv3Index].GetConstructor([Type[]]@([string[]], [int[]], [string]))
+$exact = $ctor.Invoke([object[]]@($searchLines, [int[]]@(0,1), 'exact'))
+$hits = $exact.Find('ALPHA')
+Ok 'exact search finds values in both configured columns' (($hits.Count -eq 2) -and ($hits[0] -eq 1) -and ($hits[1] -eq 2)) ($hits -join ',')
+Ok 'one row matching two columns appears only once' (($hits | Where-Object { $_ -eq 2 }).Count -eq 1) ($hits -join ',')
+$contains = $ctor.Invoke([object[]]@($searchLines, [int[]]@(0,1), 'contains'))
+$hits = $contains.Find('PHA')
+Ok 'contains search scans the configured columns' (($hits.Count -eq 2) -and ($hits[0] -eq 1) -and ($hits[1] -eq 2)) ($hits -join ',')
+Ok 'contains search returns no row when no column matches' ($null -eq $contains.Find('NOT-THERE')) 'no hits'
 
 # ===========================================================================
 Section 'the ledger file round-trips with its state column'
@@ -426,6 +649,80 @@ $m = ErrorOf { [Rdv3Xlsx]::Read($xl, $head, 'processed', [ref]$outLines, [ref]$o
 Ok 'another state column heading is refused' ($m -match 'round.xlsx') $m
 $m = ErrorOf { [Rdv3Xlsx]::Read($xl, $mr.Head, '処理済み', [ref]$outLines, [ref]$outStates) }
 Ok 'another column layout is refused'        ($m -match 'round.xlsx') $m
+
+# ===========================================================================
+Section 'delete runs only through row sets selected by configured ledger columns'
+$deleteDir = Join-Path $work 'delete-inputs'
+New-Item -ItemType Directory -Path $deleteDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $deleteDir 'delete.csv'), "key2`r`nDEL00001`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $deleteDir 'delete-ref.csv'), "b_ref`r`nREF00002`r`n", $utf8)
+function ShippedLine([string] $key1, [string] $key2, [string] $ref) {
+  $v = New-Object string[] $cfg.Data.Columns.Count
+  $v[$cfg.Data.IndexOf('B.key1')] = $key1
+  $v[$cfg.Data.IndexOf('B.key2')] = $key2
+  $v[$cfg.Data.IndexOf('B.b_ref')] = $ref
+  return ($v -join "`t")
+}
+$deleteLines = [string[]]@(
+  (ShippedLine 'KEY00001' 'DEL00001' 'REF00001'),
+  (ShippedLine 'KEY00002' 'KEEP0002' 'REF00002'),
+  (ShippedLine 'KEY00003' 'KEEP0003' 'REF00003'))
+$deleteStates = [string[]]@('TRUE', 'FALSE', 'TRUE')
+$deleted = [Rdv3Ledger]::ApplyDelete($cfg.Data, $cfg.Data.JobOf('delete-listed-records'), $deleteDir, $deleteLines, $deleteStates, 'FALSE')
+Ok 'configured key selections are combined before deletion' (($deleted.Deleted -eq 2) -and ($deleted.Lines.Length -eq 1)) (($deleted.Lines.Length).ToString() + ' rows')
+Ok 'unselected content and application state stay together' (($deleted.Lines[0] -eq $deleteLines[2]) -and ($deleted.States[0] -eq 'TRUE')) ($deleted.States -join ',')
+
+# ===========================================================================
+Section 'local pending changes stay local, survive restart, and require the same record content'
+$pendingPath = Join-Path $work 'pending.dat'
+$pending = New-Object Rdv3PendingStore $pendingPath
+$pending.Set('K001', 'TRUE', "K001`talpha", 'FALSE')
+Ok 'one local change is stored' (($pending.Count -eq 1) -and (Test-Path -LiteralPath $pendingPath)) ("count " + $pending.Count)
+$pending = New-Object Rdv3PendingStore $pendingPath
+Ok 'the local change survives reopening the store' ($pending.Count -eq 1) ("count " + $pending.Count)
+$overlay = $pending.Overlay([string[]]@("K001`talpha"), [string[]]@('FALSE'), 0)
+Ok 'the local state overlays identical shared content' ($overlay[0] -eq 'TRUE') $overlay[0]
+$overlay = $pending.Overlay([string[]]@("K001`tchanged"), [string[]]@('FALSE'), 0)
+Ok 'changed shared content is not marked from the old pending entry' ($overlay[0] -eq 'FALSE') $overlay[0]
+$pending.Set('K002', 'TRUE', "K002`tbeta", 'FALSE')
+$apply = $pending.PrepareSend([string[]]@("K001`talpha"), [string[]]@('FALSE'), 0, 'FALSE')
+Ok 'send resolves only the matching identity and content' (($apply.Resolved.Count -eq 1) -and ($apply.States[0] -eq 'TRUE')) ("resolved " + $apply.Resolved.Count)
+Ok 'a missing identity is reported and retained' (($apply.Unmatched.Count -eq 1) -and ($apply.Unmatched[0].Identity -eq 'K002') -and ($apply.Unmatched[0].Reason -eq 'missing')) ("unmatched " + $apply.Unmatched.Count)
+$pending.Remove($apply.Resolved)
+Ok 'only resolved changes leave the local store' (($pending.Count -eq 1) -and ($pending.Snapshot()[0].Identity -eq 'K002')) ("count " + $pending.Count)
+$pending.Set('K002', 'FALSE', "K002`tbeta", 'FALSE')
+Ok 'returning to the shared value removes the pending change' ($pending.Count -eq 0) ("count " + $pending.Count)
+$pending.Set('K003', 'FALSE', "K003`tgamma", 'TRUE')
+$apply = $pending.PrepareSend([string[]]@("K003`tgamma"), [string[]]@('TRUE'), 0, 'FALSE')
+Ok 'send carries a return to the initial state too' (($apply.States[0] -eq 'FALSE') -and ($apply.FromInitial -eq 0) -and ($apply.ToInitial -eq 1)) ("done " + $apply.FromInitial + ', todo ' + $apply.ToInitial)
+$pending.Remove($apply.Resolved)
+$pending.Set('K004', 'TRUE', "K004`told", 'FALSE')
+$apply = $pending.PrepareSend([string[]]@("K004`tnew"), [string[]]@('FALSE'), 0, 'FALSE')
+Ok 'changed content is reported rather than overwritten' (($apply.Resolved.Count -eq 0) -and ($apply.Unmatched.Count -eq 1) -and ($apply.Unmatched[0].Reason -eq 'changed')) $apply.Unmatched[0].Reason
+
+# ===========================================================================
+Section 'shared writes use one lock and publish a one-line version marker'
+$sharedLedger = Join-Path $work 'shared.xlsx'
+$shared1 = New-Object Rdv3SharedFiles $sharedLedger, 'HOST1', 'alice', 'writer-1'
+$shared2 = New-Object Rdv3SharedFiles $sharedLedger, 'HOST2', 'bob', 'writer-2'
+$owner = $null
+$lock1 = $shared1.TryAcquire([ref]$owner)
+Ok 'the first writer acquires CreateNew lock' (($null -ne $lock1) -and (Test-Path -LiteralPath ($sharedLedger + '.lock'))) 'first lock'
+$owner = $null
+$lock2 = $shared2.TryAcquire([ref]$owner)
+Ok 'a second writer waits and can name the owner' (($null -eq $lock2) -and ($owner.User -eq 'alice') -and ($owner.Host -eq 'HOST1')) ($owner.User + '@' + $owner.Host)
+$lock1.Release()
+$owner = $null
+$lock2 = $shared2.TryAcquire([ref]$owner)
+Ok 'the second writer acquires after release' ($null -ne $lock2) 'second lock'
+$mark1 = $shared2.WriteMarker('send', 2, 1, 1)
+$mark2 = $shared2.WriteMarker('update', 3, 0, 0)
+$readMark = $shared1.ReadMarker()
+Ok 'marker versions advance under the same lock' (($mark1.Version -eq 1) -and ($mark2.Version -eq 2) -and ($readMark.Version -eq 2)) ("versions " + $mark1.Version + ',' + $mark2.Version)
+Ok 'the marker carries writer, rows, and operation' (($readMark.User -eq 'bob') -and ($readMark.Host -eq 'HOST2') -and ($readMark.Rows -eq 3) -and ($readMark.Kind -eq 'update')) ($readMark.User + ' ' + $readMark.Kind)
+Ok 'the marker is a single small line' (([IO.File]::ReadAllLines($sharedLedger + '.version').Count -eq 1) -and ((Get-Item -LiteralPath ($sharedLedger + '.version')).Length -lt 256)) 'marker shape'
+$lock2.Release()
+Ok 'releasing removes only the exact lock file' (-not (Test-Path -LiteralPath ($sharedLedger + '.lock'))) 'no lock remains'
 
 # ---------------------------------------------------------------------------
 Write-Output ''

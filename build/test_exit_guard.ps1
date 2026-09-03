@@ -1,11 +1,8 @@
 ﻿# ============================================================================
-# test_exit_guard.ps1 -- the one thing the C# exit guard exists for, tried for
-# real on the shipped product:
-#
-#   move a record to its next work state (未処理 -> 処理済), and ask the app to
-#   CLOSE while that one save is still in flight. The close must be refused
-#   with the reason on screen (a notice, logged), the record must reach the
-#   ledger file anyway, and only then may the app close.
+# test_exit_guard.ps1 -- exercise the local-pending/send boundary on the real
+# packed product. A state change must leave the shared xlsx untouched. Send
+# must wait behind the shared lock, refuse a close while its outcome is
+# undecided, then reread and update the xlsx after the lock is released.
 #
 #   powershell -File build\test_exit_guard.ps1
 #
@@ -33,6 +30,8 @@ using System.Runtime.InteropServices;
 public static class RdvGuardWin {
   public delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] public static extern IntPtr PostMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", EntryPoint="SendMessageW")] public static extern IntPtr SendMessage(IntPtr h, uint m, IntPtr w, IntPtr l);
+  [DllImport("user32.dll", EntryPoint="SendMessageW", CharSet = CharSet.Unicode)] public static extern IntPtr SetText(IntPtr h, uint m, IntPtr w, string l);
   [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr h);
   [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr h);
   [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr h);
@@ -43,18 +42,19 @@ public static class RdvGuardWin {
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowW(string cls, string title);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowTextW(IntPtr h, StringBuilder b, int n);
   [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetClassNameW(IntPtr h, StringBuilder b, int n);
+  [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern int GetWindowLongW(IntPtr h, int index);
   [DllImport("user32.dll")] public static extern bool EnumChildWindows(IntPtr root, EnumProc p, IntPtr l);
   [DllImport("user32.dll")] public static extern bool SetCursorPos(int x, int y);
   [DllImport("user32.dll")] public static extern void mouse_event(uint flags, uint dx, uint dy, uint data, UIntPtr extra);
   [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
   [DllImport("user32.dll")] public static extern uint GetDpiForWindow(IntPtr h);
-  public class Kid { public long Hwnd; public string Cls; public string Text; }
+  public class Kid { public long Hwnd; public string Cls; public string Text; public int Style; }
   public static List<Kid> Kids(IntPtr root) {
     List<Kid> outp = new List<Kid>();
     EnumChildWindows(root, delegate(IntPtr h, IntPtr l) {
       StringBuilder cb = new StringBuilder(256); GetClassNameW(h, cb, 256);
       StringBuilder tb = new StringBuilder(512); GetWindowTextW(h, tb, 512);
-      Kid k = new Kid(); k.Hwnd = h.ToInt64(); k.Cls = cb.ToString(); k.Text = tb.ToString();
+      Kid k = new Kid(); k.Hwnd = h.ToInt64(); k.Cls = cb.ToString(); k.Text = tb.ToString(); k.Style = GetWindowLongW(h, -16);
       outp.Add(k);
       return true;
     }, IntPtr.Zero);
@@ -63,22 +63,49 @@ public static class RdvGuardWin {
 }
 "@
 
-# The C# build is driven entirely by posted messages (WM_CHAR to the edit,
-# BM_CLICK to the buttons), which do not need the keyboard focus. So the window
-# is pushed to the BACK of the z-order as soon as it appears and whatever the
-# operator was using keeps the foreground: a test run no longer interrupts them.
-function Park-Window([IntPtr] $hwnd) {
-  $keep = [RdvGuardWin]::GetForegroundWindow()
-  # HWND_BOTTOM = 1, SWP_NOMOVE|SWP_NOSIZE|SWP_NOACTIVATE = 0x0002|0x0001|0x0010
-  [void][RdvGuardWin]::SetWindowPos($hwnd, [IntPtr]1, 0, 0, 0, 0, 0x0013)
-  if ($keep -ne [IntPtr]::Zero -and $keep -ne $hwnd) {
-    [void][RdvGuardWin]::SetForegroundWindow($keep)
+# Load the shipping types into this test process as well. They are used only
+# to act as a second writer against the scratch ledger below; the running app
+# is still the packed dist product in its own process.
+. (Join-Path $Root 'build\sources.ps1')
+$productUsings = New-Object System.Collections.Specialized.OrderedDictionary
+$productBodies = New-Object System.Text.StringBuilder
+foreach ($source in $RdvSources) {
+  $sourceText = [IO.File]::ReadAllText((Join-Path $Root "src\csharp\$source"), [Text.Encoding]::UTF8)
+  foreach ($line in ($sourceText -split "`r?`n")) {
+    if ($line -match '^\s*using\s+[A-Za-z_][A-Za-z0-9_.]*\s*;\s*$') {
+      $using = $line.Trim()
+      if (-not $productUsings.Contains($using)) { $productUsings.Add($using, $true) }
+    } else { [void]$productBodies.AppendLine($line) }
   }
+}
+$productCode = (($productUsings.Keys | ForEach-Object { $_ }) -join "`r`n") + "`r`n`r`n" + $productBodies.ToString()
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -AssemblyName WindowsBase
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.Xml
+$productRefs = @(
+  [System.Diagnostics.Process].Assembly.Location,
+  [System.Windows.Forms.Form].Assembly.Location,
+  [System.Drawing.Point].Assembly.Location,
+  [System.Windows.Automation.AutomationElement].Assembly.Location,
+  [System.Windows.Automation.AutomationElementIdentifiers].Assembly.Location,
+  [System.Windows.DependencyObject].Assembly.Location,
+  [System.IO.Compression.ZipArchive].Assembly.Location,
+  [System.Xml.XmlReader].Assembly.Location
+)
+Add-Type -TypeDefinition $productCode -ReferencedAssemblies $productRefs -Language CSharp
+
+# The C# build receives its search key through the headless-test hook and its
+# button clicks through posted messages. Neither needs keyboard focus, so the
+# window stays off-screen and at the back for the whole run.
+function Park-Window([IntPtr] $hwnd) {
+  # HWND_BOTTOM = 1, SWP_NOSIZE|SWP_NOACTIVATE = 0x0001|0x0010
+  [void][RdvGuardWin]::SetWindowPos($hwnd, [IntPtr]1, -32000, -32000, 0, 0, 0x0011)
 }
 [void][RdvGuardWin]::SetProcessDPIAware()
 $AE = [System.Windows.Automation.AutomationElement]
 $TS = [System.Windows.Automation.TreeScope]
-$VP = [System.Windows.Automation.ValuePattern]
 
 $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $scratch = Join-Path $Root ("work\guard-run\{0}" -f $stamp)
@@ -120,6 +147,59 @@ function Answer-Dialog([string] $title, [string] $buttonPrefix, [int] $sec) {
 }
 function Dialog-Present([string] $title) {
   return ([RdvGuardWin]::FindWindowW([NullString]::Value, $title) -ne [IntPtr]::Zero)
+}
+function Wait-DialogText([string] $title, [string] $pattern, [int] $sec) {
+  $t0 = Get-Date
+  while (((Get-Date) - $t0).TotalSeconds -lt $sec) {
+    $dlg = [RdvGuardWin]::FindWindowW([NullString]::Value, $title)
+    if ($dlg -ne [IntPtr]::Zero) {
+      $text = (([RdvGuardWin]::Kids($dlg) | ForEach-Object { $_.Text }) -join "`n")
+      if ($text -match $pattern) { return $true }
+    }
+    Start-Sleep -Milliseconds 100
+  }
+  return $false
+}
+function Write-TestMarker([string] $path, [long] $version, [string] $kind, [int] $done, [int] $todo) {
+  $host64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('REMOTE-HOST'))
+  $user64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('remote-user'))
+  $writer64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('remote-writer'))
+  $text = "RDV-MARKER-1`t$version`t$host64`t$user64`t$writer64`t$([DateTime]::UtcNow.Ticks)`t100000`t$kind`t$done`t$todo`r`n"
+  $temp = $path + '.test-tmp'
+  [IO.File]::WriteAllText($temp, $text, (New-Object Text.UTF8Encoding($false)))
+  [IO.File]::Replace($temp, $path, [NullString]::Value)
+}
+
+function Write-ChangedLedger([string] $ledger, [string] $settings, [string] $dataDir, [string] $identity) {
+  $site = [Rdv3Config]::Load($settings)
+  $heads = New-Object 'string[][]' $site.Data.Tables.Count
+  for ($i = 0; $i -lt $site.Data.Tables.Count; $i++) {
+    $heads[$i] = [Rdv3Table]::ReadHead((Join-Path $dataDir $site.Data.Tables[$i].File), $site.Data.Enc)
+  }
+  $site.Data.Bind($heads)
+  $lines = $null
+  $states = $null
+  [Rdv3Xlsx]::Read($ledger, $site.Data.Head, $site.Screen.Work.Column, [ref]$lines, [ref]$states)
+  $row = -1
+  for ($i = 0; $i -lt $lines.Length; $i++) {
+    if ([Rdv3Ledger]::FieldOf($lines[$i], $site.Data.IdentityCol) -eq $identity) { $row = $i; break }
+  }
+  if ($row -lt 0) { throw "identity not found in scratch ledger: $identity" }
+  $cells = [Rdv3Ledger]::SplitLine($lines[$row])
+  $cells[2] = $cells[2] + '-REMOTE'
+  $lines[$row] = [string]::Join("`t", $cells)
+  $states[$row] = $site.Screen.Work.InitialStored
+
+  $remote = New-Object Rdv3SharedFiles $ledger, 'REMOTE-HOST', 'remote-user', 'remote-writer'
+  $owner = $null
+  $lease = $remote.TryAcquire([ref]$owner)
+  if ($null -eq $lease) { throw 'the remote test writer could not acquire the scratch lock' }
+  try {
+    [Rdv3Xlsx]::Write($ledger, $site.Data.Head, $site.Screen.Work.Column, $lines, $states, 'remote-update')
+    return $remote.WriteMarker('update', $lines.Length, 0, 0)
+  } finally {
+    $lease.Release()
+  }
 }
 
 function Read-Log([string] $p, [object] $enc) {
@@ -165,97 +245,156 @@ function Test-CSharp {
   if (Test-Path -LiteralPath $log) { Remove-Item -LiteralPath $log -Force }
 
   $proc = $null
+  $appHostPid = 0
   $main = [IntPtr]::Zero
+  $pendingFile = ''
+  $fakeLock = $ledger + '.lock'
   try {
     Say 'C#: starting'
-    $proc = Start-Process -FilePath (Join-Path $dir 'ReaderDataViewer.cmd') -PassThru
+    $oldHeadless = $env:RDV_HEADLESS_TEST
+    $oldHeadlessKey = $env:RDV_HEADLESS_TEST_KEY
+    $env:RDV_HEADLESS_TEST = '1'
+    $env:RDV_HEADLESS_TEST_KEY = $TargetKey1
+    try { $proc = Start-Process -FilePath (Join-Path $dir 'ReaderDataViewer.cmd') -WindowStyle Hidden -PassThru }
+    finally {
+      $env:RDV_HEADLESS_TEST = $oldHeadless
+      $env:RDV_HEADLESS_TEST_KEY = $oldHeadlessKey
+    }
+    for ($i = 0; $i -lt 100 -and $appHostPid -eq 0; $i++) {
+      $child = @(Get-CimInstance Win32_Process -Filter ("ParentProcessId = " + $proc.Id) | Where-Object { $_.Name -ieq 'powershell.exe' }) | Select-Object -First 1
+      if ($null -ne $child) { $appHostPid = [int]$child.ProcessId; break }
+      Start-Sleep -Milliseconds 50
+    }
+    if ($appHostPid -eq 0) { Check $b 'host' $false 'the app host process was not found'; return }
     $ready = Wait-Log $log $enc "`tdecision`tready " 0 $ReadyTimeoutSec 200
     if ($null -eq $ready) { Check $b 'ready' $false 'never reached READY'; return }
     Check $b 'ready' $true $ready[1]
+    $pendingLine = Wait-Log $log $enc "`tpending`tpath=.* count=" 0 10 100
+    if ($null -ne $pendingLine -and $pendingLine[1] -match "`tpending`tpath=(.*) count=[0-9]+$") { $pendingFile = $Matches[1] }
+    Check $b 'pending_path' (-not [string]::IsNullOrEmpty($pendingFile)) $pendingFile
 
     # the window, and the controls inside it
     $walker = [System.Windows.Automation.TreeWalker]::ControlViewWalker
     $w = $walker.GetFirstChild($AE::RootElement)
     while ($null -ne $w) {
-      if ($w.Current.Name -like 'Reader Data Viewer*' -and $w.Current.ProcessId -ne $PID) { $main = [IntPtr]$w.Current.NativeWindowHandle; break }
+      if ($w.Current.Name -like 'Reader Data Viewer*' -and $w.Current.ProcessId -eq $appHostPid) { $main = [IntPtr]$w.Current.NativeWindowHandle; break }
       $w = $walker.GetNextSibling($w)
     }
     if ($main -eq [IntPtr]::Zero) { Check $b 'window' $false 'main window not found'; return }
     Check $b 'window' $true ("hwnd " + $main)
 
-    # search: put the key in the box, then click the button. The edit is found
-    # by child-window class first (child enumeration is what works reliably on
-    # this WinForms window) and bound through UIA from its handle.
+    # In headless-test mode the app feeds this key through the same manual
+    # search path after READY. This avoids focus, activation and keyboard input
+    # on the desktop while still exercising the real search and selection.
     Park-Window $main
-    Start-Sleep -Milliseconds 400
-    Say ("C#: looking for the search box in hwnd " + $main)
-    # typed in, one WM_CHAR per digit, the way a person types: the WinForms
-    # element does not offer ValuePattern here, and a posted keystroke is what
-    # the control was built to take anyway
-    # the search box is the shortest EDIT; the memo boxes are multi-line
-    $editH = [IntPtr]::Zero; $best = 999999
-    foreach ($k in [RdvGuardWin]::Kids($main)) {
-      if ($k.Cls -like '*.EDIT.*') {
-        $r = New-Object RdvGuardWin+RECT
-        [void][RdvGuardWin]::GetWindowRect([IntPtr]$k.Hwnd, [ref]$r)
-        if (($r.Bottom - $r.Top) -lt $best) { $best = $r.Bottom - $r.Top; $editH = [IntPtr]$k.Hwnd }
-      }
-    }
-    if ($editH -eq [IntPtr]::Zero) {
-      $cls = (([RdvGuardWin]::Kids($main)) | ForEach-Object { $_.Cls } | Sort-Object -Unique) -join ','
-      Check $b 'searchbox' $false ("no search box; child classes: " + $cls)
-      return
-    }
-    foreach ($ch in $TargetKey1.ToCharArray()) {
-      [void][RdvGuardWin]::PostMessage($editH, 0x0102, [IntPtr][int]$ch, [IntPtr]0)
-      Start-Sleep -Milliseconds 20
-    }
-    Start-Sleep -Milliseconds 300
-    Say ("C#: typed " + $TargetKey1 + " into the search box (hwnd " + $editH + ")")
-    $from = (Read-Log $log $enc).Count
-    foreach ($k in [RdvGuardWin]::Kids($main)) {
-      if ($k.Text -eq '検索') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
-    }
+    $from = [Math]::Max(0, [int]$ready[0])
     $hit = Wait-Log $log $enc ("`tsearch`tkey=" + $TargetKey1 + " ") $from 30 100
     if ($null -eq $hit) { Check $b 'search' $false 'no search line'; return }
     Check $b 'search' $true $hit[1]
 
-    # move it to 処理済 (the button says the CURRENT state, 未処理), answer the
-    # confirm, then ask to close DURING the save
+    # Move it to the next state. This must write only the local pending file.
     $from = (Read-Log $log $enc).Count
     foreach ($k in [RdvGuardWin]::Kids($main)) {
-      if ($k.Text -eq '未処理') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+      if ($k.Text -like '未処理*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
     }
     if (-not (Answer-Dialog '処理済の確認' 'はい' 20)) { Check $b 'confirm' $false 'confirm dialog never appeared'; return }
     Check $b 'confirm' $true 'answered はい'
 
-    # the app logs the save start before it posts the job; the write itself is
-    # sub-second, so this polls fast and closes the moment it is in flight
     $started = Wait-Log $log $enc 'save started .*exit held' $from 20 15
     if ($null -eq $started) { Check $b 'save_started' $false 'no save-started line'; return }
     Check $b 'save_started' $true $started[1]
-    [void][RdvGuardWin]::PostMessage($main, 0x0010, [IntPtr]0, [IntPtr]0)   # WM_CLOSE
-    Say 'C#: WM_CLOSE posted while the save was in flight'
+    $done = Wait-Log $log $enc "`tstate`tkey2=.*value=TRUE" $from $SaveTimeoutSec 100
+    Check $b 'save_completed' ($null -ne $done) $(if ($null -ne $done) { $done[1] } else { 'no state line' })
+    $released = Wait-Log $log $enc 'write decided .*exit released' $from 20 100
+    Check $b 'exit_released' ($null -ne $released) $(if ($null -ne $released) { $released[1] } else { 'no release line' })
+    $onePending = @([RdvGuardWin]::Kids($main) | Where-Object { $_.Text -eq '未送信 1 件' }).Count -eq 1
+    Check $b 'pending_count_one' $onePending 'the send band reads 未送信 1 件'
+    Check $b 'shared_untouched_before_send' ((Count-TrueRows $ledger) -eq 0) 'processed=TRUE rows before send: expected 0'
+    Check $b 'small_local_pending' ((Test-Path -LiteralPath $pendingFile) -and ((Get-Item -LiteralPath $pendingFile).Length -lt 512)) $(if (Test-Path -LiteralPath $pendingFile) { (Get-Item -LiteralPath $pendingFile).Length } else { 'missing' })
 
-    # the close must be refused, said out loud (the notice window carries the
-    # message as its caption), and the window must survive
+    # Hold a synthetic, well-formed lock so the real send has to wait and name
+    # its owner. The lock lives beside this scratch ledger only.
+    $host64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('TEST-HOST'))
+    $user64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('lock-owner'))
+    $lockText = "RDV-LOCK-1`t$host64`t$user64`t$([DateTime]::UtcNow.Ticks)`r`n"
+    [IO.File]::WriteAllText($fakeLock, $lockText, $enc)
+    $sendFrom = (Read-Log $log $enc).Count
+    foreach ($k in [RdvGuardWin]::Kids($main)) {
+      if ($k.Text -like '送信*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+    }
+    $sendBody = Wait-DialogText '送信' '未送信の 1 件を送信します。よろしいですか' 20
+    Check $b 'send_confirm_body' $sendBody 'the confirmation includes the pending count'
+    $sendEffect = Wait-DialogText '送信' '送信した行は未送信から外れます。取り込んだデータは書き換えません。' 5
+    Check $b 'send_confirm_effect' $sendEffect 'the confirmation distinguishes the ledger mark from imported data'
+    if (-not (Answer-Dialog '送信' 'はい' 20)) { Check $b 'send_confirm' $false 'send dialog never appeared'; return }
+    Check $b 'send_confirm' $true 'answered はい'
+    $waiting = Wait-Log $log $enc "`tlock`twaiting owner=lock-owner host=TEST-HOST" $sendFrom 20 100
+    Check $b 'lock_wait' ($null -ne $waiting) $(if ($null -ne $waiting) { $waiting[1] } else { 'no wait line' })
+
+    [void][RdvGuardWin]::PostMessage($main, 0x0010, [IntPtr]0, [IntPtr]0)
     $blocked = $false
     $t0 = Get-Date
     while (((Get-Date) - $t0).TotalSeconds -lt 10) {
-      if (Dialog-Present '状態を保存中です。確定するまで終了できません') { $blocked = $true; break }
+      if (Dialog-Present '書き込み中です。結果が確定するまで終了できません') { $blocked = $true; break }
       Start-Sleep -Milliseconds 50
     }
-    Check $b 'close_refused_notice' $blocked 'the close was refused with a notice naming the reason'
-    Check $b 'window_alive' ([RdvGuardWin]::IsWindow($main)) 'the window is still open after the refused close'
-
-    $refused = Wait-Log $log $enc 'close refused: a state save is still in flight' $from 10 100
+    Check $b 'close_refused_notice' $blocked 'the close was refused while send was waiting'
+    Check $b 'window_alive' ([RdvGuardWin]::IsWindow($main)) 'the window survived the refused close'
+    $refused = Wait-Log $log $enc 'close refused: a write is still in flight' $sendFrom 10 100
     Check $b 'close_refused_log' ($null -ne $refused) $(if ($null -ne $refused) { $refused[1] } else { 'no refusal line' })
 
-    # the save must still finish, and be reported as decided
-    $done = Wait-Log $log $enc "`tstate`tkey2=.*value=TRUE" $from $SaveTimeoutSec 100
-    Check $b 'save_completed' ($null -ne $done) $(if ($null -ne $done) { $done[1] } else { 'no state line' })
-    $released = Wait-Log $log $enc 'state save decided .*exit released' $from 20 100
-    Check $b 'exit_released' ($null -ne $released) $(if ($null -ne $released) { $released[1] } else { 'no release line' })
+    Remove-Item -LiteralPath $fakeLock -Force
+    $sent = Wait-Log $log $enc "`tmarker`tversion=.* kind=send" $sendFrom $SaveTimeoutSec 100
+    Check $b 'send_completed' ($null -ne $sent) $(if ($null -ne $sent) { $sent[1] } else { 'no marker line' })
+    $sendReady = Wait-Log $log $enc "`tshared`tready .* pending=0" $sendFrom 30 100
+    Check $b 'pending_cleared' ($null -ne $sendReady) $(if ($null -ne $sendReady) { $sendReady[1] } else { 'pending did not clear' })
+    $afterSendKids = @([RdvGuardWin]::Kids($main))
+    $zeroPending = @($afterSendKids | Where-Object { $_.Text -eq '未送信 0 件' }).Count -eq 1
+    $repeatFrom = (Read-Log $log $enc).Count
+    foreach ($k in $afterSendKids) {
+      if ($k.Cls -like '*BUTTON*' -and $k.Text -like '検索*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+    }
+    $repeatHit = Wait-Log $log $enc ("`tsearch`tkey=" + $TargetKey1 + " ") $repeatFrom 30 100
+    $afterRepeatKids = @([RdvGuardWin]::Kids($main))
+    $stateButtons = @($afterRepeatKids | Where-Object { $_.Cls -like '*BUTTON*' -and $_.Text -match '処理済' })
+    $stateButton = $stateButtons | Select-Object -First 1
+    $stateDetail = if ($null -eq $stateButton) {
+      'no processed-state button; buttons=' + ((@($afterRepeatKids | Where-Object { $_.Cls -like '*BUTTON*' } | ForEach-Object { $_.Text })) -join '|')
+    } else {
+      'text=' + $stateButton.Text + ' style=0x' + ([uint32]$stateButton.Style).ToString('X8')
+    }
+    Check $b 'pending_count_zero' $zeroPending 'the send band reads 未送信 0 件'
+    Check $b 'sent_row_not_frozen' (($null -ne $repeatHit) -and ($null -ne $stateButton) -and (($stateButton.Style -band 0x08000000) -eq 0)) ('after a repeat lookup: ' + $stateDetail)
+    Check $b 'shared_after_send' ((Count-TrueRows $ledger) -eq 1) 'processed=TRUE rows after send: expected 1'
+    Check $b 'marker_written' ((Test-Path -LiteralPath ($ledger + '.version')) -and (([IO.File]::ReadAllLines($ledger + '.version')).Count -eq 1)) 'one-line marker'
+    Check $b 'lock_released' (-not (Test-Path -LiteralPath $fakeLock)) 'no lock file remains'
+
+    # A marker from another writer must be noticed without polling the xlsx.
+    # Send notifications interrupt with an OK-only dialog and then reload;
+    # update notifications ask whether to switch.
+    $remoteFrom = (Read-Log $log $enc).Count
+    Write-TestMarker ($ledger + '.version') 2 'send' 12 3
+    $remoteBody = Wait-DialogText '台帳が更新されました' 'remote-user が 12 件を処理済、3 件を未処理にしました' 15
+    Check $b 'remote_send_dialog' $remoteBody 'sender and both directions are shown'
+    [void](Answer-Dialog '台帳が更新されました' 'OK' 5)
+    $remoteReload = Wait-Log $log $enc "`treload`tversion=2 .*rows=100000" $remoteFrom 30 100
+    Check $b 'remote_send_reload' ($null -ne $remoteReload) $(if ($null -ne $remoteReload) { $remoteReload[1] } else { 'no reload line' })
+    $remoteReady = Wait-Log $log $enc "`tshared`tready .*note=marker-2" $remoteFrom 30 100
+    Check $b 'remote_send_ready' ($null -ne $remoteReady) $(if ($null -ne $remoteReady) { $remoteReady[1] } else { 'marker-2 was not adopted' })
+
+    $updateFrom = (Read-Log $log $enc).Count
+    $changedMarker = Write-ChangedLedger $ledger $settings (Join-Path $dir 'data') '00089897'
+    Check $b 'remote_update_written' (($changedMarker.Version -eq 3) -and ((Count-TrueRows $ledger) -eq 0)) ('version ' + $changedMarker.Version + ', processed=TRUE rows 0')
+    $updateBody = Wait-DialogText '台帳の更新' '台帳が更新されました。切り替えますか' 15
+    Check $b 'remote_update_dialog' $updateBody 'the update asks before switching'
+    $resetBody = Wait-DialogText '台帳の更新' '中身が変わったため未処理に戻ったレコード: 1 件' 5
+    $updateDialog = [RdvGuardWin]::FindWindowW([NullString]::Value, '台帳の更新')
+    $resetList = if ($updateDialog -eq [IntPtr]::Zero) { $false } else { @([RdvGuardWin]::Kids($updateDialog) | Where-Object { $_.Cls -like '*SysListView32*' }).Count -eq 1 }
+    Check $b 'remote_update_reset_count' $resetBody 'the update dialog reports one reset record'
+    Check $b 'remote_update_reset_list' $resetList 'the reset records use one standard Details ListView'
+    [void](Answer-Dialog '台帳の更新' 'OK' 5)
+    $updateReady = Wait-Log $log $enc "`tshared`tready .*note=marker-3" $updateFrom 30 100
+    Check $b 'remote_update_switch' ($null -ne $updateReady) $(if ($null -ne $updateReady) { $updateReady[1] } else { 'no marker-3 ready line' })
 
     # and only now may it close
     Start-Sleep -Milliseconds 500
@@ -268,21 +407,25 @@ function Test-CSharp {
     Check $b 'closes_after' $closed 'the second close request ended the app'
     Start-Sleep -Seconds 2
 
-    # the record is in the file that survived
+    # The pending state reached the ledger through send, then the simulated
+    # external content update reset that changed record to the initial state.
     $n = Count-TrueRows $ledger
-    Check $b 'persisted' ($n -eq 1) ("processed=TRUE rows in the saved ledger: " + $n)
+    Check $b 'changed_record_reset' ($n -eq 0) ("processed=TRUE rows after the changed-record update: " + $n)
   } finally {
     if ($main -ne [IntPtr]::Zero -and [RdvGuardWin]::IsWindow($main)) {
       [void](Answer-Dialog '処理済の確認' 'いいえ' 1)
       [void][RdvGuardWin]::PostMessage($main, 0x0010, [IntPtr]0, [IntPtr]0)
       Start-Sleep -Seconds 3
     }
-    $psHost = @(Get-CimInstance Win32_Process -Filter "Name = 'powershell.exe'" | Where-Object { $_.CommandLine -like '*RDV_SELF*' })
-    foreach ($ph in $psHost) {
-      $q = Get-Process -Id $ph.ProcessId -ErrorAction SilentlyContinue
-      if ($q) { Say ("  closing my app host " + $ph.ProcessId); $q.Kill() }
+    if ($appHostPid -ne 0) {
+      $q = Get-Process -Id $appHostPid -ErrorAction SilentlyContinue
+      if ($q) { Say ("  closing my app host " + $appHostPid); $q.Kill() }
     }
     if ($null -ne $proc -and -not $proc.HasExited) { Stop-Process -Id $proc.Id -Force -ErrorAction SilentlyContinue }
+    if (-not [string]::IsNullOrEmpty($pendingFile) -and (Test-Path -LiteralPath $pendingFile)) {
+      Remove-Item -LiteralPath $pendingFile -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -LiteralPath $fakeLock) { Remove-Item -LiteralPath $fakeLock -Force -ErrorAction SilentlyContinue }
   }
 }
 

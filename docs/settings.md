@@ -16,7 +16,7 @@ settings.json               設定 — この 1 枚に全部入っています
 | `search` | 番号の形式 (正規表現)、候補一覧の最大行数 | 人、または「設定」ボタン |
 | `watch` | 監視する窓と欄 (UI Automation) | 人、または「設定」ボタン |
 | `jobs` | バックグラウンド処理の時間上限 | 人 |
-| `data` | CSV が何で、どう結合して台帳になるか (表、キー、結合、台帳の列) | 人 |
+| `data` | CSV、表示名、更新／削除ジョブ、台帳の列 | 人 |
 | `screen` | 画面に出すもの (部品、値、判定、作業状態、候補一覧) — [ui-spec.md](ui-spec.md) | 人 |
 
 - `//` 行コメントと `/* ... */` ブロックコメントを書けます。
@@ -37,7 +37,7 @@ settings.json               設定 — この 1 枚に全部入っています
 | 種類や範囲が違う値 | `watch.pollMs: 0 is out of range 5..5000`、`"pollMs": "40"` |
 | 正規表現として読めない `search.pattern` | `search.pattern: is not a usable regular expression (...)` |
 | 名前が何も指していない | 無い表・列・状態・判定を名指しした、台帳の列に無い列を画面が使った |
-| `schema` がこの版と違う | `schema: this program reads schema 2; the file says 1` |
+| `schema` がこの版と違う | `schema: this program reads schema 3; the file says 2` |
 | 定義が CSV と合わない | `tableA.csv に列 a_notes がありません (data.ledger.columns)` — 窓を開く前にヘッダー行で検査 |
 
 「設定」ボタンの保存も同じです。保存の直前にファイルを読み直し、読めなければ**保存を拒否して**理由を
@@ -48,7 +48,7 @@ settings.json               設定 — この 1 枚に全部入っています
 
 出荷する `settings.json` は脱色したサンプル (表A/B/C) ですが、`src/samples/` に業務らしい定義が 3 つ
 あります。`build/gen_samples.ps1` がそれぞれの CSV を `samples/<name>/` に生成し、`build/test_samples.ps1`
-が製品コードに通します (定義が通ること、結合の件数、xlsx の往復、検索、画面の値、判定、作業状態、引継ぎ)。
+が製品コードに通します (定義が通ること、結合の件数、xlsx の往復、検索、画面の値、判定、作業状態、更新)。
 
 | 名前 | 表 | 特徴 |
 |---|---|---|
@@ -64,32 +64,82 @@ settings.json               設定 — この 1 枚に全部入っています
 "data": {
   "encoding": "utf-8",                       // または "shift_jis" など Windows が知る名前
   "tables": {
-    "A": { "file": "tableA.csv", "key": "key1" },
-    "B": { "file": "tableB.csv", "key": "key2" },
-    "C": { "file": "tableC.csv", "key": "key2" }
+    "A": { "label": "表A", "file": "tableA.csv", "key": "key1" },
+    "B": { "label": "表B", "file": "tableB.csv", "key": "key2" },
+    "C": { "label": "表C", "file": "tableC.csv", "key": "key2" }
   },
-  "spine": "B",                              // 台帳 1 行 = B の 1 行
-  "joins": [
-    { "table": "A", "on": "key1" },          // B.key1 -> A のキー
-    { "table": "C", "on": "key2" }           // B.key2 -> C のキー
+  "labels": {
+    "A.key1": "番号1", "B.key1": "番号1", "B.key2": "番号2", "C.key2": "番号2",
+    "ledger": "統合台帳",
+    "middle1": "中間1", "middle2": "中間2"
+  },
+  "jobs": [
+    {
+      "id": "merge-ledger", "name": "3表を統合して台帳へマージする", "kind": "update",
+      "inputs": [ { "table": "A" }, { "table": "B" }, { "table": "C" } ],
+      "steps": [
+        { "operation": "join", "target1": "B", "target2": "A", "keys": ["B.key1", "A.key1"], "condition": "left", "output": "middle1" },
+        { "operation": "join", "target1": "middle1", "target2": "C", "keys": ["B.key2", "C.key2"], "condition": "left", "output": "middle2" },
+        { "operation": "merge", "target1": "middle2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger",
+          "sourceOnly": "add", "both": "update", "targetOnly": "keep" }
+      ]
+    }
   ],
   "ledger": {
-    "search": "B.key1",                      // 検索欄が引く列
-    "columns": [ "B.key1", "B.key2", "A.a_code", ..., "C.c_remark" ]   // 台帳の列、xlsx の列順
+    "identity": "B.key2",
+    "search": { "columns": ["B.key1"], "match": "exact" },
+    "columns": {
+      "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+      "source": [ "B.key1", "B.key2", "A.a_code", ..., "C.c_remark" ]
+    }
   }
 }
 ```
 
 | メンバー | 意味 |
 |---|---|
+| `tables.<id>.label` | ダイアログに出す表の名前 |
 | `tables.<id>.file` | `paths.dataDir` の中のファイル名 |
 | `tables.<id>.key` | その表の 1 行を特定する列 (**一意**。重複があれば止まる) |
-| `spine` | 台帳の行になる表。その `key` が台帳の行の identity (引継ぎと作業状態はこの値で結ぶ) |
-| `joins[].table` / `on` | 結合する表と、その表のキーを持つ spine の列。表は spine か結合先のどちらかでなければならない |
-| `ledger.columns` | 台帳の列 `<表>.<列>`。spine のキーを含む。xlsx の見出しは CSV の列名をこの順に並べたもの |
-| `ledger.search` | 検索欄が引く列 (`columns` のどれか) |
+| `labels` | 処理内容とテーブル出力に出す画面向けの名前。内部名は画面へ出さない |
+| `jobs[]` | ボタンから参照する更新／削除ジョブ。配列だが、利用者が選ぶ一覧は画面に出さない |
+| `jobs[].inputs` | 取り込む表、または外部ファイル。ダイアログはファイルから分かる行数と列一致だけを表示 |
+| `jobs[].steps` | 順序どおりの操作。各 `output` は、そのまま後段の `target1` / `target2` にできる |
+| マージ段の3指定 | `sourceOnly`: `add` / `ignore`、`both`: `update` / `keep`、`targetOnly`: `keep` / `delete`。`targetOnly` の省略値は `keep` |
+| `ledger.identity` | 台帳の1行を特定する、入力表の一意キー |
+| `ledger.columns.source` | 取り込み側が持つ列 `<表>.<列>`。xlsx の内容列はこの順 |
+| `ledger.columns.application` | アプリが持つ列。`name` は現在 `workState`。`onSourceChange` は入力側の列が変わったとき `reset` (初期値へ戻す) / `preserve` (保持) |
+| `ledger.search.columns` | 検索欄が照合する1列以上の配列 (`columns.source` のどれか) |
+| `ledger.search.match` | `exact` (完全一致、辞書索引) または `contains` (部分一致) |
 
-列名は CSV のヘッダー行そのものです。式やコードは書けません。名前はファイルを読んだ時点で定義の中で、
+操作は、対象の種類が合う順ならジョブの `kind` にかかわらず組み合わせられます。対象は表、ある表に結び付いた
+行集合、台帳の3種類です。たとえば `append` や `update` も更新ジョブと削除ジョブのどちらにも置けます。
+
+| `operation` | 対象と指定 | 出力 |
+|---|---|---|
+| `join` | 2表。`keys` は対象1・対象2の列を順に2つ。`condition` は `match` (内部) / `left` (左外部) / `full` (完全外部) | 結合した表 |
+| `append` | 同じ列名・順序の2表 | 対象1の下へ対象2を足した表 |
+| `extract` | 表と `where`、表と表＋`keys`、または同じ表から得た2行集合 | 行集合。行集合どうしの条件は `either` / `both` / `exclude` |
+| `select` | 1表と `columns`。各列の `as` で改名でき、配列順が出力順 | 選択した列の表 |
+| `calculate` | 1表、追加する `column`、`expression` | 計算列を足した表 |
+| `aggregate` | 1表、`groupBy`、`aggregates` (`sum` / `count` と `as`) | 集計表 |
+| `sort` | 1表、`orders` (`ascending` / `descending`、`text` / `number`) | 並べ替えた表。台帳なら作業状態も同じ行とともに並べ替える |
+| `distinct` | 1表と、同一判定に使う `columns` | 最初の行を残して重複を除いた表。台帳なら残した行の作業状態も残す |
+| `update` | 1表と、その表から得た行集合。`set` に列と式 | 該当行の列を書き換えた表 |
+| `delete` | 1表と、その表から得た行集合 | 該当行を除いた表 |
+| `merge` | 元表と台帳、双方の `keys`、3方向の指定 | 追加・更新・保持／削除を適用した台帳 |
+| `replace` | 元表と台帳、双方の `keys` | 元表だけで置き換えた台帳 |
+
+`where` は `column / operator / value` です。`operator` は `equals` / `notEquals` / `contains` /
+`startsWith` / `endsWith` / `empty` / `notEmpty` / `greater` / `atLeast` / `less` / `atMost`。
+式は列名、数値、シングルクォートで囲んだ文字、丸括弧と `+ - * /` だけです。任意のコードや関数は実行しません。
+改名列と新しい列は `<output>.<asまたはcolumn>` という名前になり、`labels` に画面向けの名前を置きます。
+
+`merge` は、元だけの行を追加し、両方にある行の取り込み側列を更新し、先だけの行を残す設定にできます。
+`targetOnly` を `delete` と明記したときだけ先だけの行を消します。`replace` も更新段として使え、元の行だけで
+台帳を作り直します。入力側の列が変わった行でアプリ所有列をどうするかは、列ごとの `onSourceChange` が決めます。
+
+入力列名は CSV のヘッダー行そのものです。名前はファイルを読んだ時点で定義の中で、
 起動時に CSV のヘッダー行と突き合わせます。
 
 ### CSV の読み方 (厳格)
@@ -161,7 +211,7 @@ AutomationId を持つ段だけを中間パスに残して、ウィンドウ・�
 
 | メンバー | 既定 | 意味 |
 |---|---:|---|
-| `schema` | (必須) | この版は `2` |
+| `schema` | (必須) | この版は `3` |
 | `paths.dataDir` | `data` | CSV のあるフォルダー |
 | `paths.ledger` | `ReaderDataViewer-Ledger.xlsx` | 統合台帳 |
 | `paths.log` | `ReaderDataViewer.log` | 実行ログ |

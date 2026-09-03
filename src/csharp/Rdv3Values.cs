@@ -36,6 +36,7 @@ public sealed class Rdv3View
     public string LedgerFile = "";
     public string LedgerRows = "";
     public string LedgerSaved = "";
+    public int PendingCount;
     public string MergeMs = "";
     public string SearchMs = "";
     public string Pid = "";
@@ -152,13 +153,14 @@ public static class Rdv3Eval
             case "ledgerFile": return new Rdv3Value(v.LedgerFile, Rdv3Value.Normal);
             case "ledgerRows": return new Rdv3Value(v.LedgerRows, Rdv3Value.Normal);
             case "ledgerSaved": return new Rdv3Value(v.LedgerSaved, Rdv3Value.Normal);
+            case "pendingCount": return new Rdv3Value(Rdv3Text.PendingCountFmt.Replace("{n}", v.PendingCount.ToString("N0", CultureInfo.InvariantCulture)), Rdv3Value.Normal);
             case "mergeMs": return new Rdv3Value(v.MergeMs, Rdv3Value.Normal);
             case "searchMs": return new Rdv3Value(v.SearchMs, Rdv3Value.Normal);
             case "pid": return new Rdv3Value(v.Pid, Rdv3Value.Normal);
             case "logName": return new Rdv3Value(v.LogName, Rdv3Value.Normal);
             case "userName": return new Rdv3Value(v.UserName, Rdv3Value.Normal);
             case "hostName": return new Rdv3Value(v.HostName, Rdv3Value.Normal);
-            case "clock": return new Rdv3Value(DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss", CultureInfo.InvariantCulture), Rdv3Value.Normal);
+            case "clock": return new Rdv3Value(DateTime.Now.ToString("HH:mm:ss", CultureInfo.InvariantCulture), Rdv3Value.Normal);
         }
         return new Rdv3Value("", Rdv3Value.Muted);
     }

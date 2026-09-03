@@ -13,7 +13,7 @@
 #   dist\app-csharp\ReaderDataViewer.cmd            the same payload with a console
 #   dist\app-csharp\settings.json                   its settings (paths, watch, data, screen)
 #   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    its initial ledger
-#   dist\app-csharp\data\table{A,B,C}.csv
+#   dist\app-csharp\data\table{A,B,C}.csv plus the two delete-job inputs
 # WHAT IT NEEDS, and what it does NOT need
 #   needs   Windows PowerShell 5.1 and .NET Framework csc (both in box).
 #   does NOT need administrator rights, and never asks for elevation.
@@ -55,7 +55,9 @@ Write-Output ("  will build     : app-csharp only")
 try {
   # --- data: only the set a distributable is actually built from ------------
   Head 'data-100k (generated only if absent)'
-  if (Test-Path -LiteralPath (Join-Path $Root 'data-100k\tableA.csv')) {
+  if ((Test-Path -LiteralPath (Join-Path $Root 'data-100k\tableA.csv')) -and
+      (Test-Path -LiteralPath (Join-Path $Root 'data-100k\delete.csv')) -and
+      (Test-Path -LiteralPath (Join-Path $Root 'data-100k\delete-ref.csv'))) {
     Write-Output '  data-100k already present, left as it is'
   } else {
     & (Join-Path $Root 'build\gen_data2.ps1')
@@ -92,7 +94,7 @@ $copies = @()
 foreach ($d in 'dist\app-csharp') {
   $copies += @{ dest = (Join-Path $d 'settings.json')
                 src  = 'src\config\settings.json' }
-  foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv') {
+  foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'delete-ref.csv') {
     $copies += @{ dest = (Join-Path (Join-Path $d 'data') $n); src = (Join-Path 'data-100k' $n) }
   }
 }
