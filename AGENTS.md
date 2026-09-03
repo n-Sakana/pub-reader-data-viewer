@@ -9,8 +9,8 @@
 - CSV の定義 (`data`: 表、キー、結合、台帳の列) と画面 (`screen`: 部品 7 種、値の取り方 3 種、判定規則 3 種) は JSON の名前だけで書き、式やコードは書かせない。
 - `settings.json` は厳格に読む。無い・壊れている・知らないメンバー・範囲外・何も指していない名前は、既定で動かず起動しない (理由をダイアログとログへ)。組込み既定を持ち込まない。
 - `build.bat` と `build/build_dist.ps1` は `dist/app-csharp/` だけを生成する。出荷するデータと画面は**脱色したサンプル** (表A/B/C、`SAMPLE-A-0000001` のような値、中立なラベル) で、業務の色を付けない。
-- 現実的なダミー (販売 / 製造 / 施設予約 + 画面を変えた 2 変種) は `src/samples/<name>/settings.json` + `build/gen_samples.ps1` が `samples/` に生成する検査用の組で、`build/test_samples.ps1` が製品コードに、`build/test_ui_geometry.ps1 -Settings` が画面の健全性に、`work/ui-v2/live_scenario.ps1` が実配布物の利用動作に通す。配布物には入れない。
-- 画面の定義を変える・増やすときは、出荷定義の忠実度 (`test_ui_geometry.ps1`) と見本 5 定義の健全性 (`-Settings`) を両方回す。レイアウトの不具合は見本定義のほうで先に出る。
+- 現実的なダミー (販売 / 製造 / 施設予約 + 画面を変えた 2 変種) は `src/samples/<name>/settings.json` + `build/gen_samples.ps1` が `samples/` に生成する検査用の組で、`build/test_samples.ps1` が製品コードに通す。配布物には入れない。
+- 画面の定義を変える・増やすときは `build/test_settings_geometry.ps1` を回し、`build/capture_headless.ps1` と `build/capture_dialogs_headless.ps1` で実際の部品ツリーを窓を出さずに撮って目で確かめる。
 - 退役物はすべて `archive/` の下に集約済み。現行製品へ混ぜず、通常ビルドから参照しない。
   - `archive/vba/` — 退役した実用 VBA 版。
   - `archive/comparisons/` — 1 対 1・一対多の方式比較。
@@ -37,8 +37,8 @@
 - `docs/README.md` — 現行ドキュメントの索引
 - `docs/architecture.md` — 現行 C# 版の構成とデータ契約
 - `docs/settings.md` — `settings.json` (paths / search / watch / jobs / data、厳格な読込み)
-- `docs/ui-spec.md` — `settings.json` の `screen`、画面の振る舞い、レスポンシブ、検査
-- `docs/ui-reference/v2.html` — UI の正本 HTML。単体でブラウザで開ける。ここが唯一の正本で、複製を作らない
+- `docs/ui-spec.md` — 手描き UI v2 の画面定義と検査 (履歴。現行 UI の正本ではない)
+- `README.html` — 動く暫定版の説明書。ブラウザで開くだけで読める
 - `archive/README.md` — 退役物の境界と所在
 
 ## 開発コマンド
@@ -48,7 +48,6 @@ build.bat
 powershell -NoProfile -ExecutionPolicy Bypass -File build\build_dist.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\compile_check.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_contract.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_ui_geometry.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_geometry.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_exit_guard.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
@@ -60,8 +59,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
 - `archive/` の履歴資料を現行設計の根拠にしない。変更依頼がない限り整理・修正しない。
 - key1 は一対多なので、索引は必ず `key -> 行の集合` とし、単一行で上書きしない。
 - xlsx は temp 書込みから安全に置換する。保存完了前に成功表示しない。
-- UI の寸法は画面定義 (`src/config/settings.json` の `screen`) の値で、`docs/ui-ref-v2-geom.json` (正本 HTML の実測) と検査で突き合わせる。コードに座標表を持たない。
-- 文字は GDI (`Rdv3Skin.Draw/Measure`) で描き測る。GDI+ の文字描画や `TextRenderer` に戻さない (横潰れ・DPI 換算の狂い)。モーダルの角丸は DWM に任せ、Region で切らない。
+- UI の寸法は画面定義 (`src/config/settings.json` の `screen`) の値で決める。コードに座標表を持たない。見本 HTML と 1 画素ずつ合わせる前提は無い (`archive/ui-v2/`)。
+- 画面は標準の WinForms 部品で組む。`OnPaint` と `Graphics` による自前描画へ戻さない。`Application.EnableVisualStyles` を呼ばない (端末のテーマに任せる)。この 3 つは `build/test_settings_geometry.ps1` が見ている。
+- 高さは font から出す。`GroupBox.DisplayRectangle` は見出しの分を既に引いているので、`Padding.Top` で見出しの高さを二重に払わない。
 - C# は Windows 同梱の .NET Framework `csc` でコンパイルするため **C# 5** に限定する。verbatim string を使わない。非 ASCII を含む C# は `Rdv3Text.cs` だけ。
 - 製品ソースの一覧は `build/sources.ps1` だけに持つ。
 - 非 ASCII を含む `.ps1` は UTF-8 BOM を維持する。

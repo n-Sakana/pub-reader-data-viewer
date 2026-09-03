@@ -1,4 +1,4 @@
-# Capture the real WinForms control tree without showing a window.
+﻿# Capture the real WinForms control tree without showing a window.
 [CmdletBinding()]
 param(
   [string] $Root = "",
@@ -144,11 +144,11 @@ if ($DumpStatus) {
   $statusBar = $form.Controls.Find('statusBar', $true)[0]
   $boldFont = New-Object System.Drawing.Font($form.Font, [System.Drawing.FontStyle]::Bold)
   try {
-    for ($i = 0; $i -lt $statusBar.Panels.Count; $i++) {
-      $panel = $statusBar.Panels[$i]
+    for ($i = 0; $i -lt $statusBar.Items.Count; $i++) {
+      $panel = $statusBar.Items[$i]
       $measureFont = if ($i -eq 0 -or ($i -eq 3 -and $PendingCount -ne 0)) { $boldFont } else { $form.Font }
       $needed = [System.Windows.Forms.TextRenderer]::MeasureText($panel.Text, $measureFont).Width
-      Write-Output ("status[{0}] text={1} actual={2} needed={3} autosize={4}" -f $i, $panel.Text, $panel.Width, $needed, $panel.AutoSize)
+      Write-Output ("status[{0}] text={1} actual={2} needed={3} spring={4}" -f $i, $panel.Text, $panel.Width, $needed, $panel.Spring)
       if ($i -ne 2 -and $panel.Width -lt $needed) { throw ("status panel text is clipped: " + $i) }
     }
   } finally { $boldFont.Dispose() }

@@ -49,13 +49,13 @@ public sealed class Rdv3Form : Form
     private readonly List<Control> operationControls = new List<Control>();
     private readonly Dictionary<Control, Rdv3ButtonDef> buttonDefs = new Dictionary<Control, Rdv3ButtonDef>();
     private readonly List<Rdv3SegmentDef> segmentDefs = new List<Rdv3SegmentDef>();
-    private readonly List<StatusBarPanel> statusPanels = new List<StatusBarPanel>();
+    private readonly List<ToolStripStatusLabel> statusPanels = new List<ToolStripStatusLabel>();
     private readonly Panel contentHost = new Panel();
     private readonly TableLayoutPanel content = new TableLayoutPanel();
     private readonly Panel commandBar = new Panel();
     private readonly FlowLayoutPanel commandFlow = new FlowLayoutPanel();
     private readonly Panel statusHost = new Panel();
-    private readonly StatusBar status = new StatusBar();
+    private readonly StatusStrip status = new StatusStrip();
     private readonly System.Windows.Forms.Timer clock = new System.Windows.Forms.Timer();
     private readonly ToolTip tips = new ToolTip();
 
@@ -76,8 +76,18 @@ public sealed class Rdv3Form : Form
     {
         Screen = screen;
         SuspendLayout();
-        try { Font = new Font(screen.FontFamily, 9.0f, FontStyle.Regular); }
-        catch { Font = SystemFonts.MessageBoxFont; }
+        // new Font() does not throw for a family this machine does not have:
+        // it quietly hands back Microsoft Sans Serif, which carries no Japanese
+        // glyphs. Compare the name we asked for with the one we got.
+        Font named = null;
+        try { named = new Font(screen.FontFamily, 9.0f, FontStyle.Regular); }
+        catch { named = null; }
+        if (named != null && !string.Equals(named.Name, screen.FontFamily, StringComparison.OrdinalIgnoreCase))
+        {
+            named.Dispose();
+            named = null;
+        }
+        Font = (named != null) ? named : SystemFonts.MessageBoxFont;
         AutoScaleDimensions = new SizeF(96.0f, 96.0f);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size((int)Math.Round(screen.StartWidth), (int)Math.Round(screen.StartHeight));
@@ -129,8 +139,13 @@ public sealed class Rdv3Form : Form
         statusHost.BackColor = SystemColors.Control;
         status.Name = "statusBar";
         status.Dock = DockStyle.Fill;
-        status.ShowPanels = true;
+        status.AutoSize = false;
         status.SizingGrip = true;
+        // the system renderer keeps the strip on the same footing as the rest
+        // of the screen; the professional one paints a gradient of its own
+        status.RenderMode = ToolStripRenderMode.System;
+        status.GripStyle = ToolStripGripStyle.Hidden;
+        status.Padding = new Padding(1, 0, 14, 0);
 
         statusHost.Controls.Add(status);
         Controls.Add(contentHost);
@@ -199,7 +214,9 @@ public sealed class Rdv3Form : Form
     private Control BuildKeyPanel(Rdv3Section s, string name)
     {
         GroupBox box = NewGroup(name, s.Title);
-        box.Height = 83;
+        // the figure below the caption is set in 15 pt bold: the panel has to
+        // clear the caption, the label row and that line, or the number is cut
+        box.Height = 80;
         box.AutoSize = false;
 
         TableLayoutPanel split = new TableLayoutPanel();
@@ -233,7 +250,7 @@ public sealed class Rdv3Form : Form
         input.Dock = DockStyle.Fill;
         input.FlowDirection = FlowDirection.LeftToRight;
         input.WrapContents = false;
-        input.Padding = new Padding(6, 19, 0, 0);
+        input.Padding = new Padding(6, 13, 0, 0);
         Label il = NewLabel(name + ".inputLabel", s.InputLabel);
         il.AutoSize = true;
         il.Margin = new Padding(0, 5, 5, 0);
@@ -250,7 +267,13 @@ public sealed class Rdv3Form : Form
         };
         input.Controls.Add(il);
         input.Controls.Add(txtKey);
-        for (int i = 0; i < s.Buttons.Count; i++) { input.Controls.Add(CreateButton(s.Buttons[i])); }
+        for (int i = 0; i < s.Buttons.Count; i++)
+        {
+            Control made = CreateButton(s.Buttons[i]);
+            input.Controls.Add(made);
+            Button primary = made as Button;
+            if (primary != null && s.Buttons[i].Primary && AcceptButton == null) { AcceptButton = primary; }
+        }
 
         split.Controls.Add(figure, 0, 0);
         split.Controls.Add(input, 1, 0);
@@ -335,8 +358,7 @@ public sealed class Rdv3Form : Form
         v.ScrollBars = ScrollBars.Vertical;
         v.Dock = DockStyle.Fill;
         v.Margin = new Padding(7);
-        v.Location = new Point(8, 18);
-        box.Padding = new Padding(8, 18, 8, 7);
+        box.Padding = new Padding(8, 4, 8, 7);
         box.Height = 28 + Math.Max(1, s.Lines) * (DesignFontHeight(Font) + 2);
         box.AutoSize = false;
         box.Controls.Add(v);
@@ -407,11 +429,14 @@ public sealed class Rdv3Form : Form
         int n = s.Segments.Count;
         for (int i = 0; i < n; i++)
         {
-            StatusBarPanel p = new StatusBarPanel();
-            p.AutoSize = (i == 2) ? StatusBarPanelAutoSize.Spring : StatusBarPanelAutoSize.Contents;
-            p.Alignment = HorizontalAlignment.Left;
-            p.BorderStyle = StatusBarPanelBorderStyle.Sunken;
-            status.Panels.Add(p);
+            ToolStripStatusLabel p = new ToolStripStatusLabel();
+            p.Name = "statusBar.segment" + i.ToString(CultureInfo.InvariantCulture);
+            p.Spring = (i == 2);
+            p.TextAlign = ContentAlignment.MiddleLeft;
+            p.BorderSides = ToolStripStatusLabelBorderSides.All;
+            p.BorderStyle = Border3DStyle.SunkenOuter;
+            p.Margin = new Padding(0, 0, 2, 0);
+            status.Items.Add(p);
             statusPanels.Add(p);
             if (i < s.Segments.Count) { segmentDefs.Add(s.Segments[i]); }
         }

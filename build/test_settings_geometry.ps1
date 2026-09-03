@@ -96,15 +96,25 @@ Check 'main screen has one editable white search box' (($editable.Count -eq 1) -
 Check 'single-line record values use shallow Fixed3D labels' ($shallowValues.Count -ge 11) ("count " + $shallowValues.Count)
 Check 'long record values keep scrollable read-only text boxes' (($readOnly.Count -eq 2) -and (@($readOnly | Where-Object { -not $_.Multiline -or $_.ScrollBars -ne [System.Windows.Forms.ScrollBars]::Vertical -or $_.BackColor -ne [System.Drawing.SystemColors]::Control }).Count -eq 0)) ("count " + $readOnly.Count)
 Check 'work state is a CheckBox with button appearance' (($null -ne $workButton) -and ($workButton -is [System.Windows.Forms.CheckBox]) -and ($workButton.Appearance -eq [System.Windows.Forms.Appearance]::Button)) 'wrong control'
-Check 'the old StatusBar has exactly four panels' (($status.Count -eq 1) -and ($status[0].Panels.Count -eq 4)) 'status panels'
-Check 'there is no StatusStrip or menu strip' (($strips.Count -eq 0) -and (@($main | Where-Object { $_ -is [System.Windows.Forms.MenuStrip] }).Count -eq 0)) 'modern strip found'
+Check 'the status strip has exactly four segments' (($strips.Count -eq 1) -and ($strips[0].Items.Count -eq 4)) 'status segments'
+Check 'the third segment is the one that springs' (($strips.Count -eq 1) -and ($strips[0].Items[2].Spring) -and (@(0, 1, 3) | Where-Object { $strips[0].Items[$_].Spring }).Count -eq 0) 'wrong spring'
+Check 'every segment carries a sunken border' (($strips.Count -eq 1) -and (@($strips[0].Items | Where-Object { $_.BorderSides -ne [System.Windows.Forms.ToolStripStatusLabelBorderSides]::All }).Count -eq 0)) 'segment border'
+Check 'the retired StatusBar control is gone' ($status.Count -eq 0) 'old status bar remains'
+Check 'there is no menu strip' ((@($main | Where-Object { $_ -is [System.Windows.Forms.MenuStrip] }).Count) -eq 0) 'menu strip found'
 $actions = @('button.tableExport', 'button.updateRecords', 'button.deleteRecords', 'button.settings')
 Check 'all four bottom actions exist' ((@($actions | Where-Object { $null -ne (Named $main $_) }).Count) -eq 4) 'button missing'
 $sendLabelOk = $sendLabel -is [System.Windows.Forms.Label]
 $sendButtonOk = $sendButton -is [System.Windows.Forms.Button]
 $sendTextOk = [string]::Equals($sendButton.Text, '送信(&U)')
 Check 'the separate send band has its count and send button' ($sendLabelOk -and $sendButtonOk -and $sendTextOk) ("label=" + $sendLabelOk + " button=" + $sendButtonOk + " text=" + $sendTextOk)
-Check 'the start client height follows mock version 12' ($form.ClientSize.Height -eq 614) ("height " + $form.ClientSize.Height)
+# A pinned number went stale every time a font or a band changed. What the
+# start height has to earn is that the whole screen is visible without the
+# scroll bar, so assert that instead of the number.
+$contentHost = Named $main 'contentHost'
+$contentPanel = Named $main 'content'
+$heightDeclared = [int][Math]::Round($cfg.Screen.StartHeight)
+Check 'the window starts at the height the settings declare' ($form.ClientSize.Height -eq $heightDeclared) ("height " + $form.ClientSize.Height + " declared " + $heightDeclared)
+Check 'the whole screen fits at the start height, unscrolled' ($contentPanel.Height -le $contentHost.ClientSize.Height) ("content " + $contentPanel.Height + " host " + $contentHost.ClientSize.Height)
 $form.SetPendingCount(2)
 $pendingTextOk = [string]::Equals($sendLabel.Text, '未送信 2 件')
 $pendingColorOk = $sendLabel.ForeColor.ToArgb() -eq [Drawing.Color]::Maroon.ToArgb()

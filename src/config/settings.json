@@ -227,9 +227,9 @@
   //
   //   sections    titleBar | keyPanel | columns | fieldList | textBox | statusBand | sendBar | statusBar
   //               in display order. Sizes are CSS px of the reference screen
-  //               (docs/ui-reference/v2.html) and scale with the Windows display.
+  //               (archive/ui-v2/docs/ui-reference/v2.html) and scale with the Windows display.
   "screen": {
-    "card": { "width": 780, "startSize": [780, 614], "gap": 8, "padding": [8], "font": "MS UI Gothic" },
+    "card": { "width": 780, "startSize": [780, 634], "gap": 8, "padding": [8], "font": "Yu Gothic UI" },
     "toast": { "durationMs": 3600 },
 
     "judgments": {
@@ -298,7 +298,7 @@
       { "type": "textBox", "title": "メモ（表B: b_memo）", "lines": 4, "value": { "field": "B.b_memo" } },
       { "type": "textBox", "title": "備考（表C: c_remark）", "lines": 2, "value": { "field": "C.c_remark" } },
 
-      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 38,
+      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 46,
         "sub": [ { "field": "B.b_status" }, { "state": "workState" } ], "joiner": " ・ " },
 
       { "type": "sendBar", "height": 31, "value": { "state": "pendingCount" },
