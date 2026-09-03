@@ -6,7 +6,7 @@
 #   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    initial ledger (all FALSE)
 #   dist\app-csharp\data\table{A,B,C}.csv
 #
-# It never touches archive\, benchmarks\ or showcase\ and writes only under
+# It never touches archive\ and writes only under
 # dist\app-csharp.
 #
 # The initial xlsx ledger is produced by the SAME code the app runs (the

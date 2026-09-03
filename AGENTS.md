@@ -11,9 +11,13 @@
 - `build.bat` と `build/build_dist.ps1` は `dist/app-csharp/` だけを生成する。出荷するデータと画面は**脱色したサンプル** (表A/B/C、`SAMPLE-A-0000001` のような値、中立なラベル) で、業務の色を付けない。
 - 現実的なダミー (販売 / 製造 / 施設予約 + 画面を変えた 2 変種) は `src/samples/<name>/settings.json` + `build/gen_samples.ps1` が `samples/` に生成する検査用の組で、`build/test_samples.ps1` が製品コードに、`build/test_ui_geometry.ps1 -Settings` が画面の健全性に、`work/ui-v2/live_scenario.ps1` が実配布物の利用動作に通す。配布物には入れない。
 - 画面の定義を変える・増やすときは、出荷定義の忠実度 (`test_ui_geometry.ps1`) と見本 5 定義の健全性 (`-Settings`) を両方回す。レイアウトの不具合は見本定義のほうで先に出る。
-- VBA 版と旧比較実験は `archive/` に保全済み。現行製品へ混ぜず、通常ビルドから参照しない。
-- `showcase/` は独立した VBA Pixel Bridge 展示。Reader 本体の変更に巻き込まない。
-- `benchmarks/` は方式選定の証拠で read-only。配下を変更しない。
+- 退役物はすべて `archive/` の下に集約済み。現行製品へ混ぜず、通常ビルドから参照しない。
+  - `archive/vba/` — 退役した実用 VBA 版。
+  - `archive/comparisons/` — 1 対 1・一対多の方式比較。
+  - `archive/benchmarks/` — 方式選定の凍結済み証拠で read-only。配下を変更しない。
+  - `archive/showcase/` — VBA Pixel Bridge 展示。Reader 本体の変更に巻き込まない。
+  - `archive/ui-prototypes/` — v2 より前の UI 案。
+- 現行製品はリポジトリ直下の `src/`・`build/`・`docs/` の 3 つだけで成り立つ。ここへ退役物を戻さない。
 
 ## 動作契約
 
@@ -34,7 +38,7 @@
 - `docs/architecture.md` — 現行 C# 版の構成とデータ契約
 - `docs/settings.md` — `settings.json` (paths / search / watch / jobs / data、厳格な読込み)
 - `docs/ui-spec.md` — `settings.json` の `screen`、画面の振る舞い、レスポンシブ、検査
-- `docs/ui-reference/v2.html` — UI の正本 HTML (リポジトリ直下の `Reader Data Viewer v2 (standalone).html` と同じもの)
+- `docs/ui-reference/v2.html` — UI の正本 HTML。単体でブラウザで開ける。ここが唯一の正本で、複製を作らない
 - `archive/README.md` — 退役物の境界と所在
 
 ## 開発コマンド

@@ -12,7 +12,7 @@ engine/
 dist/
 
 # ビルド時に生成される
-benchmarks/excel-background-bench/vba/modZipEmit.bas
+archive/benchmarks/excel-background-bench/vba/modZipEmit.bas
 
 # nuget から取得する第三者成果物 (xll/fetch_exceldna.ps1)
 xll/nuget/

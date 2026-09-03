@@ -2,7 +2,8 @@
 
 Windows 上で動く C# / WinForms アプリです。UI Automation で監視対象の入力欄を読み、3 本の CSV を結合して検索結果を表示します。画面は JSON の画面定義から組み立てます。
 
-現在の製品版は **C# 版 1 種類**です。VBA 版と過去の比較実験は [`archive/`](archive/) に保全してあり、通常のビルドには入りません。
+現在の製品版は **C# 版 1 種類**です。VBA 版、方式比較、方式選定ベンチ、旧 UI 案、VBA Pixel Bridge 展示は
+すべて [`archive/`](archive/) に保全してあり、通常のビルドには入りません。
 
 ## 配布物を作る
 
@@ -43,12 +44,13 @@ src/
   csharp/       製品コード
   config/       出荷設定と画面定義
   launcher/     .vbs / .cmd のヘッダーとブートストラップ
+  samples/      検査用の見本設定 (販売 / 製造 / 施設予約 + 画面を変えた 2 変種)
 build/          C# 製品の生成と受け入れ検査
 docs/           現行 C# 版の設計・設定・UI 資料
-archive/        VBA 版、旧比較実験、旧 UI 案
-benchmarks/     方式選定の凍結済み証拠。変更しない
-showcase/       VBA Pixel Bridge。Reader 本体とは独立した展示
+archive/        退役物の保全。現行製品からは参照しない
 ```
+
+現行製品はこの 4 つだけで成り立ちます。`archive/` の中身は [アーカイブ案内](archive/README.md) を見てください。
 
 詳しい入口は次のとおりです。
 
@@ -69,7 +71,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_geometry
 powershell -NoProfile -ExecutionPolicy Bypass -File build\test_exit_guard.ps1
 ```
 
-`build.bat` は C# 製品だけを作り、`archive/`・`benchmarks/`・`showcase/`には触れません。
+`build.bat` は C# 製品だけを作り、`archive/` には触れません。
 
 ## ライセンス
 
