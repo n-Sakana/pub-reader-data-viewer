@@ -261,6 +261,14 @@ public sealed class Rdv3WorkState
 
     public Rdv3StateDef InitialState { get { return ById(Initial); } }
     public string InitialStored { get { Rdv3StateDef s = InitialState; return (s == null) ? "" : s.Stored; } }
+    public Rdv3StateDef InitialTargetState
+    {
+        get
+        {
+            Rdv3Transition transition = FromState(Initial);
+            return (transition == null) ? null : ById(transition.To);
+        }
+    }
 
     public Rdv3Transition FromState(string id)
     {
@@ -636,6 +644,8 @@ public sealed class Rdv3Screen
     public Rdv3CandidatesDef Candidates;
     public Dictionary<string, Rdv3Judgment> Judgments = new Dictionary<string, Rdv3Judgment>(StringComparer.Ordinal);
     public Rdv3WorkState Work;
+    public string[] ExportDefaultFields = new string[0];
+    private int exportLine;
 
     public Rdv3Judgment JudgmentOf(string id)
     {
@@ -665,7 +675,7 @@ public sealed class Rdv3Screen
     // ---- reading the "screen" member -------------------------------------------
     public static Rdv3Screen Read(Rdv3Json root)
     {
-        root.Only("card", "toast", "judgments", "workState", "sections", "candidates");
+        root.Only("card", "toast", "judgments", "workState", "export", "sections", "candidates");
         Rdv3Screen s = new Rdv3Screen();
         Rdv3Json card = root.Obj("card", false);
         if (card != null)
@@ -701,6 +711,11 @@ public sealed class Rdv3Screen
             }
         }
         s.Work = Rdv3WorkState.Read(root.Obj("workState", true));
+        Rdv3Json export = root.Obj("export", true);
+        export.Only("defaultFields");
+        s.ExportDefaultFields = export.Strs("defaultFields", true);
+        s.exportLine = export.Line;
+        if (s.ExportDefaultFields.Length == 0) { throw export.Member("defaultFields").Fail("names no field"); }
         s.Candidates = Rdv3CandidatesDef.Read(root.Obj("candidates", true));
 
         List<Rdv3Json> secs = root.Objs("sections", true);
@@ -740,6 +755,24 @@ public sealed class Rdv3Screen
             Rdv3Transition t = Work.Transitions[i];
             CheckTemplate(t.Confirm, data, t.Line);
             CheckTemplate(t.Done, data, t.Line);
+        }
+        HashSet<string> exportSeen = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = 0; i < ExportDefaultFields.Length; i++)
+        {
+            string reference = ExportDefaultFields[i];
+            bool available = reference == "$work";
+            for (int k = 0; !available && k < data.LabelOrder.Count; k++)
+            {
+                if (data.LabelOrder[k] == reference && data.IndexOf(reference) >= 0) { available = true; }
+            }
+            if (!available)
+            {
+                throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is not an export field", exportLine);
+            }
+            if (!exportSeen.Add(reference))
+            {
+                throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is listed twice", exportLine);
+            }
         }
         for (int i = 0; i < Sections.Count; i++) { CheckButtons(Sections[i], data); }
     }

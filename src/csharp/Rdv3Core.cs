@@ -10,16 +10,13 @@
 // A table's column names are its header row; the width of its key is the
 // width of the key in its first data row, and every other row must agree.
 //
-// The reader is STRICT. A row with the wrong number of columns, a field that
-// begins with a quote (this reader does not unquote, so a quoted field would
-// silently shift every column after it), a control character anywhere in a
-// row (a tab would shift the ledger's own tab-separated columns, and the other
-// control characters cannot be stored in the ledger's XML at all), a key of
-// another width, a key with a byte outside ASCII: each is an Rdv3DataError
-// with the file and the row, and the app does not run on that data. Nothing
-// is skipped or repaired. Bytes that are not valid in the declared encoding
-// are the one exception: they are decoded with the replacement character,
-// and the first such row is remembered so the screen can say so.
+// Structural errors are refused: a wrong column count, a quoted field (this
+// reader does not unquote), or an unusable key. A control character inside a
+// field is different: refusing a whole input for one old byte is too broad.
+// The first occurrence is reported and each such byte is replaced with '?',
+// keeping both the ledger's tab-separated rows and its XML safe. Bytes that
+// are not valid in the declared encoding are likewise decoded with the
+// replacement character, and the first such row is remembered for the UI.
 //
 // C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
 // See build\pack_app.ps1.
@@ -81,6 +78,7 @@ public sealed class Rdv3Table
     public int[] KeyAt;
     public int KeyLen;
     public int InvalidEncodingRow;
+    public string ControlCharacterWarning = "";
 
     private static string Fmt(string text, string file, int row)
     {
@@ -97,17 +95,25 @@ public sealed class Rdv3Table
         {
             string first = r.ReadLine();
             if (first == null || first.Trim().Length == 0) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
-            return SplitHead(first, file);
+            string ignored;
+            return SplitHead(first, file, out ignored);
         }
     }
 
-    private static string[] SplitHead(string line, string file)
+    private static string[] SplitHead(string line, string file, out string warning)
     {
+        warning = "";
         if (line.Length > 0 && line[0] == '\uFEFF') { line = line.Substring(1); }
+        char[] safe = line.ToCharArray();
+        bool changed = false;
         for (int i = 0; i < line.Length; i++)
         {
-            if (line[i] < ' ') { throw new Rdv3DataError(ControlChar(file, 1, (int)line[i])); }
+            if (line[i] >= ' ') { continue; }
+            if (warning.Length == 0) { warning = ControlChar(file, 1, (int)line[i]); }
+            safe[i] = '?';
+            changed = true;
         }
+        if (changed) { line = new string(safe); }
         string[] h = line.Split(',');
         for (int i = 0; i < h.Length; i++)
         {
@@ -167,7 +173,9 @@ public sealed class Rdv3Table
         }
         if (rows < 2) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
 
-        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file);
+        string headerWarning;
+        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, out headerWarning);
+        t.ControlCharacterWarning = headerWarning;
         int cols = t.Head.Length;
         t.KeyCol = -1;
         for (int i = 0; i < cols; i++) { if (t.Head[i] == keyName) { t.KeyCol = i; } }
@@ -197,7 +205,14 @@ public sealed class Rdv3Table
                 int q = p;
                 while (q < re && b[q] != (byte)',')
                 {
-                    if (b[q] < 0x20) { throw new Rdv3DataError(ControlChar(file, row, (int)b[q])); }
+                    if (b[q] < 0x20)
+                    {
+                        if (t.ControlCharacterWarning.Length == 0)
+                        {
+                            t.ControlCharacterWarning = ControlChar(file, row, (int)b[q]);
+                        }
+                        b[q] = (byte)'?';
+                    }
                     q++;
                 }
                 if (field == t.KeyCol) { keyAt = p; keyEnd = q; }
@@ -229,7 +244,7 @@ public sealed class Rdv3Table
         return t;
     }
 
-    // a tab, a carriage return or any other control character: named by its code
+    // A tab, a carriage return or any other control character, named by code.
     private static string ControlChar(string file, int row, int code)
     {
         return Fmt(Rdv3Text.DataControlChar, file, row).Replace("{code}", code.ToString("X2", CultureInfo.InvariantCulture));

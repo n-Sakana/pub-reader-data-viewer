@@ -237,7 +237,7 @@ public static class Rdv3Process
         Rdv3Relation finalLedger = last as Rdv3Relation;
         if (finalLedger != null && finalLedger.Kind == "ledger")
         {
-            ValidateLedgerIdentity(data, finalLedger);
+            ValidateLedgerIdentity(data, job, finalLedger);
         }
         FillResult(result, last);
         if (result.Update == null && last is Rdv3Relation) { result.Update = new Rdv3UpdateResult(); }
@@ -308,15 +308,33 @@ public static class Rdv3Process
         return relation;
     }
 
-    private static void ValidateLedgerIdentity(Rdv3Data data, Rdv3Relation ledger)
+    private static void ValidateLedgerIdentity(Rdv3Data data, Rdv3ProcessJobDef job, Rdv3Relation ledger)
     {
-        int identity = ledger.NeedColumn(data.Columns[data.IdentityCol].Ref);
+        string reference = data.Columns[data.IdentityCol].Ref;
+        int identity = ledger.NeedColumn(reference);
+        ValidateIdentity(data, job, ledger, identity, reference);
+    }
+
+    private static void ValidateIdentity(Rdv3Data data, Rdv3ProcessJobDef job, Rdv3Relation relation,
+                                         int identity, string reference)
+    {
+        string jobName = (job.Name.Length == 0) ? job.Id : job.Name;
+        string column = data.LabelOf(reference);
+        if (column.Length == 0) { column = reference; }
         HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
-        for (int i = 0; i < ledger.Rows.Count; i++)
+        for (int i = 0; i < relation.Rows.Count; i++)
         {
-            string value = ledger.Rows[i][identity];
-            if (value.Length == 0) { throw new InvalidDataException("blank row identity in ledger result"); }
-            if (!seen.Add(value)) { throw new InvalidDataException("duplicate row identity in ledger result: " + value); }
+            string value = relation.Rows[i][identity];
+            if (value.Length == 0)
+            {
+                throw new InvalidDataException(Rdv3Text.ProcessBlankIdentity
+                    .Replace("{job}", jobName).Replace("{column}", column));
+            }
+            if (!seen.Add(value))
+            {
+                throw new InvalidDataException(Rdv3Text.ProcessDuplicateIdentity
+                    .Replace("{job}", jobName).Replace("{column}", column).Replace("{value}", value));
+            }
         }
     }
 
@@ -468,6 +486,7 @@ public static class Rdv3Process
         if (where.Operator == "endsWith") { return value.EndsWith(where.Value, StringComparison.Ordinal); }
         if (where.Operator == "empty") { return value.Length == 0; }
         if (where.Operator == "notEmpty") { return value.Length > 0; }
+        if (value.Length == 0) { return false; }
         decimal left;
         decimal right;
         if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out left)
@@ -723,8 +742,8 @@ public static class Rdv3Process
         {
             for (int i = 0; i < fields.Length; i++)
             {
-                int cmp = Compare(a.Row[fields[i]], b.Row[fields[i]], step.Orders[i].Type);
-                if (step.Orders[i].Direction == "descending") { cmp = -cmp; }
+                int cmp = Compare(a.Row[fields[i]], b.Row[fields[i]], step.Orders[i].Type,
+                                  step.Orders[i].Direction);
                 if (cmp != 0) { return cmp; }
             }
             return a.Ord.CompareTo(b.Ord);
@@ -738,9 +757,20 @@ public static class Rdv3Process
         return output;
     }
 
-    private static int Compare(string left, string right, string type)
+    private static int Compare(string left, string right, string type, string direction)
     {
-        if (type == "text") { return string.Compare(left, right, StringComparison.Ordinal); }
+        if (type == "text")
+        {
+            int text = string.Compare(left, right, StringComparison.Ordinal);
+            return (direction == "descending") ? -text : text;
+        }
+        bool leftBlank = left.Length == 0;
+        bool rightBlank = right.Length == 0;
+        if (leftBlank || rightBlank)
+        {
+            if (leftBlank && rightBlank) { return 0; }
+            return leftBlank ? 1 : -1;
+        }
         decimal a;
         decimal b;
         if (!decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out a)
@@ -748,7 +778,8 @@ public static class Rdv3Process
         {
             throw new InvalidDataException("numeric sort received non-numeric text");
         }
-        return a.CompareTo(b);
+        int number = a.CompareTo(b);
+        return (direction == "descending") ? -number : number;
     }
 
     private static Rdv3Relation Distinct(Rdv3Relation source, Rdv3ProcessStepDef step)
@@ -781,6 +812,7 @@ public static class Rdv3Process
             throw new InvalidDataException("ledger write target key is not data.ledger.identity");
         }
         int sourceKey = source.NeedColumn(step.Keys[0]);
+        ValidateIdentity(data, job, source, sourceKey, step.Keys[0]);
         string[] sourceLines = new string[source.Rows.Count];
         for (int r = 0; r < source.Rows.Count; r++)
         {

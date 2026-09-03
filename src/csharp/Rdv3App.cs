@@ -149,9 +149,11 @@ public sealed class Rdv3App
     // ---- the exit guard around one unfinished local/shared write ------------
     // The small pending-file write and every shared-ledger write have a clear
     // success/failure outcome. A close is refused only while that outcome is
-    // undecided. Both flags are touched on the UI thread only.
+    // undecided. The wait flag crosses the UI/worker boundary under its gate.
     private bool savingMark;
     private bool closeAskedWhileSaving;
+    private readonly object sharedWaitGate = new object();
+    private bool waitingForSharedLock;
 
     private Rdv3SharedMarker seenMarker;
     private Rdv3SharedMarker deferredMarker;
@@ -220,13 +222,17 @@ public sealed class Rdv3App
         form.FormClosing += delegate(object s, FormClosingEventArgs e)
         {
             // one unfinished save is the only thing that refuses a close
-            if (savingMark)
+            lock (sharedWaitGate)
             {
-                e.Cancel = true;
-                closeAskedWhileSaving = true;
-                form.Error(Rdv3Text.ErrCloseWhileWriting);
-                log.Write("-", "exit", "close refused: a write is still in flight");
-                return;
+                if (savingMark && !waitingForSharedLock)
+                {
+                    e.Cancel = true;
+                    closeAskedWhileSaving = true;
+                    form.Error(Rdv3Text.ErrCloseWhileWriting);
+                    log.Write("-", "exit", "close refused: a write is still in flight");
+                    return;
+                }
+                closing = true;
             }
             Shutdown();
         };
@@ -305,6 +311,7 @@ public sealed class Rdv3App
         log.Write(rid, "merge", "rows=" + mr.Rows.ToString(CultureInfo.InvariantCulture)
             + " checksum=" + mr.Checksum.ToString(CultureInfo.InvariantCulture)
             + " ms=" + Rdv3Log.F(mr.MergeMs()) + " compose_ms=" + Rdv3Log.F(composeMs));
+        for (int i = 0; i < mr.Warnings.Count; i++) { log.Write(rid, "warning", mr.Warnings[i]); }
 
         // saved ledger
         string[] oldLines = null;
@@ -377,6 +384,7 @@ public sealed class Rdv3App
         savedStates = oldStates;
         lastMergeMs = mr.MergeMs();
         form.SetTimes(lastMergeMs, -1);
+        if (mr.Warnings.Count > 0) { form.Error(mr.Warnings[0]); }
 
         if (oldLines == null)
         {
@@ -436,9 +444,16 @@ public sealed class Rdv3App
     // the definition's (Rdv3Xlsx), and every row needs an identity of its own
     private void ReadLedger(string[] head, out string[] lines, out string[] states)
     {
-        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states);
+        string warning;
+        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states, out warning);
         Rdv3Ledger.CheckIdentities(lines, dataDef.IdentityCol, System.IO.Path.GetFileName(ledgerPath),
             LabelOrRef(dataDef.Columns[dataDef.IdentityCol].Ref));
+        if (warning.Length > 0)
+        {
+            log.Write("-", "warning", warning);
+            string shown = warning;
+            form.RunOnUi(delegate { form.Error(shown); });
+        }
     }
 
     // a ledger column as the screen names it (data.labels), else its reference
@@ -500,6 +515,7 @@ public sealed class Rdv3App
         state = StApplying;
         savingMark = true;
         closeAskedWhileSaving = false;
+        lock (sharedWaitGate) { waitingForSharedLock = true; }
         form.SetState(Rdv3Text.StateApplying);
         form.EnableOps(false);
 
@@ -578,6 +594,7 @@ public sealed class Rdv3App
             }
             catch (Exception ex)
             {
+                if (ex is OperationCanceledException && closing) { return; }
                 log.Write(rid, "error", "stage=persist msg=" + ex.Message);
                 bool wrote = ledgerWritten;
                 Rdv3SharedMarker writtenMarker = marker;
@@ -1014,6 +1031,7 @@ public sealed class Rdv3App
     {
         if (!savingMark) { return; }
         savingMark = false;
+        lock (sharedWaitGate) { waitingForSharedLock = false; }
         form.EnableWorkState(state == StReady);
         if (state == StReady) { form.SetState(WatchStateText()); }
         log.Write(tag, "exit", "write decided (" + (ok ? "saved" : "failed") + "); exit released");
@@ -1057,6 +1075,7 @@ public sealed class Rdv3App
         state = StSending;
         savingMark = true;
         closeAskedWhileSaving = false;
+        lock (sharedWaitGate) { waitingForSharedLock = true; }
         form.EnableOps(false);
         form.SetState(Rdv3Text.StateSending);
         log.Write(tag, "send", "started count=" + count.ToString(CultureInfo.InvariantCulture));
@@ -1119,6 +1138,7 @@ public sealed class Rdv3App
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException && closing) { return; }
             log.Write(tag, "error", "stage=send wrote=" + (ledgerWritten ? "true" : "false") + " msg=" + ex.Message);
             if (ledgerWritten && latestLines != null && apply != null) { Install(latestLines, apply.States, null); }
             Rdv3SharedMarker keepMarker = marker;
@@ -1148,9 +1168,26 @@ public sealed class Rdv3App
             Rdv3LedgerLock result = shared.TryAcquire(out owner);
             if (result != null)
             {
+                lock (sharedWaitGate)
+                {
+                    if (closing)
+                    {
+                        result.Dispose();
+                        throw new OperationCanceledException("application is closing");
+                    }
+                    waitingForSharedLock = false;
+                }
                 log.Write(tag, "lock", "acquired " + shared.LockPath);
                 form.PostOnUi(delegate { form.SetState(activeText); });
                 return result;
+            }
+
+            long staleAgeMs;
+            if (shared.TryRemoveStaleLock(cfg.LockStaleMs, out staleAgeMs))
+            {
+                log.Write(tag, "lock", "removed stale lock age_ms=" + staleAgeMs.ToString(CultureInfo.InvariantCulture)
+                    + " path=" + shared.LockPath);
+                continue;
             }
 
             string ownerKey = (owner == null) ? "" : owner.User + "\t" + owner.Host;
@@ -1204,6 +1241,7 @@ public sealed class Rdv3App
         state = StApplying;
         savingMark = true;
         closeAskedWhileSaving = false;
+        lock (sharedWaitGate) { waitingForSharedLock = true; }
         form.EnableOps(false);
         form.SetState(Rdv3Text.StateDeleting);
         string tag = "D" + (++procSeq).ToString(CultureInfo.InvariantCulture);
@@ -1275,6 +1313,7 @@ public sealed class Rdv3App
         }
         catch (Exception ex)
         {
+            if (ex is OperationCanceledException && closing) { return; }
             log.Write(tag, "error", "stage=delete wrote=" + (ledgerWritten ? "true" : "false") + " msg=" + ex.Message);
             if (ledgerWritten && result != null) { Install(result.Lines, result.States, null); }
             Rdv3SharedMarker keepMarker = marker;
@@ -1297,7 +1336,7 @@ public sealed class Rdv3App
     {
         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
         string baseDir = System.IO.Path.GetDirectoryName(ledgerPath);
-        Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, baseDir);
+        Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, screen, baseDir);
         if (request == null) { return; }
         string[] lines = ledLines;
         string[] states = ledStates;
@@ -1432,10 +1471,15 @@ public sealed class Rdv3App
         if (marker.Kind == "send")
         {
             string actor = MarkerActor(marker);
+            Rdv3StateDef initial = work.InitialState;
+            Rdv3StateDef changed = work.InitialTargetState;
             string body = Rdv3Text.SharedSendBody.Replace("{user}", actor)
-                .Replace("{done}", marker.FromInitial.ToString("N0", CultureInfo.InvariantCulture))
-                .Replace("{todo}", marker.ToInitial.ToString("N0", CultureInfo.InvariantCulture));
-            form.Tell(Rdv3Text.SharedSendTitle, body);
+                .Replace("{changed}", marker.FromInitial.ToString("N0", CultureInfo.InvariantCulture))
+                .Replace("{changedState}", (changed == null) ? "" : changed.Text)
+                .Replace("{initial}", marker.ToInitial.ToString("N0", CultureInfo.InvariantCulture))
+                .Replace("{initialState}", (initial == null) ? "" : initial.Text);
+            form.SharedNotice(body);
+            log.Write("-", "notice", "target=status text=" + body);
         }
         deferredMarker = marker;
     }

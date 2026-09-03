@@ -70,6 +70,8 @@ public sealed class Rdv3Form : Form
     private List<Rdv3CandRow> cands = new List<Rdv3CandRow>();
     private int candTotal;
     private Rdv3Toast toast;
+    private string sharedNotice = "";
+    private long sharedNoticeAt;
 
     public Rdv3Form(Rdv3Screen screen)
     {
@@ -804,11 +806,26 @@ public sealed class Rdv3Form : Form
     private void RefreshStatus()
     {
         int n = Math.Min(segmentDefs.Count, statusPanels.Count);
+        status.AccessibleName = "";
         for (int i = 0; i < n; i++)
         {
             Rdv3SegmentDef d = segmentDefs[i];
             string t = Rdv3Eval.Evaluate(d.Value, View, fields, Screen.Work).Text;
             statusPanels[i].Text = d.Prefix + t;
+            statusPanels[i].ForeColor = SystemColors.ControlText;
+            statusPanels[i].ToolTipText = "";
+        }
+        if (sharedNotice.Length > 0)
+        {
+            if (Rdv3Clock.MsSince(sharedNoticeAt) >= Screen.ToastMs) { sharedNotice = ""; }
+            else if (n > 0)
+            {
+                int panel = (n > 2) ? 2 : n - 1;
+                statusPanels[panel].Text = sharedNotice;
+                statusPanels[panel].ForeColor = Color.DarkGreen;
+                statusPanels[panel].ToolTipText = sharedNotice;
+                status.AccessibleName = sharedNotice;
+            }
         }
     }
 
@@ -864,6 +881,16 @@ public sealed class Rdv3Form : Form
 
     public void Notice(string text) { ShowToast(text, true); }
     public void Error(string text) { ShowToast(text, false); }
+
+    public void SharedNotice(string text)
+    {
+        Ui(delegate
+        {
+            sharedNotice = (text == null) ? "" : text;
+            sharedNoticeAt = Rdv3Clock.Now();
+            RefreshStatus();
+        });
+    }
 
     private void ShowToast(string text, bool completion)
     {

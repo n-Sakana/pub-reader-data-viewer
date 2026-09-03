@@ -60,7 +60,7 @@ $baseDir = Split-Path -Parent $ledgerPath
 $dialogs = New-Object System.Collections.ArrayList
 [void]$dialogs.Add(@('record-update.png', [Rdv3ProcessForm]::ForCheck($cfg.Data, 'merge-ledger', $dataDir, $ledgerPath)))
 [void]$dialogs.Add(@('record-delete.png', [Rdv3ProcessForm]::ForCheck($cfg.Data, 'delete-listed-records', $dataDir, $ledgerPath)))
-[void]$dialogs.Add(@('table-export.png', [Rdv3ExportForm]::ForCheck($cfg.Data, $baseDir)))
+[void]$dialogs.Add(@('table-export.png', [Rdv3ExportForm]::ForCheck($cfg.Data, $cfg.Screen, $baseDir)))
 [void]$dialogs.Add(@('settings.png', [Rdv3SettingsForm]::ForCheck($cfg.Clone())))
 $sendBody = [Rdv3Text]::ConfirmSendBody.Replace('{n}', '3')
 [void]$dialogs.Add(@('send-confirm.png', [Rdv3ConfirmForm]::ForCheck([Rdv3Text]::SendTitle, $sendBody)))

@@ -131,10 +131,12 @@ public static class Rdv3Text
     public const string DataKeyWidth = "{file} の {row} 行目: キー列 {name} の幅が 1 行目 ({n} 文字) と違います";
     public const string DataDupKey = "{file}: キー列 {name} の値 {key} が {row1} 行目と {row2} 行目にあります (キーは一意である必要があります)";
     public const string DataLedgerHeader = "{file} の見出し行が、作業状態の列と画面定義の台帳列に一致しません";
-    public const string DataControlChar = "{file} の {row} 行目: 制御文字 (0x{code}) があります。タブや改行を含む値は読めません";
-    public const string DataLedgerTab = "{file} の {row} 行目: セルにタブ文字があります";
+    public const string DataControlChar = "{file} の {row} 行目: 制御文字 (0x{code}) を代替文字 (?) に置き換えて読み進めました";
+    public const string DataLedgerTab = "{file} の {row} 行目: セルのタブ文字を代替文字 (?) に置き換えて読み進めました";
     public const string DataLedgerBlankIdentity = "{file} の {row} 行目: {name} が空です";
     public const string DataLedgerDupIdentity = "{file}: {name} の値 {key} が {row1} 行目と {row2} 行目にあります (台帳の 1 行は {name} で特定します)";
+    public const string ProcessBlankIdentity = "ジョブ「{job}」の出力で、識別列「{column}」が空です";
+    public const string ProcessDuplicateIdentity = "ジョブ「{job}」の出力で、識別列「{column}」の値「{value}」が重複しています";
 
     // ---- placeholders and fixed words on the screen ---------------------------
     public const string PanelCand = "候補一覧";
@@ -151,8 +153,7 @@ public static class Rdv3Text
     public const string CandidateHitsFmt = "該当 {n} 件";
 
     // ---- shared-ledger notices ------------------------------------------------
-    public const string SharedSendTitle = "台帳が更新されました";
-    public const string SharedSendBody = "{user} が {done} 件を処理済、{todo} 件を未処理にしました";
+    public const string SharedSendBody = "{user} が {changed} 件を{changedState}、{initial} 件を{initialState}にしました";
     public const string SharedUpdateTitle = "台帳の更新";
     public const string SharedUpdateBody = "台帳が更新されました。切り替えますか";
     public const string SharedResetFmt = "中身が変わったため{state}に戻ったレコード: {n} 件";
@@ -309,7 +310,6 @@ public static class Rdv3Text
     public const string ExportDoneFmt = "CSV を出力しました: {file}";
     public const string BtnMoveRight = "▶";
     public const string BtnMoveLeft = "◀";
-    public const string WorkStateColumn = "処理済";
 
     // ---- the settings modal -----------------------------------------------------
     public const string SettingsTitle = "設定";

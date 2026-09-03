@@ -159,7 +159,7 @@ Check 'step text is generated from operation, keys, condition, and output labels
 Check 'output contains three read-only rows' ((@($pc | Where-Object { $_.Name -match '^process\.outputValue' -and $_.ReadOnly }).Count) -eq 3) 'output rows'
 $process.Dispose()
 
-$export = [Rdv3ExportForm]::ForCheck($cfg.Data, (Join-Path $Root 'dist\app-csharp'))
+$export = [Rdv3ExportForm]::ForCheck($cfg.Data, $cfg.Screen, (Join-Path $Root 'dist\app-csharp'))
 Prepare $export
 $ec = @(Controls-Of $export)
 Check 'export uses two standard ListBox controls' ((@($ec | Where-Object { $_ -is [System.Windows.Forms.ListBox] }).Count) -eq 2) 'list boxes'
@@ -167,12 +167,15 @@ Check 'export has both move buttons and reset beside the heading' (($null -ne (N
 Check 'export destination is an editable white TextBox' (((Named $ec 'export.destination') -is [System.Windows.Forms.TextBox]) -and (-not (Named $ec 'export.destination').ReadOnly) -and ((Named $ec 'export.destination').BackColor -eq [System.Drawing.SystemColors]::Window)) 'destination'
 $available = Named $ec 'export.available'
 $selected = Named $ec 'export.selected'
-Check 'export starts with the mock 21 fields and five defaults' (($available.Items.Count -eq 16) -and ($selected.Items.Count -eq 5)) ("counts " + $available.Items.Count + '/' + $selected.Items.Count)
+$configuredDefaults = @($cfg.Screen.ExportDefaultFields)
+$selectedRefs = @(foreach ($item in $selected.Items) { $item.Ref })
+Check 'export starts with the five configured default fields in order' (($available.Items.Count -eq 16) -and (($selectedRefs -join '|') -eq ($configuredDefaults -join '|'))) (("counts " + $available.Items.Count + '/' + $selected.Items.Count) + ' refs=' + ($selectedRefs -join '|'))
 $available.SelectedIndex = 0
 Invoke-Click (Named $ec 'export.right')
 Check 'move right transfers the selected output field' (($available.Items.Count -eq 15) -and ($selected.Items.Count -eq 6)) ("counts " + $available.Items.Count + '/' + $selected.Items.Count)
 Invoke-Click (Named $ec 'export.reset')
-Check 'reset restores the five default output fields' (($available.Items.Count -eq 16) -and ($selected.Items.Count -eq 5)) ("counts " + $available.Items.Count + '/' + $selected.Items.Count)
+$resetRefs = @(foreach ($item in $selected.Items) { $item.Ref })
+Check 'reset restores the five configured default fields in order' (($available.Items.Count -eq 16) -and (($resetRefs -join '|') -eq ($configuredDefaults -join '|'))) (("counts " + $available.Items.Count + '/' + $selected.Items.Count) + ' refs=' + ($resetRefs -join '|'))
 $export.Dispose()
 
 $confirm = [Rdv3ConfirmForm]::ForCheck([Rdv3Text]::ConfirmUpdateTitle, [Rdv3Text]::UpdateConfirmBody($cfg.Data.WorkStateOnSourceChange, $cfg.Screen.Work.InitialState.Text))

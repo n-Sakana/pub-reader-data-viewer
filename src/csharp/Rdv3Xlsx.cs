@@ -171,6 +171,14 @@ public static class Rdv3Xlsx
     // ---- read --------------------------------------------------------------
     public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states)
     {
+        string ignored;
+        Read(path, head, stateHead, out lines, out states, out ignored);
+    }
+
+    public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states,
+                            out string warning)
+    {
+        warning = "";
         // ReadWrite | Delete: another copy of the app may replace the file
         // (write-temp-then-replace) while this one is still reading it. The
         // replace then goes through, and this reader finishes the version it
@@ -225,15 +233,18 @@ public static class Rdv3Xlsx
                             sawHeader = true;
                             continue;
                         }
-                        // a ledger line is tab-separated, so a tab typed into a
-                        // cell would shift every column after it: refused, with
-                        // the row as the sheet numbers it
+                        // A ledger line is tab-separated. Replace a tab typed
+                        // into a cell before materialising that internal row.
                         for (int c = 0; c < cells.Length; c++)
                         {
                             if (cells[c].IndexOf('\t') >= 0)
                             {
-                                throw new Rdv3DataError(Rdv3Text.DataLedgerTab.Replace("{file}", Path.GetFileName(path))
-                                    .Replace("{row}", (outLines.Count + 2).ToString(CultureInfo.InvariantCulture)));
+                                if (warning.Length == 0)
+                                {
+                                    warning = Rdv3Text.DataLedgerTab.Replace("{file}", Path.GetFileName(path))
+                                        .Replace("{row}", (outLines.Count + 2).ToString(CultureInfo.InvariantCulture));
+                                }
+                                cells[c] = cells[c].Replace('\t', '?');
                             }
                         }
                         StringBuilder sb = new StringBuilder(256);
@@ -370,4 +381,3 @@ public static class Rdv3Xlsx
         return any ? col - 1 : -1;
     }
 }
-

@@ -709,9 +709,15 @@ public sealed class Rdv3ProcessForm : Rdv3Dialog
                 {
                     Rdv3Table table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column);
                     rows = table.Rows.ToString("N0", CultureInfo.InvariantCulture);
+                    List<string> warnings = new List<string>();
                     if (table.InvalidEncodingRow > 0)
                     {
-                        validation = Rdv3Text.ValidationEncodingMismatch.Replace("{row}", table.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture));
+                        warnings.Add(Rdv3Text.ValidationEncodingMismatch.Replace("{row}", table.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture)));
+                    }
+                    if (table.ControlCharacterWarning.Length > 0) { warnings.Add(table.ControlCharacterWarning); }
+                    if (warnings.Count > 0)
+                    {
+                        validation = string.Join(" / ", warnings.ToArray());
                         color = Color.Maroon;
                     }
                     else
@@ -878,6 +884,7 @@ public sealed class Rdv3ExportForm : Rdv3Dialog
     }
 
     private readonly Rdv3Data data;
+    private readonly Rdv3Screen screen;
     private readonly ListBox from = new ListBox();
     private readonly ListBox to = new ListBox();
     private readonly Label selectedTitle;
@@ -886,23 +893,24 @@ public sealed class Rdv3ExportForm : Rdv3Dialog
     private readonly List<string> defaults = new List<string>();
     public Rdv3ExportRequest Result;
 
-    public static Rdv3ExportRequest Pick(Rdv3Form owner, Rdv3Data data, string baseDir)
+    public static Rdv3ExportRequest Pick(Rdv3Form owner, Rdv3Data data, Rdv3Screen screen, string baseDir)
     {
-        using (Rdv3ExportForm f = new Rdv3ExportForm(owner, data, baseDir))
+        using (Rdv3ExportForm f = new Rdv3ExportForm(owner, data, screen, baseDir))
         {
             return (f.ShowOver(owner) == DialogResult.OK) ? f.Result : null;
         }
     }
 
-    public static Rdv3ExportForm ForCheck(Rdv3Data data, string baseDir)
+    public static Rdv3ExportForm ForCheck(Rdv3Data data, Rdv3Screen screen, string baseDir)
     {
-        return new Rdv3ExportForm(null, data, baseDir);
+        return new Rdv3ExportForm(null, data, screen, baseDir);
     }
 
-    private Rdv3ExportForm(Rdv3Form owner, Rdv3Data d, string baseDir)
+    private Rdv3ExportForm(Rdv3Form owner, Rdv3Data d, Rdv3Screen s, string baseDir)
         : base(Rdv3Text.ExportTitle, 600, 330, owner)
     {
         data = d;
+        screen = s;
         Label hint = LabelOf("export.hint", Rdv3Text.ExportHint);
         hint.Dock = DockStyle.Top;
         hint.AutoSize = true;
@@ -1038,10 +1046,11 @@ public sealed class Rdv3ExportForm : Rdv3Dialog
         }
         ExportField work = new ExportField();
         work.Ref = "$work";
-        work.Text = Rdv3Text.WorkStateColumn;
+        Rdv3StateDef workState = screen.Work.InitialTargetState;
+        if (workState == null) { workState = screen.Work.InitialState; }
+        work.Text = (workState == null) ? screen.Work.Column : workState.Text;
         all.Add(work);
-        string[] wanted = { "B.key1", "B.key2", "A.a_name", "B.b_status", "$work" };
-        for (int i = 0; i < wanted.Length; i++) { defaults.Add(wanted[i]); }
+        for (int i = 0; i < screen.ExportDefaultFields.Length; i++) { defaults.Add(screen.ExportDefaultFields[i]); }
     }
 
     private void ResetFields()

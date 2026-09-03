@@ -100,6 +100,7 @@
     "markOverdueMs": 180000,
     "pumpMs": 1000,
     "lockRetryMs": 250,
+    "lockStaleMs": 600000,
     "markerPollMs": 3000
   },
 
@@ -262,6 +263,10 @@
           "done": "未処理に戻しました" }
       ],
       "button": { "text": "{state}(&W)", "tip": "表示中のレコードの処理状態を切り替えます" }
+    },
+
+    "export": {
+      "defaultFields": ["B.key1", "B.key2", "A.a_name", "B.b_status", "$work"]
     },
 
     "sections": [

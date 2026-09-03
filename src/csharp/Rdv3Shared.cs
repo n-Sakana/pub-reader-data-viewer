@@ -310,23 +310,26 @@ public sealed class Rdv3LockInfo
 
 public sealed class Rdv3LedgerLock : IDisposable
 {
-    private readonly string path;
+    private readonly FileStream lease;
     private bool released;
 
-    internal Rdv3LedgerLock(string file) { path = file; }
+    internal Rdv3LedgerLock(FileStream heldLease)
+    {
+        lease = heldLease;
+    }
 
     public void Release()
     {
         if (released) { return; }
-        File.Delete(path);
         released = true;
+        lease.Dispose();
     }
 
     public void Dispose()
     {
         if (released) { return; }
-        try { File.Delete(path); } catch (Exception) { }
         released = true;
+        try { lease.Dispose(); } catch (Exception) { }
     }
 }
 
@@ -356,12 +359,14 @@ public sealed class Rdv3SharedFiles
     public Rdv3LedgerLock TryAcquire(out Rdv3LockInfo owner)
     {
         owner = null;
+        FileStream stream = null;
         try
         {
             string dir = System.IO.Path.GetDirectoryName(lockPath);
             if (dir != null && dir.Length > 0 && !Directory.Exists(dir)) { Directory.CreateDirectory(dir); }
-            using (FileStream stream = new FileStream(lockPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-            using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false)))
+            stream = new FileStream(lockPath, FileMode.CreateNew, FileAccess.Write, FileShare.Read,
+                4096, FileOptions.DeleteOnClose);
+            using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(false), 1024, true))
             {
                 writer.Write(LockHeader);
                 writer.Write('\t'); writer.Write(Encode(host));
@@ -371,14 +376,38 @@ public sealed class Rdv3SharedFiles
                 writer.Flush();
                 stream.Flush();
             }
-            return new Rdv3LedgerLock(lockPath);
+            return new Rdv3LedgerLock(stream);
         }
         catch (IOException)
         {
+            if (stream != null) { try { stream.Dispose(); } catch (Exception) { } }
             if (!File.Exists(lockPath)) { throw; }
             owner = ReadLock();
             return null;
         }
+        catch
+        {
+            if (stream != null) { try { stream.Dispose(); } catch (Exception) { } }
+            throw;
+        }
+    }
+
+    public bool TryRemoveStaleLock(int staleMs, out long ageMs)
+    {
+        ageMs = 0;
+        DateTime modified;
+        try { modified = File.GetLastWriteTimeUtc(lockPath); }
+        catch (Exception) { return false; }
+        double elapsed = (DateTime.UtcNow - modified).TotalMilliseconds;
+        if (elapsed <= 0 || elapsed < staleMs) { return false; }
+        ageMs = (elapsed >= long.MaxValue) ? long.MaxValue : (long)Math.Floor(elapsed);
+        try
+        {
+            File.Delete(lockPath);
+            return !File.Exists(lockPath);
+        }
+        catch (IOException) { return false; }
+        catch (UnauthorizedAccessException) { return false; }
     }
 
     public Rdv3SharedMarker ReadMarker()

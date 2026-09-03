@@ -1,8 +1,8 @@
 ﻿# ============================================================================
 # test_exit_guard.ps1 -- exercise the local-pending/send boundary on the real
 # packed product. A state change must leave the shared xlsx untouched. Send
-# must wait behind the shared lock, refuse a close while its outcome is
-# undecided, then reread and update the xlsx after the lock is released.
+# must discard an abandoned stale lock, then reread and update the xlsx. A
+# close is allowed while a different, live lock still has the send waiting.
 #
 #   powershell -File build\test_exit_guard.ps1
 #
@@ -318,6 +318,7 @@ function Test-CSharp {
     $user64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('lock-owner'))
     $lockText = "RDV-LOCK-1`t$host64`t$user64`t$([DateTime]::UtcNow.Ticks)`r`n"
     [IO.File]::WriteAllText($fakeLock, $lockText, $enc)
+    [IO.File]::SetLastWriteTimeUtc($fakeLock, [DateTime]::UtcNow.AddMinutes(-11))
     $sendFrom = (Read-Log $log $enc).Count
     foreach ($k in [RdvGuardWin]::Kids($main)) {
       if ($k.Text -like '送信*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
@@ -328,22 +329,15 @@ function Test-CSharp {
     Check $b 'send_confirm_effect' $sendEffect 'the confirmation distinguishes the ledger mark from imported data'
     if (-not (Answer-Dialog '送信' 'はい' 20)) { Check $b 'send_confirm' $false 'send dialog never appeared'; return }
     Check $b 'send_confirm' $true 'answered はい'
-    $waiting = Wait-Log $log $enc "`tlock`twaiting owner=lock-owner host=TEST-HOST" $sendFrom 20 100
-    Check $b 'lock_wait' ($null -ne $waiting) $(if ($null -ne $waiting) { $waiting[1] } else { 'no wait line' })
+    $stale = Wait-Log $log $enc "`tlock`tremoved stale lock age_ms=" $sendFrom 20 100
+    Check $b 'stale_lock_removed' ($null -ne $stale) $(if ($null -ne $stale) { $stale[1] } else { 'no stale-removal line' })
+    $staleAge = 0
+    if ($null -ne $stale -and $stale[1] -match 'age_ms=([0-9]+)') { $staleAge = [long]$Matches[1] }
+    Check $b 'stale_lock_threshold' ($staleAge -ge 600000) ("age_ms=" + $staleAge)
+    $acquired = Wait-Log $log $enc "`tlock`tacquired " $sendFrom 20 100
+    Check $b 'lock_reacquired_after_stale' ($null -ne $acquired) $(if ($null -ne $acquired) { $acquired[1] } else { 'no acquired line' })
+    Check $b 'window_alive_after_stale' ([RdvGuardWin]::IsWindow($main)) 'the send continued in the same window'
 
-    [void][RdvGuardWin]::PostMessage($main, 0x0010, [IntPtr]0, [IntPtr]0)
-    $blocked = $false
-    $t0 = Get-Date
-    while (((Get-Date) - $t0).TotalSeconds -lt 10) {
-      if (Dialog-Present '書き込み中です。結果が確定するまで終了できません') { $blocked = $true; break }
-      Start-Sleep -Milliseconds 50
-    }
-    Check $b 'close_refused_notice' $blocked 'the close was refused while send was waiting'
-    Check $b 'window_alive' ([RdvGuardWin]::IsWindow($main)) 'the window survived the refused close'
-    $refused = Wait-Log $log $enc 'close refused: a write is still in flight' $sendFrom 10 100
-    Check $b 'close_refused_log' ($null -ne $refused) $(if ($null -ne $refused) { $refused[1] } else { 'no refusal line' })
-
-    Remove-Item -LiteralPath $fakeLock -Force
     $sent = Wait-Log $log $enc "`tmarker`tversion=.* kind=send" $sendFrom $SaveTimeoutSec 100
     Check $b 'send_completed' ($null -ne $sent) $(if ($null -ne $sent) { $sent[1] } else { 'no marker line' })
     $sendReady = Wait-Log $log $enc "`tshared`tready .* pending=0" $sendFrom 30 100
@@ -370,21 +364,23 @@ function Test-CSharp {
     Check $b 'lock_released' (-not (Test-Path -LiteralPath $fakeLock)) 'no lock file remains'
 
     # A marker from another writer must be noticed without polling the xlsx.
-    # Send notifications interrupt with an OK-only dialog and then reload;
-    # update notifications ask whether to switch.
+    # Consecutive send notices replace one StatusStrip item without creating a
+    # dialog; update notifications still ask whether to switch.
     $remoteFrom = (Read-Log $log $enc).Count
     Write-TestMarker ($ledger + '.version') 2 'send' 12 3
-    $remoteBody = Wait-DialogText '台帳が更新されました' 'remote-user が 12 件を処理済、3 件を未処理にしました' 15
-    Check $b 'remote_send_dialog' $remoteBody 'sender and both directions are shown'
-    [void](Answer-Dialog '台帳が更新されました' 'OK' 5)
-    $remoteReload = Wait-Log $log $enc "`treload`tversion=2 .*rows=100000" $remoteFrom 30 100
+    $remoteFirst = Wait-Log $log $enc "`tnotice`ttarget=status text=remote-user が 12 件を処理済、3 件を未処理にしました" $remoteFrom 15 100
+    Write-TestMarker ($ledger + '.version') 3 'send' 7 4
+    $remoteSecond = Wait-Log $log $enc "`tnotice`ttarget=status text=remote-user が 7 件を処理済、4 件を未処理にしました" $remoteFrom 15 100
+    $noSendDialog = -not (Dialog-Present '台帳が更新されました')
+    Check $b 'remote_send_status' (($null -ne $remoteFirst) -and ($null -ne $remoteSecond) -and $noSendDialog) ('first=' + $(if ($null -ne $remoteFirst) { $remoteFirst[1] } else { 'missing' }) + '; second=' + $(if ($null -ne $remoteSecond) { $remoteSecond[1] } else { 'missing' }) + '; noDialog=' + $noSendDialog)
+    $remoteReload = Wait-Log $log $enc "`treload`tversion=3 .*rows=100000" $remoteFrom 30 100
     Check $b 'remote_send_reload' ($null -ne $remoteReload) $(if ($null -ne $remoteReload) { $remoteReload[1] } else { 'no reload line' })
-    $remoteReady = Wait-Log $log $enc "`tshared`tready .*note=marker-2" $remoteFrom 30 100
-    Check $b 'remote_send_ready' ($null -ne $remoteReady) $(if ($null -ne $remoteReady) { $remoteReady[1] } else { 'marker-2 was not adopted' })
+    $remoteReady = Wait-Log $log $enc "`tshared`tready .*note=marker-3" $remoteFrom 30 100
+    Check $b 'remote_send_ready' ($null -ne $remoteReady) $(if ($null -ne $remoteReady) { $remoteReady[1] } else { 'marker-3 was not adopted' })
 
     $updateFrom = (Read-Log $log $enc).Count
     $changedMarker = Write-ChangedLedger $ledger $settings (Join-Path $dir 'data') '00089897'
-    Check $b 'remote_update_written' (($changedMarker.Version -eq 3) -and ((Count-TrueRows $ledger) -eq 0)) ('version ' + $changedMarker.Version + ', processed=TRUE rows 0')
+    Check $b 'remote_update_written' (($changedMarker.Version -eq 4) -and ((Count-TrueRows $ledger) -eq 0)) ('version ' + $changedMarker.Version + ', processed=TRUE rows 0')
     $updateBody = Wait-DialogText '台帳の更新' '台帳が更新されました。切り替えますか' 15
     Check $b 'remote_update_dialog' $updateBody 'the update asks before switching'
     $resetBody = Wait-DialogText '台帳の更新' '中身が変わったため未処理に戻ったレコード: 1 件' 5
@@ -393,18 +389,40 @@ function Test-CSharp {
     Check $b 'remote_update_reset_count' $resetBody 'the update dialog reports one reset record'
     Check $b 'remote_update_reset_list' $resetList 'the reset records use one standard Details ListView'
     [void](Answer-Dialog '台帳の更新' 'OK' 5)
-    $updateReady = Wait-Log $log $enc "`tshared`tready .*note=marker-3" $updateFrom 30 100
-    Check $b 'remote_update_switch' ($null -ne $updateReady) $(if ($null -ne $updateReady) { $updateReady[1] } else { 'no marker-3 ready line' })
+    $updateReady = Wait-Log $log $enc "`tshared`tready .*note=marker-4" $updateFrom 30 100
+    Check $b 'remote_update_switch' ($null -ne $updateReady) $(if ($null -ne $updateReady) { $updateReady[1] } else { 'no marker-4 ready line' })
 
-    # and only now may it close
-    Start-Sleep -Milliseconds 500
+    # A fresh lock is live, so it is not removed. Closing while this send is
+    # still waiting must end the app without a write-in-flight refusal.
+    $closeFrom = (Read-Log $log $enc).Count
+    foreach ($k in [RdvGuardWin]::Kids($main)) {
+      if ($k.Cls -like '*BUTTON*' -and $k.Text -like '検索*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+    }
+    $closeHit = Wait-Log $log $enc ("`tsearch`tkey=" + $TargetKey1 + " ") $closeFrom 30 100
+    if ($null -eq $closeHit) { Check $b 'closes_while_lock_waiting' $false 'the setup search did not finish'; return }
+    foreach ($k in [RdvGuardWin]::Kids($main)) {
+      if ($k.Text -like '未処理*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+    }
+    if (-not (Answer-Dialog '処理済の確認' 'はい' 20)) { Check $b 'closes_while_lock_waiting' $false 'the setup state dialog never appeared'; return }
+    $closeSaved = Wait-Log $log $enc "`tstate`tkey2=.*value=TRUE" $closeFrom $SaveTimeoutSec 100
+    if ($null -eq $closeSaved) { Check $b 'closes_while_lock_waiting' $false 'the setup state did not save'; return }
+    $lockText = "RDV-LOCK-1`t$host64`t$user64`t$([DateTime]::UtcNow.Ticks)`r`n"
+    [IO.File]::WriteAllText($fakeLock, $lockText, $enc)
+    $closeSendFrom = (Read-Log $log $enc).Count
+    foreach ($k in [RdvGuardWin]::Kids($main)) {
+      if ($k.Text -like '送信*') { [void][RdvGuardWin]::PostMessage([IntPtr]$k.Hwnd, 0x00F5, [IntPtr]0, [IntPtr]0); break }
+    }
+    if (-not (Answer-Dialog '送信' 'はい' 20)) { Check $b 'closes_while_lock_waiting' $false 'the setup send dialog never appeared'; return }
+    $closeWaiting = Wait-Log $log $enc "`tlock`twaiting owner=lock-owner host=TEST-HOST" $closeSendFrom 20 100
+    if ($null -eq $closeWaiting) { Check $b 'closes_while_lock_waiting' $false 'the send did not wait behind the live lock'; return }
     [void][RdvGuardWin]::PostMessage($main, 0x0010, [IntPtr]0, [IntPtr]0)
     $closed = $false
     for ($i = 0; $i -lt 40; $i++) {
       if (-not [RdvGuardWin]::IsWindow($main)) { $closed = $true; break }
       Start-Sleep -Milliseconds 250
     }
-    Check $b 'closes_after' $closed 'the second close request ended the app'
+    $closingLog = Wait-Log $log $enc "`texit`tclosing" $closeSendFrom 5 100
+    Check $b 'closes_while_lock_waiting' ($closed -and ($null -ne $closingLog)) ('closed=' + $closed + '; wait=' + $closeWaiting[1] + '; closing=' + $(if ($null -ne $closingLog) { $closingLog[1] } else { 'missing' }))
     Start-Sleep -Seconds 2
 
     # The pending state reached the ledger through send, then the simulated

@@ -26,6 +26,7 @@ public sealed class Rdv3MergeResult
     public string[] Lines;
     public int Rows;
     public long Checksum;
+    public readonly List<string> Warnings = new List<string>();
     // per table (definition order): read ms, index ms, distinct keys
     public double[] ReadMs;
     public double[] IndexMs;
@@ -99,6 +100,7 @@ public static class Rdv3Ledger
         {
             long m = Rdv3Clock.Now();
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id, d.Enc, d.Tables[t].Key);
+            if (tables[t].ControlCharacterWarning.Length > 0) { r.Warnings.Add(tables[t].ControlCharacterWarning); }
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
         }

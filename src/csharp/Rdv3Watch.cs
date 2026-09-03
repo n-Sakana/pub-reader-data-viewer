@@ -116,15 +116,16 @@ public sealed class Rdv3Watch
         try { root = AutomationElement.RootElement; }
         catch (Exception) { return false; }
         AutomationElement focused = Cfg.PreferFocusedWindow ? Rdv3Uia.FocusedWindow() : null;
+        List<Rdv3Target> targets = Cfg.Targets;
 
-        for (int i = 0; i < Cfg.Targets.Count; i++)
+        for (int i = 0; i < targets.Count; i++)
         {
             // IsWatchable, not Enabled: the settings dialog hands over targets it
             // built in memory, which never went through Rdv3Target.Read, so one
             // added and saved with nothing filled in arrives still calling itself
             // enabled -- and an empty matcher accepts any window, which would
             // attach the reader to whatever happened to be in front.
-            Rdv3Target t = Cfg.Targets[i];
+            Rdv3Target t = targets[i];
             if (!t.IsWatchable) { continue; }
             lock (gate) { if (AlreadyBound(t)) { continue; } }
 
@@ -297,7 +298,8 @@ public sealed class Rdv3Watch
     private int WatchableCount()
     {
         int n = 0;
-        for (int i = 0; i < Cfg.Targets.Count; i++) { if (Cfg.Targets[i].IsWatchable) { n++; } }
+        List<Rdv3Target> targets = Cfg.Targets;
+        for (int i = 0; i < targets.Count; i++) { if (targets[i].IsWatchable) { n++; } }
         return n;
     }
 

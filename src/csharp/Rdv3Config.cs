@@ -280,6 +280,7 @@ public sealed class Rdv3Config
     public int MarkOverdueMs = 180000;
     public int PumpMs = 1000;
     public int LockRetryMs = 250;
+    public int LockStaleMs = 600000;
     public int MarkerPollMs = 3000;
 
     // the other two parts of the same file
@@ -353,13 +354,14 @@ public sealed class Rdv3Config
         c.watchNode = w;
 
         Rdv3Json j = root.Obj("jobs", true);
-        j.Only("checkTimeoutMs", "searchTimeoutMs", "saveTimeoutMs", "markOverdueMs", "pumpMs", "lockRetryMs", "markerPollMs");
+        j.Only("checkTimeoutMs", "searchTimeoutMs", "saveTimeoutMs", "markOverdueMs", "pumpMs", "lockRetryMs", "lockStaleMs", "markerPollMs");
         c.CheckTimeoutMs = j.IntOr("checkTimeoutMs", c.CheckTimeoutMs, 1000, 3600000);
         c.SearchTimeoutMs = j.IntOr("searchTimeoutMs", c.SearchTimeoutMs, 1000, 3600000);
         c.SaveTimeoutMs = j.IntOr("saveTimeoutMs", c.SaveTimeoutMs, 1000, 3600000);
         c.MarkOverdueMs = j.IntOr("markOverdueMs", c.MarkOverdueMs, 1000, 3600000);
         c.PumpMs = j.IntOr("pumpMs", c.PumpMs, 100, 60000);
         c.LockRetryMs = j.IntOr("lockRetryMs", c.LockRetryMs, 50, 5000);
+        c.LockStaleMs = j.IntOr("lockStaleMs", c.LockStaleMs, 60000, 86400000);
         c.MarkerPollMs = j.IntOr("markerPollMs", c.MarkerPollMs, 500, 60000);
 
         c.Data = Rdv3Data.Read(root.Obj("data", true));
@@ -547,6 +549,7 @@ public sealed class Rdv3Config
         MarkOverdueMs = o.MarkOverdueMs;
         PumpMs = o.PumpMs;
         LockRetryMs = o.LockRetryMs;
+        LockStaleMs = o.LockStaleMs;
         MarkerPollMs = o.MarkerPollMs;
     }
 
@@ -576,7 +579,7 @@ public sealed class Rdv3Config
         c.CandidateRowsShown = CandidateRowsShown;
         c.CheckTimeoutMs = CheckTimeoutMs; c.SearchTimeoutMs = SearchTimeoutMs;
         c.SaveTimeoutMs = SaveTimeoutMs; c.MarkOverdueMs = MarkOverdueMs; c.PumpMs = PumpMs;
-        c.LockRetryMs = LockRetryMs; c.MarkerPollMs = MarkerPollMs;
+        c.LockRetryMs = LockRetryMs; c.LockStaleMs = LockStaleMs; c.MarkerPollMs = MarkerPollMs;
         c.SourcePath = SourcePath;
         c.Data = Data; c.Screen = Screen;
         c.Targets = new List<Rdv3Target>();
@@ -594,6 +597,7 @@ public sealed class Rdv3Config
         sb.Append("/").Append(StableMs.ToString(CultureInfo.InvariantCulture));
         sb.Append(" shared=").Append(MarkerPollMs.ToString(CultureInfo.InvariantCulture));
         sb.Append("/").Append(LockRetryMs.ToString(CultureInfo.InvariantCulture));
+        sb.Append("/").Append(LockStaleMs.ToString(CultureInfo.InvariantCulture));
         // targets= is every target in the file, including the ones that are
         // switched off; watched= is how many of them are actually being looked
         // at. A support question that starts from this line has to be able to
