@@ -239,6 +239,7 @@ public static class Rdv3ProcessForm
         sb.Append(Rdv3WebJson.Q(file)).Append(',');
         sb.Append(Rdv3WebJson.Q(updated)).Append(']');
         sb.Append(",\"canRun\":").Append(Rdv3WebJson.B(inputsOk));
+        sb.Append(",\"cannotRunText\":").Append(Rdv3WebJson.Q(Rdv3Text.ProcessNotRun));
         sb.Append(",\"executeText\":").Append(Rdv3WebJson.Q(
             deleting ? Rdv3Text.BtnDelete : Rdv3Text.BtnExecute)).Append('}');
         return sb.ToString();
@@ -457,7 +458,10 @@ public static class Rdv3ExportForm
         content.Append(",\"kind\":\"text\",\"format\":\"\"}");
         content.Append("]}");
 
-        Rdv3Json result = owner.ShowModal("export", content.ToString());
+        Rdv3Json result;
+        owner.SetExportFilterData(data);
+        try { result = owner.ShowModal("export", content.ToString()); }
+        finally { owner.SetExportFilterData(null); }
         if (!Rdv3Form.Flag(result, "ok", false)) { return null; }
         Rdv3ExportRequest request = new Rdv3ExportRequest();
         request.Path = Rdv3Form.Text(result, "path").Trim();
@@ -488,7 +492,7 @@ public static class Rdv3ExportForm
                 if (refs.Contains(filter.Field)) { request.Filters.Add(filter); }
             }
         }
-        if (request.Path.Length == 0 || request.Fields.Count == 0)
+        if (request.Fields.Count == 0)
         {
             owner.Error(Rdv3Text.ExportNeedField);
             return null;

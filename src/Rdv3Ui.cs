@@ -98,6 +98,8 @@ public sealed class Rdv3Form
     private string keyText = "";
     private string notice = "";
     private bool noticeError;
+    private readonly DispatcherTimer noticeTimer = new DispatcherTimer();
+    private Rdv3Data exportFilterData;
     private int modalToken;
     private int waitingToken;
     private Rdv3Json modalResult;
@@ -130,6 +132,14 @@ public sealed class Rdv3Form
         host.PageLoaded += OnPageLoaded;
         host.WebMessage += OnWebMessage;
         host.ClosingRequested += OnClosingRequested;
+        noticeTimer.Interval = TimeSpan.FromMilliseconds(3600);
+        noticeTimer.Tick += delegate
+        {
+            noticeTimer.Stop();
+            notice = "";
+            noticeError = false;
+            RefreshValues();
+        };
     }
 
     public ReaderDataViewer.MainWindow Host { get { return host; } }
@@ -306,8 +316,10 @@ public sealed class Rdv3Form
     {
         Ui(delegate
         {
+            noticeTimer.Stop();
             notice = text ?? "";
             noticeError = false;
+            if (notice.Length > 0) { noticeTimer.Start(); }
             RefreshValues();
         });
     }
@@ -317,9 +329,6 @@ public sealed class Rdv3Form
         if (string.IsNullOrEmpty(text)) { return; }
         Ui(delegate
         {
-            notice = text;
-            noticeError = true;
-            RefreshValues();
             Rdv3ConfirmForm.Tell(this, Rdv3Text.AppTitle, text);
         });
     }
@@ -439,6 +448,11 @@ public sealed class Rdv3Form
         pickerPollMs = value;
     }
 
+    internal void SetExportFilterData(Rdv3Data value)
+    {
+        exportFilterData = value;
+    }
+
     private void Ui(Action action)
     {
         if (host.Dispatcher.HasShutdownStarted) { return; }
@@ -478,23 +492,113 @@ public sealed class Rdv3Form
                 }
             }
             else if (type == "key") { keyText = Text(root, "value"); }
-            else if (type == "action") { DispatchAction(root); }
+            else if (type == "action")
+            {
+                Rdv3Json action = root;
+                PostOnUi(delegate { DispatchAction(action); });
+            }
             else if (type == "window") { host.WindowCommand(Text(root, "command")); }
             else if (type == "modalResult") { CompleteModal(root); }
             else if (type == "modalShown")
             {
                 PostOnUi(delegate { CaptureModal(root); });
             }
+            else if (type == "settingsSubmit") { ValidateSettings(root); }
+            else if (type == "validateExportFilter") { ValidateExportFilter(root); }
             else if (type == "browse") { Browse(root); }
             else if (type == "picker") { PickTarget(); }
             else if (type == "pickerCancel") { Rdv3PickerForm.CancelCurrent(); }
         }
         catch (Exception exception)
         {
-            notice = exception.Message;
-            noticeError = true;
-            RefreshValues();
+            Error(exception.Message);
         }
+    }
+
+    private void ValidateSettings(Rdv3Json root)
+    {
+        int token = Number(root, "token", 0);
+        if (token != waitingToken || modalFrame == null) { return; }
+        string dataDir = Text(root, "dataDir").Trim();
+        string ledger = Text(root, "ledger").Trim();
+        string log = Text(root, "log").Trim();
+        string pattern = Text(root, "pattern").Trim();
+        int candidateRows = Number(root, "candidateRows", -1);
+        string error = "";
+        string field = "";
+        string patternError = Rdv3Config.PatternError(pattern);
+        if (patternError != null)
+        {
+            error = Rdv3Text.ErrPatternTyped + patternError;
+            field = "pattern";
+        }
+        else if (dataDir.Length == 0 || ledger.Length == 0 || log.Length == 0)
+        {
+            error = Rdv3Text.ErrPathBlank;
+            field = dataDir.Length == 0 ? "dataDir" : ledger.Length == 0 ? "ledger" : "log";
+        }
+        else if (candidateRows < 1 || candidateRows > 1000)
+        {
+            error = Rdv3Text.LblCandidateRows;
+            field = "candidateRows";
+        }
+        host.PostJson("{\"type\":\"settingsValidation\",\"token\":" +
+            token.ToString(CultureInfo.InvariantCulture) +
+            ",\"ok\":" + Rdv3WebJson.B(error.Length == 0) +
+            ",\"error\":" + Rdv3WebJson.Q(error) +
+            ",\"field\":" + Rdv3WebJson.Q(field) + "}");
+    }
+
+    private void ValidateExportFilter(Rdv3Json root)
+    {
+        int token = Number(root, "token", 0);
+        if (token != waitingToken || modalFrame == null || exportFilterData == null) { return; }
+        string reference = Text(root, "field");
+        string firstText = Text(root, "first");
+        string lastText = Text(root, "last");
+        string error = "";
+        Rdv3ColumnTypeDef type = exportFilterData.TypeOf(reference);
+        if (type == null)
+        {
+            if (firstText.Trim().Length == 0) { error = Rdv3Text.ExportFilterNeedValue; }
+            lastText = "";
+        }
+        else if (type.Type == "date")
+        {
+            DateTime first;
+            DateTime last;
+            if (!type.TryDate(firstText, out first) || !type.TryDate(lastText, out last))
+            {
+                error = Rdv3Text.ExportFilterNeedValue;
+            }
+            else if (first.Date > last.Date) { error = Rdv3Text.ExportFilterOrder; }
+            else
+            {
+                firstText = first.ToString(type.Format, CultureInfo.InvariantCulture);
+                lastText = last.ToString(type.Format, CultureInfo.InvariantCulture);
+            }
+        }
+        else
+        {
+            decimal first;
+            decimal last;
+            if (!type.TryNumber(firstText, out first) || !type.TryNumber(lastText, out last))
+            {
+                error = Rdv3Text.ExportFilterNeedNumber;
+            }
+            else if (first > last) { error = Rdv3Text.ExportFilterOrder; }
+            else
+            {
+                firstText = first.ToString(CultureInfo.InvariantCulture);
+                lastText = last.ToString(CultureInfo.InvariantCulture);
+            }
+        }
+        host.PostJson("{\"type\":\"exportFilterValidation\",\"token\":" +
+            token.ToString(CultureInfo.InvariantCulture) +
+            ",\"ok\":" + Rdv3WebJson.B(error.Length == 0) +
+            ",\"error\":" + Rdv3WebJson.Q(error) +
+            ",\"first\":" + Rdv3WebJson.Q(firstText) +
+            ",\"last\":" + Rdv3WebJson.Q(lastText) + "}");
     }
 
     private void DispatchAction(Rdv3Json root)
