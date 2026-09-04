@@ -1,0 +1,203 @@
+// ============================================================================
+// サンプル「施設予約」 -- 予約を会員と施設に結合する
+//
+//   予約 (reservations.csv, UTF-8 / LF)  1 行 = 1 予約。会員番号は 1 対多
+//   会員 (members.csv)                   会員番号で結合 (退会した会員は無い -> 空欄)
+//   施設 (facilities.csv)                施設コードで結合
+//
+// 検索するのは会員番号 (M + 8 桁)。identity は予約番号。作業状態の保存値は
+// 日本語 1 文字 (未 / 済)。
+// ============================================================================
+{
+  "schema": 3,
+
+  "paths": {
+    "dataDir": "data",
+    "ledger": "booking-Ledger.xlsx",
+    "log": "ReaderDataViewer.log"
+  },
+
+  "search": { "pattern": "^M[0-9]{8}$", "candidateRowsShown": 50 },
+
+  "watch": {
+    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": { "className": "Notepad", "scope": "children" },
+        "path": [],
+        "field": { "controlTypes": ["Document", "Edit"], "requireValuePattern": true, "scope": "descendants" },
+        "read": "value"
+      }
+    ]
+  },
+
+  "jobs": {
+    "checkTimeoutMs": 180000,
+    "searchTimeoutMs": 30000,
+    "saveTimeoutMs": 60000,
+    "markOverdueMs": 180000,
+    "pumpMs": 1000
+  },
+
+  "data": {
+    "encoding": "utf-8",
+    "tables": {
+      "R": { "label": "予約", "file": "reservations.csv", "key": "予約番号" },
+      "M": { "label": "会員", "file": "members.csv", "key": "会員番号" },
+      "F": { "label": "施設", "file": "facilities.csv", "key": "施設コード" }
+    },
+    "types": {
+      "R.利用日": { "type": "date", "format": "yyyyMMdd" },
+      "M.入会日": { "type": "date", "format": "yyyyMMdd" },
+      "R.人数": { "type": "number" },
+      "R.料金": { "type": "number" }
+    },
+    "labels": {
+      "R.会員番号": "会員番号", "M.会員番号": "会員番号",
+      "R.施設コード": "施設コード", "F.施設コード": "施設コード", "R.予約番号": "予約番号",
+      "ledger": "統合台帳",
+      "middle1": "中間1", "middle2": "中間2",
+      "keyExample": "文字列キー例", "keyExample.予約連番": "予約連番"
+    },
+    "jobs": [
+      {
+        "id": "replace-ledger", "name": "予約から統合台帳を作り直す", "kind": "update",
+        "inputs": [ { "table": "M" }, { "table": "R" }, { "table": "F" } ],
+        "steps": [
+          { "operation": "join", "target1": "R", "target2": "M", "keys": ["R.会員番号", "M.会員番号"], "condition": "left", "output": "middle1" },
+          { "operation": "join", "target1": "middle1", "target2": "F", "keys": ["R.施設コード", "F.施設コード"], "condition": "left", "output": "middle2" },
+          { "operation": "replace", "target1": "middle2", "target2": "ledger", "keys": ["R.予約番号", "R.予約番号"], "condition": "", "output": "ledger" }
+        ]
+      },
+      {
+        "id": "string-key-example", "name": "予約番号から連番を作る例", "kind": "delete",
+        "inputs": [ { "table": "R" } ],
+        "steps": [
+          { "operation": "calculate", "target1": "R", "condition": "", "column": "予約連番",
+            "expression": "substring(splitPart(regexExtract(R.予約番号, '^R[0-9]{2}-[0-9]{6}$'), '-', 1), 0, 6)",
+            "output": "keyExample" }
+        ]
+      }
+    ],
+    "ledger": {
+      "identity": "R.予約番号",
+      "search": { "columns": ["R.会員番号"], "match": "exact" },
+      "columns": {
+        "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+        "source": [
+        "R.予約番号", "R.会員番号", "R.施設コード", "R.利用日", "R.開始時刻", "R.終了時刻", "R.人数", "R.料金", "R.支払状況", "R.予約経路", "R.メモ",
+        "M.氏名", "M.フリガナ", "M.会員種別", "M.入会日", "M.電話番号", "M.メール", "M.住所",
+        "F.施設名", "F.定員", "F.時間料金", "F.設備", "F.階"
+        ]
+      }
+    }
+  },
+
+  "screen": {
+    "card": { "width": 1240, "startSize": [840, 830], "gap": 17, "padding": [14.3, 14.3, 14.2], "font": "Yu Gothic UI" },
+    "judgments": {
+      "payment": {
+        "source": { "field": "R.支払状況" },
+        "rules": [
+          { "equals": ["支払済"], "result": "ok" },
+          { "equals": ["未払"], "result": "ng" },
+          { "equals": ["返金"], "result": "refund" }
+        ],
+        "results": {
+          "ok": { "text": "支払済", "look": "ok", "icon": "check" },
+          "ng": { "text": "未払", "look": "ng" },
+          "refund": { "text": "返金", "look": "undefined" },
+          "undefined": { "text": "未定義", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      }
+    },
+
+    "workState": {
+      "store": { "column": "対応" },
+      "states": [
+        { "id": "todo", "text": "未対応", "short": "未", "look": "neutral", "stored": "未" },
+        { "id": "done", "text": "対応済", "short": "済", "look": "accent", "stored": "済" }
+      ],
+      "initial": "todo",
+      "transitions": [
+        { "from": "todo", "to": "done",
+          "confirm": "予約 {R.予約番号}（{M.氏名} 様）を対応済にします。よろしいですか?",
+          "done": "予約を対応済として保存しました" }
+      ],
+      "button": { "text": "{state}", "tip": "表示中の予約を対応済にします (確認あり)" }
+    },
+
+    "export": {
+      "defaultFields": ["R.予約番号", "R.会員番号", "R.施設コード", "$work"]
+    },
+
+    "sections": [
+      { "type": "keyPanel",
+        "figure": { "label": "現在の会員番号", "value": { "state": "searchKey" } },
+        "input": { "placeholder": "会員番号 (M00000000)", "width": 220, "maxLength": 16 },
+        "buttons": [
+          { "action": "search", "text": "検索", "icon": "search", "primary": true, "tip": "会員番号で予約を検索します" },
+          { "action": "clear", "text": "クリア", "tip": "入力と結果表示を消します" },
+          { "action": "workState" }
+        ] },
+
+      { "type": "columns", "weights": [1, 1], "gap": 17,
+        "items": [
+          { "type": "fieldList", "title": "予約", "labelWidth": 104, "rowHeight": 44,
+            "rows": [
+              { "label": "予約番号", "value": { "field": "R.予約番号" } },
+              { "label": "利用日", "value": { "field": "R.利用日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+              { "label": "時間", "value": { "fields": ["R.開始時刻", "R.終了時刻"], "joiner": " - " } },
+              { "label": "人数", "value": { "field": "R.人数", "format": { "kind": "number", "group": true } } },
+              { "label": "料金", "value": { "field": "R.料金", "format": { "kind": "number", "group": true } } },
+              { "label": "予約経路", "value": { "field": "R.予約経路" } }
+            ] },
+          { "type": "fieldList", "title": "会員", "labelWidth": 104, "rowHeight": 44,
+            "rows": [
+              { "label": "氏名", "value": { "field": "M.氏名", "empty": "（退会済）" } },
+              { "label": "フリガナ", "value": { "field": "M.フリガナ" } },
+              { "label": "会員種別", "value": { "field": "M.会員種別" } },
+              { "label": "入会日", "value": { "field": "M.入会日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+              { "label": "電話番号", "value": { "field": "M.電話番号" } },
+              { "label": "メール", "value": { "field": "M.メール" } }
+            ] }
+        ] },
+
+      { "type": "textBox", "title": "施設（施設名 ・ 設備）", "lines": 2, "value": { "fields": ["F.施設名", "F.設備"], "joiner": " ・ " } },
+      { "type": "textBox", "title": "メモ", "lines": 2, "value": { "field": "R.メモ", "empty": "（メモなし）" } },
+
+      { "type": "statusBand", "label": "支払", "judgment": "payment", "height": 84,
+        "sub": [ { "field": "R.支払状況" }, { "state": "workState" } ], "joiner": " ・ " },
+
+      { "type": "statusBar", "height": 48,
+        "segments": [
+          { "value": { "state": "appState" }, "bold": true, "dot": true },
+          { "prefix": "", "value": { "state": "watchLabel" } },
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } }
+        ],
+        "buttons": [
+          { "action": "refreshLedger", "text": "台帳更新", "icon": "refresh", "tip": "CSV の変更を確認して台帳を更新します" },
+          { "action": "settings", "text": "設定", "icon": "gear", "tip": "監視対象や動作の設定を変更します" }
+        ] }
+    ],
+
+    "candidates": {
+      "title": "予約の候補", "hint": "行をクリックすると予約を表示します",
+      "width": 980, "maxHeight": 340, "rowHeight": 46, "headerHeight": 38,
+      "columns": [
+        { "header": "#", "width": 34, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "予約番号", "width": 120, "value": { "field": "R.予約番号" }, "bold": true },
+        { "header": "利用日", "width": 110, "value": { "field": "R.利用日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+        { "header": "開始", "width": 70, "value": { "field": "R.開始時刻" } },
+        { "header": "施設", "value": { "field": "F.施設名" } },
+        { "header": "人数", "width": 64, "align": "right", "value": { "field": "R.人数" } },
+        { "header": "支払", "width": 90, "value": { "field": "R.支払状況" }, "render": "tag",
+          "looks": { "支払済": "accent", "未払": "outline", "返金": "faded", "*": "neutral" } },
+        { "header": "対応", "width": 64, "value": { "state": "workStateShort" }, "render": "tag" }
+      ]
+    }
+  }
+}

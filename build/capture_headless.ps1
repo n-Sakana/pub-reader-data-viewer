@@ -10,7 +10,8 @@ param(
   [switch] $DumpGeometry,
   [switch] $DumpButtons,
   [switch] $DumpStatus,
-  [switch] $DumpJudgment
+  [switch] $DumpJudgment,
+  [int] $ExtraHeight = 0
 )
 $ErrorActionPreference = 'Stop'
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
@@ -69,6 +70,8 @@ for ($i = 0; $i -lt $cfg.Data.Tables.Count; $i++) {
   $heads[$i] = [Rdv3Table]::ReadHead((Join-Path $dataDir $cfg.Data.Tables[$i].File), $cfg.Data.Enc)
 }
 $cfg.Data.Bind($heads)
+$merged = [Rdv3Ledger]::BuildFromCsv($cfg.Data, $dataDir)
+$ledgerRows = $merged.Rows.ToString('N0', [Globalization.CultureInfo]::InvariantCulture)
 $form = New-Object Rdv3Form $cfg.Screen
 $form.SetFields((New-Object Rdv3Fields (,$cfg.Data.ColumnRefs)))
 $targetName = $cfg.Targets[0].Name
@@ -78,10 +81,9 @@ if ($Waiting) {
   $form.SetState([Rdv3Text]::StateReady)
 }
 $form.SetWatch($targetName, [Rdv3Text]::WatchConnectedFmt.Replace('{title}', $targetName))
-$form.SetLedger([Rdv3Text]::LedgerSegFmt.Replace('{file}', 'ReaderDataViewer-Ledger.xlsx').Replace('{n}', '100,000'), '100,000', '09-03 11:42')
+$form.SetLedger([Rdv3Text]::LedgerSegFmt.Replace('{file}', 'ReaderDataViewer-Ledger.xlsx').Replace('{n}', $ledgerRows), $ledgerRows, '09-03 11:42')
 $form.SetPendingCount($PendingCount)
 if ($Loaded -or $Ng) {
-  $merged = [Rdv3Ledger]::BuildFromCsv($cfg.Data, $dataDir)
   $line = $merged.Lines[0]
   if ($Ng) {
     $statusColumn = $cfg.Data.IndexOf('B.b_status')
@@ -111,7 +113,20 @@ $form.Location = New-Object Drawing.Point(-32000, -32000)
 $form.ShowInTaskbar = $false
 $form.Show()
 [System.Windows.Forms.Application]::DoEvents()
-if ($DumpGeometry) { Write-Output $form.GeometryDump() }
+if ($ExtraHeight -ne 0) {
+  $form.ClientSize = New-Object Drawing.Size($form.ClientSize.Width, ($form.ClientSize.Height + $ExtraHeight))
+  $form.PerformLayout()
+  [System.Windows.Forms.Application]::DoEvents()
+}
+$geometryText = $form.GeometryDump()
+$geometry = $geometryText | ConvertFrom-Json
+if ($DumpGeometry) { Write-Output $geometryText }
+if (@($geometry.clipped).Count -gt 0) {
+  $overflow = @($geometry.clipped | ForEach-Object {
+    "{0} in {1} (left={2}, top={3}, right={4}, bottom={5})" -f $_.name, $_.parent, $_.left, $_.top, $_.right, $_.bottom
+  })
+  throw ("controls exceed their parent client bounds: " + ($overflow -join '; '))
+}
 if ($DumpButtons) {
   Write-Output ("form client={0}x{1} dpi={2} setAware={3} error={4} autoScale={5} currentScale={6}" -f $form.ClientSize.Width, $form.ClientSize.Height, [RdvHeadlessDpi]::GetDpiForWindow($form.Handle), $dpiAwareSet, $dpiAwareError, $form.AutoScaleDimensions, $form.CurrentAutoScaleDimensions)
   $todo = New-Object 'System.Collections.Generic.Stack[System.Windows.Forms.Control]'

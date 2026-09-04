@@ -103,6 +103,13 @@ Ok 'the xlsx header is the CSV names'    (($cfg.Data.Head[0] -eq 'key1') -and ($
 $types = @($cfg.Screen.Sections | ForEach-Object { $_.Type }) -join ','
 Ok 'screen: the sections in reference order' ($types -eq 'keyPanel,columns,textBox,textBox,statusBand,sendBar,statusBar') $types
 Ok 'screen: judgment, 2 states, 10 candidate columns' (($cfg.Screen.Judgments.Count -eq 1) -and ($cfg.Screen.Work.States.Count -eq 2) -and ($cfg.Screen.Candidates.Columns.Count -eq 10)) $cfg.Screen.Describe()
+Ok 'screen: emphasis sizes come from the card definition' (($cfg.Screen.FontSize -eq 10) -and ($cfg.Screen.KeyValueFontSize -eq 15) -and ($cfg.Screen.JudgmentFontSize -eq 15) -and ($cfg.Screen.UnsearchedFontSize -eq 12)) $cfg.Screen.Describe()
+Ok 'screen: automatic work-state change remains the default' ($cfg.Screen.Work.Trigger -eq 'automatic') $cfg.Screen.Work.Trigger
+$typeSummary = @($cfg.Data.TypeOrder | ForEach-Object { $_.Ref + ':' + $_.Type + ':' + $_.Format }) -join ','
+Ok 'data: the shipped definition declares 3 dates and 6 numbers' ($typeSummary -eq 'A.a_date:date:yyyyMMdd,B.b_date:date:yyyyMMdd,C.c_exp:date:yyyyMMdd,A.a_rate:number:,A.a_amount:number:,B.b_qty:number:,B.b_total:number:,C.c_price:number:,C.c_stock:number:') $typeSummary
+$defaultKeyValidation = $cfg.Data.Tables[0].KeyValidation
+$sampleBKeyValidation = $cfg.Data.Tables[1].KeyValidation
+Ok 'data: omitted key validation stays strict; shipped B skips only blank identities' ($defaultKeyValidation.Ascii -and $defaultKeyValidation.FixedLength -and $defaultKeyValidation.Unique -and -not $defaultKeyValidation.SkipEmpty -and $sampleBKeyValidation.Ascii -and $sampleBKeyValidation.FixedLength -and $sampleBKeyValidation.Unique -and $sampleBKeyValidation.SkipEmpty) 'key rules changed'
 Ok 'the key panel carries its three buttons' (($cfg.Screen.Sections[0].Buttons.Count -eq 3) -and ($cfg.Screen.Sections[0].Buttons[2].Action -eq 'workState')) 'buttons'
 Ok 'the send band carries one direct action' (($cfg.Screen.Sections[5].Buttons.Count -eq 1) -and ($cfg.Screen.Sections[5].Buttons[0].Action -eq 'sendChanges')) 'send button'
 Ok 'the status bar carries four actions'  (($cfg.Screen.Sections[6].Buttons.Count -eq 4) -and ($cfg.Screen.Sections[6].Buttons[0].Action -eq 'tableExport') -and ($cfg.Screen.Sections[6].Buttons[3].Action -eq 'settings')) 'buttons'
@@ -135,6 +142,19 @@ Refused 'data: application ownership is explicit' (Variant 'owner' '{ "name": "w
 Refused 'data: merge row destinations are strict' (Variant 'rowdest' '"targetOnly": "keep"' '"targetOnly": "drop"') 'targetOnly.*keep / delete'
 Refused 'data: delete cannot target the whole ledger directly' (Variant 'unboundeddelete' '"operation": "delete", "target1": "ledger", "target2": "target"' '"operation": "delete", "target1": "ledger", "target2": "ledger"') 'requires a table and rows selected'
 Refused 'data: an encoding the machine lacks'    (Variant 'enc' '"encoding": "utf-8"' '"encoding": "klingon"') 'encoding'
+Refused 'data: a type must be date or number' (Variant 'badtype' '"A.a_date": { "type": "date", "format": "yyyyMMdd" }' '"A.a_date": { "type": "money", "format": "yyyyMMdd" }') 'type.*date / number'
+Refused 'data: a date type requires its exact format' (Variant 'dateformat' '"B.b_date": { "type": "date", "format": "yyyyMMdd" }' '"B.b_date": { "type": "date" }') 'format.*required'
+Refused 'data: a number type has no date format' (Variant 'numberformat' '"A.a_rate": { "type": "number" }' '"A.a_rate": { "type": "number", "format": "0" }') 'format.*only when type is date'
+Refused 'data: a type entry keeps strict unknown-member checking' (Variant 'typemember' '"C.c_exp": { "type": "date", "format": "yyyyMMdd" }' '"C.c_exp": { "type": "date", "format": "yyyyMMdd", "guess": true }') 'guess.*not a member'
+$tableA = '"A": { "label": "表A", "file": "tableA.csv", "key": "key1" },'
+$relaxedTableA = '"A": { "label": "表A", "file": "tableA.csv", "key": "key1", "keyValidation": { "characters": "unicode", "length": "variable", "duplicates": "distinct", "empty": "skip" } },'
+$relaxedKeyCfg = [Rdv3Config]::Load((Variant 'key-validation' $tableA $relaxedTableA))
+$relaxedRules = $relaxedKeyCfg.Data.Tables[0].KeyValidation
+Ok 'data: all four table key rules are read explicitly' ((-not $relaxedRules.Ascii) -and (-not $relaxedRules.FixedLength) -and (-not $relaxedRules.Unique) -and $relaxedRules.SkipEmpty) 'key rules were not read'
+Refused 'data: key character validation is a closed choice' (Variant 'key-characters' $tableA ($relaxedTableA.Replace('"unicode"', '"binary"'))) 'characters.*ascii / unicode'
+Refused 'data: key validation keeps strict unknown-member checking' (Variant 'key-member' $tableA ($relaxedTableA.Replace('"empty": "skip"', '"empty": "skip", "guess": true'))) 'guess.*not a member'
+Refused 'screen: a work-state trigger is automatic or manual' (Variant 'trigger' '"store": { "column": "処理済み" }' '"trigger": "sometimes", "store": { "column": "処理済み" }') 'trigger.*automatic / manual'
+Refused 'screen: an emphasis size stays in its declared range' (Variant 'emphasis' '"keyValueFontSize": 15' '"keyValueFontSize": 50') 'keyValueFontSize.*out of range'
 Refused 'screen: a value naming a column the ledger lacks' (Variant 'col' '{ "field": "A.a_name" }' '{ "field": "A.a_phone" }') 'A.a_phone.*data.ledger.columns'
 Refused 'screen: a section type nobody knows'    (Variant 'wizard' '"type": "textBox", "title": "メモ' '"type": "wizard", "title": "摘要') 'type.*must be one of'
 Refused 'screen: a band naming a missing judgment' (Variant 'judg' '"judgment": "status1"' '"judgment": "status9"') 'status9.*not defined'
@@ -154,6 +174,8 @@ Ok '6 digits is a key'              ($c.IsKey('123456')) 'IsKey'
 Ok '8 digits is not'                (-not $c.IsKey('12345678')) 'IsKey'
 Ok 'letters are not'                (-not $c.IsKey('12345A')) 'IsKey'
 Ok 'the shipped pattern: 8 digits'  ($cfg.IsKey('00021001') -and -not $cfg.IsKey('0002100')) 'IsKey'
+$manualWork = [Rdv3Config]::Load((Variant 'manual-work' '"store": { "column": "処理済み" }' '"trigger": "manual", "store": { "column": "処理済み" }'))
+Ok 'work-state automatic change can be disabled in JSON' ($manualWork.Screen.Work.Trigger -eq 'manual') $manualWork.Screen.Work.Trigger
 $multiSearch = [Rdv3Config]::Load((Variant 'multisearch' '"columns": ["B.key1"], "match": "exact"' '"columns": ["B.key1", "B.key2"], "match": "contains"'))
 Ok 'ledger search accepts several columns' (($multiSearch.Data.SearchCols.Count -eq 2) -and ($multiSearch.Data.SearchRefs[1] -eq 'B.key2')) ($multiSearch.Data.SearchRefs -join ',')
 Ok 'ledger search accepts contains matching' ($multiSearch.Data.SearchMatch -eq 'contains') $multiSearch.Data.SearchMatch
@@ -190,9 +212,9 @@ $reload = [Rdv3Config]::Load($p)
 Ok 'the new values come back'             (($reload.PollMs -eq 77) -and ($reload.KeyPattern -eq '^[A-Z0-9]{10}$') -and ($reload.DataDir -eq 'D:\one') -and (-not $reload.Targets[0].Enabled)) $reload.Describe()
 function Part([string] $text, [string] $from, [string] $to) { $a = $text.IndexOf($from); $b = $text.IndexOf($to, $a); return $text.Substring($a, $b - $a) }
 Ok 'the header comment is untouched'      ($after.StartsWith($shipped.Substring(0, $shipped.IndexOf('{')))) 'header'
-Ok 'the comment above "watch" is untouched' ($after.Contains('// WHAT TO WATCH.') -and $after.Contains('// point at -- far quicker')) 'comment'
-Ok 'the "jobs" text is byte for byte'     ((Part $after '"jobs"' '// THE DATA') -eq (Part $shipped '"jobs"' '// THE DATA')) 'jobs'
-Ok 'the "data" text is byte for byte'     ((Part $after '"data": {' '// THE SCREEN') -eq (Part $shipped '"data": {' '// THE SCREEN')) 'data'
+Ok 'the paths / search / watch guide in the header is untouched' ($after.Contains('// paths の書き方:') -and $after.Contains('// watch の書き方:') -and $after.Contains('// 押すだけで、この定義を UI Automation の実物から作れます。')) 'comment'
+Ok 'the "jobs" text is byte for byte'     ((Part $after '"jobs"' '// 入力表と統合台帳の定義。') -eq (Part $shipped '"jobs"' '// 入力表と統合台帳の定義。')) 'jobs'
+Ok 'the "data" text is byte for byte'     ((Part $after '"data": {' '// 画面の定義。') -eq (Part $shipped '"data": {' '// 画面の定義。')) 'data'
 Ok 'the "screen" text is byte for byte'   ($after.Substring($after.IndexOf('"screen": {')) -eq $shipped.Substring($shipped.IndexOf('"screen": {'))) 'screen'
 Ok 'the file still ends the way it began' ($after.EndsWith($shipped.Substring($shipped.Length - 4))) 'tail'
 $edited2 = $reload.Clone(); $edited2.StableMs = 99
@@ -411,6 +433,16 @@ $m = ErrorOf { [Rdv3Table]::Read((Csv 'headonly' "key1,key2,f2`r`n"), 'headonly'
 Ok 'a file with no data row is refused'          ($m -match 'headonly.csv') $m
 $m = ErrorOf { New-Object Rdv3Index ([Rdv3Table]::Read((Csv 'dupkey' "key1,key2,f2`r`n000001,000001,a`r`n000002,000002,a`r`n000001,000003,a`r`n"), 'dupkey', $utf8, 'key1')) }
 Ok 'a duplicate key is refused, naming both rows' ($m -match 'dupkey.csv.*000001.*2.*4') $m
+$m = ErrorOf { [Rdv3Table]::Read((Csv 'unicode-strict' "key1,value`r`n東京,a`r`n"), 'unicode-strict', $utf8, 'key1') }
+Ok 'an omitted key rule still refuses a non-ASCII key' ($m -match 'unicode-strict.csv.*2.*ASCII') $m
+$relaxedPath = Csv 'relaxed-keys' "key1,value`r`n青,first`r`n,blank`r`n東京,second`r`n青,later`r`n"
+$relaxedTable = [Rdv3Table]::Read($relaxedPath, 'relaxed', $utf8, 'key1', $relaxedRules)
+Ok 'relaxed CSV keys allow Unicode and variable character lengths' (($relaxedTable.Rows -eq 2) -and ($relaxedTable.KeyLen -eq 0) -and ($relaxedTable.Key(0) -eq '青') -and ($relaxedTable.Key(1) -eq '東京')) (($relaxedTable.Rows).ToString() + ' rows')
+Ok 'relaxed CSV keys skip blanks and keep the first duplicate row' (($relaxedTable.Field(0, 1) -eq 'first') -and ($relaxedTable.Field(1, 1) -eq 'second') -and ($relaxedTable.SourceRow(1) -eq 4)) ($relaxedTable.Field(0, 1) + '/' + $relaxedTable.Field(1, 1))
+$relaxedIndex = New-Object Rdv3Index $relaxedTable
+$query = $utf8.GetBytes('東京'); $relaxedRows = $null
+$relaxedCount = $relaxedIndex.FindBytes($query, 0, $query.Length, [ref]$relaxedRows)
+Ok 'a relaxed table index decodes a variable-width lookup key' (($relaxedIndex.Keys -eq 2) -and ($relaxedCount -eq 1) -and ($relaxedRows[0] -eq 1)) ("keys/hits " + $relaxedIndex.Keys + '/' + $relaxedCount)
 $sjis = [Text.Encoding]::GetEncoding(932)
 $sj = Join-Path $work 'sjis.csv'
 [IO.File]::WriteAllText($sj, "key1,名前`r`n000001,漢字`r`n", $sjis)
@@ -420,6 +452,90 @@ $bom = Join-Path $work 'bom.csv'
 [IO.File]::WriteAllText($bom, "key1,f1`r`n000001,a`r`n", (New-Object Text.UTF8Encoding($true)))
 $tb = [Rdv3Table]::Read($bom, 'bom', $utf8, 'key1')
 Ok 'a UTF-8 BOM is skipped'                      (($tb.Head[0] -eq 'key1') -and ([Rdv3Table]::ReadHead($bom, $utf8)[0] -eq 'key1')) ($tb.Head -join ',')
+
+$sourceBook = Join-Path $work 'source-table.xlsx'
+[Rdv3Xlsx]::Write($sourceBook, [string[]]@('when','memo'), 'key1',
+  [string[]]@("20240101`ta,b", "20240131`tz"), [string[]]@('K001','K002'), 'source')
+$tx = [Rdv3Table]::Read($sourceBook, 'X', [Text.Encoding]::Unicode, 'key1')
+Ok 'an xlsx source uses its first row as the table header' (($tx.Head -join ',') -eq 'key1,when,memo') ($tx.Head -join ',')
+Ok 'an xlsx source keeps cells and ignores the CSV encoding' (($tx.Rows -eq 2) -and ($tx.Field(0, 0) -eq 'K001') -and ($tx.Field(0, 2) -eq 'a,b')) ($tx.Field(0, 0) + '/' + $tx.Field(0, 2))
+$txIndex = New-Object Rdv3Index $tx
+Ok 'an xlsx source is indexed by its declared unique key' (($txIndex.Find('K002').Count -eq 1) -and ($txIndex.Find('K002')[0] -eq 1)) 'xlsx key index'
+$dupBook = Join-Path $work 'source-duplicate.xlsx'
+[Rdv3Xlsx]::Write($dupBook, [string[]]@('value'), 'key1', [string[]]@('one','two'), [string[]]@('K001','K001'), 'duplicate')
+$m = ErrorOf { New-Object Rdv3Index ([Rdv3Table]::Read($dupBook, 'X', $utf8, 'key1')) }
+Ok 'an xlsx source refuses a duplicate key with both rows' ($m -match 'source-duplicate.xlsx.*K001.*2.*3') $m
+$relaxedBook = Join-Path $work 'source-relaxed.xlsx'
+[Rdv3Xlsx]::Write($relaxedBook, [string[]]@('value'), 'key1',
+  [string[]]@('first','blank','second','later'), [string[]]@('青','','東京','青'), 'relaxed')
+$relaxedXlsx = [Rdv3Table]::Read($relaxedBook, 'X', $utf8, 'key1', $relaxedRules)
+$relaxedXlsxIndex = New-Object Rdv3Index $relaxedXlsx
+Ok 'an xlsx source applies the same relaxed key rules' (($relaxedXlsx.Rows -eq 2) -and ($relaxedXlsxIndex.Keys -eq 2) -and ($relaxedXlsx.Field(0, 1) -eq 'first') -and ($relaxedXlsx.Field(1, 1) -eq 'second')) (($relaxedXlsx.Rows).ToString() + ' rows')
+
+# The shipped definition declares data.types; bind those declarations to the
+# real input headings and exercise their values and export comparisons.
+$typedCfg = $cfg
+$shippingData = Join-Path $Root 'dist\app-csharp\data'
+$typedHeads = New-Object 'string[][]' $typedCfg.Data.Tables.Count
+for ($i = 0; $i -lt $typedCfg.Data.Tables.Count; $i++) {
+  $typedHeads[$i] = [Rdv3Table]::ReadHead((Join-Path $shippingData $typedCfg.Data.Tables[$i].File), $typedCfg.Data.Enc)
+}
+$typedCfg.Data.Bind($typedHeads)
+Ok 'declared date and number types load beside labels' (($typedCfg.Data.TypeOf('B.b_date').Format -eq 'yyyyMMdd') -and ($typedCfg.Data.TypeOf('B.b_qty').Type -eq 'number')) $typedCfg.Data.Describe()
+Ok 'an undeclared column remains text' ($null -eq $typedCfg.Data.TypeOf('B.key1')) 'a type was inferred'
+$badColumnCfg = [Rdv3Config]::Load((Variant 'typed-missing-column' '"B.b_date": { "type": "date", "format": "yyyyMMdd" }' '"B.no_such_column": { "type": "date", "format": "yyyyMMdd" }'))
+$m = ErrorOf { $badColumnCfg.Data.Bind($typedHeads) }
+Ok 'a declared type still names a real input column' ($m -match 'tableB.csv.*no_such_column.*data.types') $m
+
+$miniTyped = Join-Path $work 'typed-tableB.csv'
+$typedRow = New-Object string[] $typedHeads[1].Length
+$typedRow[[Array]::IndexOf($typedHeads[1], 'key1')] = '00000001'
+$typedRow[[Array]::IndexOf($typedHeads[1], 'key2')] = '00000002'
+$typedRow[[Array]::IndexOf($typedHeads[1], 'b_date')] = '20240229'
+$typedRow[[Array]::IndexOf($typedHeads[1], 'b_qty')] = '12.5'
+[IO.File]::WriteAllText($miniTyped, (($typedHeads[1] -join ',') + "`r`n" + ($typedRow -join ',') + "`r`n"), $utf8)
+$typedTables = New-Object 'Rdv3Table[]' $typedCfg.Data.Tables.Count
+$typedTables[1] = [Rdv3Table]::Read($miniTyped, 'B', $typedCfg.Data.Enc, 'key2')
+$m = ErrorOf { $typedCfg.Data.ValidateTypes($typedTables) }
+Ok 'declared date and number values validate before use' ($null -eq $m) $m
+$typedRow[[Array]::IndexOf($typedHeads[1], 'b_date')] = '20240230'
+[IO.File]::WriteAllText($miniTyped, (($typedHeads[1] -join ',') + "`r`n" + ($typedRow -join ',') + "`r`n"), $utf8)
+$typedTables[1] = [Rdv3Table]::Read($miniTyped, 'B', $typedCfg.Data.Enc, 'key2')
+$m = ErrorOf { $typedCfg.Data.ValidateTypes($typedTables) }
+Ok 'a bad date stops with its column and actual value' ($m -match 'B.b_date.*20240230') $m
+$typedRow[[Array]::IndexOf($typedHeads[1], 'b_date')] = '20240229'
+$typedRow[[Array]::IndexOf($typedHeads[1], 'b_qty')] = 'twelve'
+[IO.File]::WriteAllText($miniTyped, (($typedHeads[1] -join ',') + "`r`n" + ($typedRow -join ',') + "`r`n"), $utf8)
+$typedTables[1] = [Rdv3Table]::Read($miniTyped, 'B', $typedCfg.Data.Enc, 'key2')
+$m = ErrorOf { $typedCfg.Data.ValidateTypes($typedTables) }
+Ok 'a bad number stops with its column and actual value' ($m -match 'B.b_qty.*twelve') $m
+
+$filterValues = New-Object string[] $typedCfg.Data.Columns.Count
+$filterValues[$typedCfg.Data.IndexOf('B.b_date')] = '20240131'
+$filterValues[$typedCfg.Data.IndexOf('B.b_qty')] = '10'
+$filterValues[$typedCfg.Data.IndexOf('A.a_name')] = 'Alpha Beta'
+$dateFilter = New-Object Rdv3ExportFilter
+$dateFilter.Field = 'B.b_date'; $dateFilter.Operator = 'range'; $dateFilter.First = '20240101'; $dateFilter.Last = '20240131'
+Ok 'a date range includes both endpoints' ($dateFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')) 'date endpoint missed'
+$dateFilter.Last = '20240130'
+Ok 'a date range excludes a value beyond its last day' (-not $dateFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')) 'date outlier included'
+$numberFilter = New-Object Rdv3ExportFilter
+$numberFilter.Field = 'B.b_qty'; $numberFilter.Operator = 'range'; $numberFilter.First = '10'; $numberFilter.Last = '20'
+Ok 'a number range includes both endpoints' ($numberFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')) 'number endpoint missed'
+$textFilter = New-Object Rdv3ExportFilter
+$textFilter.Field = 'A.a_name'; $textFilter.First = 'Alpha'
+$textFilter.Operator = 'contains'; $containsText = $textFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')
+$textFilter.Operator = 'startsWith'; $startsText = $textFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')
+$textFilter.Operator = 'equals'; $equalsText = $textFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')
+$textFilter.Operator = 'notContains'; $notContainsText = $textFilter.Matches($typedCfg.Data, $filterValues, 'FALSE')
+Ok 'text filters provide all four literal comparisons' ($containsText -and $startsText -and -not $equalsText -and -not $notContainsText) 'text operators'
+$andRequest = New-Object Rdv3ExportRequest
+$dateFilter.Last = '20240131'
+$textFilter.Operator = 'startsWith'
+$andRequest.Filters.Add($dateFilter); $andRequest.Filters.Add($numberFilter); $andRequest.Filters.Add($textFilter)
+$allMatch = $andRequest.Matches($typedCfg.Data, $filterValues, 'FALSE')
+$filterValues[$typedCfg.Data.IndexOf('A.a_name')] = 'Beta Alpha'
+Ok 'several export filters are combined with AND' ($allMatch -and -not $andRequest.Matches($typedCfg.Data, $filterValues, 'FALSE')) 'filters were not AND'
 
 # ===========================================================================
 Section 'every table-operation word is reachable through one typed pipeline'
@@ -569,6 +685,111 @@ $directPreserved = [Rdv3Process]::Run($vocabPreserve, $vocabPreserve.JobOf('dire
 Ok 'a direct source-column update obeys the configured preserve rule' (($directPreserved.States[0] -eq 'TRUE') -and ($directPreserved.Update.ResetLines.Count -eq 0)) (($directPreserved.States -join ',') + ' reset=' + $directPreserved.Update.ResetLines.Count)
 
 # ===========================================================================
+Section 'string functions create ordinary columns for later table operations'
+$stringDir = Join-Path $work 'string-functions'
+New-Item -ItemType Directory -Path $stringDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $stringDir 'source.csv'), "id,raw,status`r`nS1,ORD-AB12-TAIL,OPEN`r`nS2,ORD-CD34-TAIL,OPEN`r`nS3,ORD-EF56-TAIL,OPEN`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $stringDir 'lookup.csv'), "key,note`r`nAB12,first`r`nEF56,last`r`n", $utf8)
+$stringJson = @'
+{
+  "tables": {
+    "A": { "label": "source", "file": "source.csv", "key": "id" },
+    "B": { "label": "lookup", "file": "lookup.csv", "key": "key" }
+  },
+  "labels": {
+    "A.id": "source id", "A.raw": "source text", "A.status": "status",
+    "B.key": "lookup key", "B.note": "lookup note", "ledger": "ledger",
+    "regexed": "regex output", "regexed.regexKey": "regex key",
+    "split": "split output", "split.splitKey": "split key",
+    "derived": "derived output", "derived.substringKey": "substring key",
+    "joined": "joined", "matchedRows": "matched rows", "updated": "updated",
+    "matchedAfterUpdate": "matched after update", "remaining": "remaining"
+  },
+  "jobs": [
+    {
+      "id": "base", "name": "base", "kind": "update", "inputs": [ { "table": "A" } ],
+      "steps": [
+        { "operation": "replace", "target1": "A", "target2": "ledger",
+          "keys": ["A.id", "A.id"], "condition": "", "output": "ledger" }
+      ]
+    },
+    {
+      "id": "strings", "name": "strings", "kind": "delete",
+      "inputs": [ { "table": "A" }, { "table": "B" } ],
+      "steps": [
+        { "operation": "calculate", "target1": "A", "condition": "", "column": "regexKey",
+          "expression": "regexExtract(A.raw, '[A-Z]{2}[0-9]{2}')", "output": "regexed" },
+        { "operation": "calculate", "target1": "regexed", "condition": "", "column": "splitKey",
+          "expression": "splitPart(A.raw, '-', 1)", "output": "split" },
+        { "operation": "calculate", "target1": "split", "condition": "", "column": "substringKey",
+          "expression": "substring(split.splitKey, 0, 4)", "output": "derived" },
+        { "operation": "join", "target1": "derived", "target2": "B",
+          "keys": ["derived.substringKey", "B.key"], "condition": "match", "output": "joined" },
+        { "operation": "extract", "target1": "derived", "target2": "B",
+          "keys": ["derived.substringKey", "B.key"], "condition": "match", "output": "matchedRows" },
+        { "operation": "update", "target1": "derived", "target2": "matchedRows", "condition": "",
+          "set": [ { "column": "A.status", "expression": "substring('MATCHED', 0, 7)" } ], "output": "updated" },
+        { "operation": "extract", "target1": "updated", "target2": "B",
+          "keys": ["derived.substringKey", "B.key"], "condition": "match", "output": "matchedAfterUpdate" },
+        { "operation": "delete", "target1": "updated", "target2": "matchedAfterUpdate",
+          "condition": "", "output": "remaining" }
+      ]
+    }
+  ],
+  "ledger": {
+    "identity": "A.id", "search": { "columns": ["A.id"], "match": "exact" },
+    "columns": { "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+      "source": ["A.id", "A.raw", "A.status"] }
+  }
+}
+'@
+$stringHeads = @([string[]]@('id','raw','status'), [string[]]@('key','note'))
+$stringData = [Rdv3Data]::Read([Rdv3Json]::Parse($stringJson))
+$stringData.Bind($stringHeads)
+$stringRun = [Rdv3Process]::Run($stringData, $stringData.JobOf('strings'), $stringDir, [string[]]@(), [string[]]@(), 'FALSE')
+$derived = $stringRun.ValueOf('derived')
+Ok 'regexExtract, splitPart, and substring produce their configured values' (($derived.Lines[0] -eq "S1`tORD-AB12-TAIL`tOPEN`tAB12`tAB12`tAB12") -and ($derived.Lines[2] -match "`tEF56`tEF56`tEF56$")) ($derived.Lines -join '|')
+Ok 'a generated value is retained as an ordinary named column' (($derived.Columns[$derived.Columns.Count - 1] -eq 'derived.substringKey') -and ($derived.Count -eq 3)) ($derived.Columns -join ',')
+Ok 'a generated column is usable as a later join key' ($stringRun.ValueOf('joined').Count -eq 2) $stringRun.ValueOf('joined').Count
+Ok 'a generated column is usable for table-to-table matching' ($stringRun.ValueOf('matchedRows').Count -eq 2) $stringRun.ValueOf('matchedRows').Count
+Ok 'rows selected by a generated key can be updated with a string function' (($stringRun.ValueOf('updated').Lines[0] -match "^S1`t.*`tMATCHED`t") -and ($stringRun.ValueOf('updated').Lines[1] -match "^S2`t.*`tOPEN`t") -and ($stringRun.ValueOf('updated').Lines[2] -match "^S3`t.*`tMATCHED`t")) ($stringRun.ValueOf('updated').Lines -join '|')
+Ok 'rows selected again by the generated key can be deleted' (($stringRun.ValueOf('remaining').Count -eq 1) -and ($stringRun.ValueOf('remaining').Lines[0] -match '^S2')) ($stringRun.ValueOf('remaining').Lines -join '|')
+$displayFunction = [Rdv3Process]::DisplayExpression($stringData, "splitPart(A.raw, '-', 1)")
+Ok 'function display keeps the function and substitutes the configured column label' ($displayFunction -eq "splitPart(source text, '-', 1)") $displayFunction
+
+function ExpressionFailure([string] $expression) {
+  $candidate = $stringJson.Replace("regexExtract(A.raw, '[A-Z]{2}[0-9]{2}')", $expression)
+  try {
+    $data = [Rdv3Data]::Read([Rdv3Json]::Parse($candidate))
+    $data.Bind($stringHeads)
+    [void][Rdv3Process]::Run($data, $data.JobOf('strings'), $stringDir, [string[]]@(), [string[]]@(), 'FALSE')
+    return ''
+  } catch { return $_.Exception.Message }
+}
+$m = ExpressionFailure "notAFunction(A.raw)"
+Ok 'an unknown expression function is refused' ($m -match 'unknown.*function') $m
+$m = ExpressionFailure "regexExtract(A.raw)"
+Ok 'a string function requires its exact argument count' ($m -match 'regexExtract expects 2 arguments') $m
+$m = ExpressionFailure "regexExtract(A.raw, A.raw)"
+Ok 'a regular expression argument must be quoted text' ($m -match 'pattern must be quoted text') $m
+$m = ExpressionFailure "regexExtract(A.raw, '[')"
+Ok 'an unusable extraction pattern is refused before execution' ($m -match 'not a usable regular expression') $m
+$m = ExpressionFailure "splitPart(A.raw, '-', 1.5)"
+Ok 'a split position must be a whole number' ($m -match 'position must be a non-negative whole number') $m
+$m = ExpressionFailure "substring(A.raw, 0, 0)"
+Ok 'a substring length must be positive' ($m -match 'length must be a positive whole number') $m
+$m = ExpressionFailure "regexExtract('', '[A-Z]+')"
+Ok 'an empty source value stops string extraction' ($m -match 'regexExtract received empty text') $m
+$m = ExpressionFailure "regexExtract(A.raw, '^Z[0-9]+$')"
+Ok 'a regular expression mismatch stops instead of making an empty key' ($m -match 'regexExtract found no match') $m
+$m = ExpressionFailure "splitPart(A.raw, '-', 9)"
+Ok 'a split position outside the result is refused' ($m -match 'splitPart position is outside') $m
+$m = ExpressionFailure "splitPart('A--B', '-', 1)"
+Ok 'an empty split element stops instead of making an empty key' ($m -match 'splitPart produced empty text') $m
+$m = ExpressionFailure "substring(A.raw, 99, 1)"
+Ok 'a substring range outside the source is refused' ($m -match 'substring range is outside') $m
+
+# ===========================================================================
 Section 'the merge follows the definition: spine, joins, ledger columns'
 $dd = Join-Path $work 'tiny'
 New-Item -ItemType Directory -Path $dd | Out-Null
@@ -591,6 +812,22 @@ Ok 'a spine key nobody has leaves A blank' ($mr.Lines[2] -eq "K3`tY3`t`tB3`t0009
 Ok 'the matched counts say so'           (($mr.Matched[0] -eq 2) -and ($mr.Matched[1] -eq 2)) ($mr.Matched -join ',')
 Ok 'the xlsx header is the CSV names'    (($mr.Head -join ',') -eq 'key2,c_y,a_x,b_x,key1') ($mr.Head -join ',')
 Ok 'identity and search columns follow'  (($def.IdentityCol -eq 0) -and ($def.SearchCols[0] -eq 4)) ("{0}/{1}" -f $def.IdentityCol, $def.SearchCols[0])
+$inputBook = Join-Path $dd 'b.xlsx'
+[Rdv3Xlsx]::Write($inputBook, [string[]]@('key2','b_x'), 'key1',
+  [string[]]@("K1`tB1", "K2`tB2", "K3`tB3"), [string[]]@('0001','0001','0009'), 'table-b')
+$xlsxDef = [Rdv3Data]::Read([Rdv3Json]::Parse($defJson.Replace('"b.csv"', '"b.xlsx"')))
+$xlsxMerge = [Rdv3Ledger]::BuildFromCsv($xlsxDef, $dd)
+Ok 'an xlsx table follows the same join and ledger path as CSV' (($xlsxMerge.Lines -join '|') -eq ($mr.Lines -join '|')) ($xlsxMerge.Lines -join '|')
+$relaxedJoinDir = Join-Path $work 'relaxed-join'
+New-Item -ItemType Directory -Path $relaxedJoinDir | Out-Null
+[IO.File]::WriteAllText((Join-Path $relaxedJoinDir 'a.csv'), "key1,a_x`r`n青,AX1`r`n東京,AX2`r`n青,IGNORED`r`n,BLANK`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $relaxedJoinDir 'b.csv'), "key1,key2,b_x`r`n青,K1,B1`r`n東京,K2,B2`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $relaxedJoinDir 'c.csv'), "key2,c_x,c_y`r`nK1,C1,Y1`r`nK2,C2,Y2`r`n", $utf8)
+$relaxedDefJson = $defJson.Replace('"A": { "label": "A", "file": "a.csv", "key": "key1" }',
+  '"A": { "label": "A", "file": "a.csv", "key": "key1", "keyValidation": { "characters": "unicode", "length": "variable", "duplicates": "distinct", "empty": "skip" } }')
+$relaxedDef = [Rdv3Data]::Read([Rdv3Json]::Parse($relaxedDefJson))
+$relaxedMerge = [Rdv3Ledger]::BuildFromCsv($relaxedDef, $relaxedJoinDir)
+Ok 'relaxed table keys flow through the ordinary configured join' (($relaxedMerge.Rows -eq 2) -and ($relaxedMerge.Keys[0] -eq 2) -and ($relaxedMerge.Lines[0] -eq "K1`tY1`tAX1`tB1`t青") -and ($relaxedMerge.Lines[1] -eq "K2`tY2`tAX2`tB2`t東京")) ($relaxedMerge.Lines -join '|')
 $replaceOld = [string[]]@("OLD`told", $mr.Lines[0])
 $replaceStates = [string[]]@('TRUE', 'TRUE')
 $replaced = [Rdv3Ledger]::ApplyUpdate($def.UpdateJob, $replaceOld, $replaceStates, $mr.Lines, 0, 'FALSE')
@@ -654,8 +891,7 @@ Ok 'another column layout is refused'        ($m -match 'round.xlsx') $m
 Section 'delete runs only through row sets selected by configured ledger columns'
 $deleteDir = Join-Path $work 'delete-inputs'
 New-Item -ItemType Directory -Path $deleteDir | Out-Null
-[IO.File]::WriteAllText((Join-Path $deleteDir 'delete.csv'), "key2`r`nDEL00001`r`n", $utf8)
-[IO.File]::WriteAllText((Join-Path $deleteDir 'delete-ref.csv'), "b_ref`r`nREF00002`r`n", $utf8)
+[IO.File]::WriteAllText((Join-Path $deleteDir 'delete.csv'), "key2,b_ref`r`nDEL00001,REF00001`r`nKEEP0002,REF00002`r`n", $utf8)
 function ShippedLine([string] $key1, [string] $key2, [string] $ref) {
   $v = New-Object string[] $cfg.Data.Columns.Count
   $v[$cfg.Data.IndexOf('B.key1')] = $key1
@@ -669,8 +905,24 @@ $deleteLines = [string[]]@(
   (ShippedLine 'KEY00003' 'KEEP0003' 'REF00003'))
 $deleteStates = [string[]]@('TRUE', 'FALSE', 'TRUE')
 $deleted = [Rdv3Ledger]::ApplyDelete($cfg.Data, $cfg.Data.JobOf('delete-listed-records'), $deleteDir, $deleteLines, $deleteStates, 'FALSE')
-Ok 'configured key selections are combined before deletion' (($deleted.Deleted -eq 2) -and ($deleted.Lines.Length -eq 1)) (($deleted.Lines.Length).ToString() + ' rows')
+Ok 'the shipped paired columns are intersected before deletion' (($deleted.Deleted -eq 2) -and ($deleted.Lines.Length -eq 1)) (($deleted.Lines.Length).ToString() + ' rows')
 Ok 'unselected content and application state stay together' (($deleted.Lines[0] -eq $deleteLines[2]) -and ($deleted.States[0] -eq 'TRUE')) ($deleted.States -join ',')
+[IO.File]::WriteAllText((Join-Path $deleteDir 'conditions.csv'), "key2,b_ref`r`nDEL00001,NONE0001`r`nNONE0002,REF00002`r`n", $utf8)
+$sameFileText = $shipped.Replace('"file": "delete.csv"', '"file": "conditions.csv"')
+$sameFileCfg = [Rdv3Config]::Load((WriteText 'same-file-columns.json' $sameFileText))
+$sameFileDeleted = [Rdv3Ledger]::ApplyDelete($sameFileCfg.Data, $sameFileCfg.Data.JobOf('delete-listed-records'), $deleteDir, $deleteLines, $deleteStates, 'FALSE')
+Ok 'both keeps rows selected by only one of the two columns' (($sameFileDeleted.Deleted -eq 0) -and ($sameFileDeleted.Lines.Length -eq 3)) (($sameFileDeleted.Lines.Length).ToString() + ' rows')
+[IO.File]::WriteAllText((Join-Path $deleteDir 'relaxed-values.csv'), "key2,b_ref`r`n東京,NONE0001`r`n,NONE0002`r`n東京,NONE0003`r`n大阪,NONE0004`r`n", $utf8)
+$relaxedInput = '"file": "relaxed-values.csv", "column": "key2", "key": "B.key2", "keyValidation": { "characters": "unicode", "length": "variable", "duplicates": "distinct", "empty": "skip" }'
+$relaxedInputText = $shipped.Replace('"file": "delete.csv", "column": "key2", "key": "B.key2"', $relaxedInput)
+$relaxedInputText = $relaxedInputText.Replace('"file": "delete.csv", "column": "b_ref"', '"file": "relaxed-values.csv", "column": "b_ref"')
+$relaxedInputCfg = [Rdv3Config]::Load((WriteText 'relaxed-input.json' $relaxedInputText))
+$relaxedInputLines = [string[]]@(
+  (ShippedLine 'KEY00001' '東京' 'NONE0001'),
+  (ShippedLine 'KEY00002' '大阪' 'NONE0002'),
+  (ShippedLine 'KEY00003' '京都' 'NONE0003'))
+$relaxedInputDeleted = [Rdv3Ledger]::ApplyDelete($relaxedInputCfg.Data, $relaxedInputCfg.Data.JobOf('delete-listed-records'), $deleteDir, $relaxedInputLines, [string[]]@('TRUE','FALSE','TRUE'), 'FALSE')
+Ok 'a relaxed condition-value input is distinct, blank-free, and usable by the generic pipeline' (($relaxedInputDeleted.Deleted -eq 2) -and ($relaxedInputDeleted.Lines.Length -eq 1) -and ($relaxedInputDeleted.Lines[0] -eq $relaxedInputLines[2])) (($relaxedInputDeleted.Lines.Length).ToString() + ' rows')
 
 # ===========================================================================
 Section 'local pending changes stay local, survive restart, and require the same record content'

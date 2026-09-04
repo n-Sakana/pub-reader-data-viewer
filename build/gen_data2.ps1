@@ -1,10 +1,11 @@
 ﻿# ============================================================================
 # gen_data2.ps1 -- the one-to-many dataset the four index methods are compared on.
 #
-#   data-100k\tableA.csv    100,000 rows x 10 fields, key1 unique
-#   data-100k\tableB.csv    100,000 rows x 10 fields, key1 REPEATS, key2 unique
-#   data-100k\tableC.csv    100,000 rows x 10 fields, key2 unique
-#   data-100k\expected.txt  the oracle: row counts, join checksum, candidate counts
+#   data-1k\tableA.csv    1,000 rows x 10 fields, key1 unique
+#   data-1k\tableB.csv    1,000 rows x 10 fields, key1 REPEATS, some key2 blank
+#   data-1k\tableC.csv    1,000 rows x 10 fields, key2 unique
+#   data-1k\delete.csv    paired key2,b_ref conditions for the delete example
+#   data-1k\expected.txt  the oracle: row counts, join checksum, candidate counts
 #
 # This is the SHIPPED sample, and it is deliberately colourless: the values are
 # SAMPLE-A-0000001, REF-00018414, CAT3, NOTE-47180 -- tokens that say "a
@@ -29,30 +30,43 @@
 # known without reading the file: key1 00000001 has 5, and the small -Rows 200
 # set has the same shape in miniature for testing.
 #
-# A stays sorted by key1 and C sorted by key2; B is written in a seeded shuffle.
+# One percent of B uses a key1 absent from A, and another one percent has a
+# blank key2 and is skipped by the shipped key-validation setting. The blank
+# identities also leave the same number of C rows unreferenced. A stays sorted
+# by key1 and C by key2; B is written in a seeded shuffle.
 #
 #   pwsh -File build\gen_data2.ps1
 #   pwsh -File build\gen_data2.ps1 -Rows 200 -OutDir data-tiny
 # ============================================================================
 [CmdletBinding()]
 param(
-  [int]    $Rows   = 100000,
+  [int]    $Rows   = 1000,
   [string] $OutDir = "",
   [switch] $Force
 )
 $ErrorActionPreference = 'Stop'
 
 $root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
-if ([string]::IsNullOrEmpty($OutDir)) { $OutDir = Join-Path $root 'data-100k' }
+if ([string]::IsNullOrEmpty($OutDir)) { $OutDir = Join-Path $root 'data-1k' }
 if (-not [IO.Path]::IsPathRooted($OutDir)) { $OutDir = Join-Path $root $OutDir }
 if (-not (Test-Path -LiteralPath $OutDir)) { New-Item -ItemType Directory -Path $OutDir | Out-Null }
 
+# Phase 16 replaced the old second delete input with a second column in
+# delete.csv. Remove that generated predecessor even when the current data set
+# is otherwise reusable, so a direct generator run cannot leave the old sample
+# beside the new one.
+$legacyDelete = Join-Path $OutDir 'delete-ref.csv'
+if (Test-Path -LiteralPath $legacyDelete) {
+  Remove-Item -LiteralPath $legacyDelete -Force
+  Write-Output "removed legacy generated input: $legacyDelete"
+}
+
 $marker = Join-Path $OutDir 'expected.txt'
-if ((Test-Path -LiteralPath $marker) -and
-    (Test-Path -LiteralPath (Join-Path $OutDir 'delete.csv')) -and
-    (Test-Path -LiteralPath (Join-Path $OutDir 'delete-ref.csv')) -and -not $Force) {
+$generatedFiles = @('tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'expected.txt')
+if (@($generatedFiles | Where-Object { -not (Test-Path -LiteralPath (Join-Path $OutDir $_)) }).Count -eq 0 -and -not $Force) {
   $have = Select-String -LiteralPath $marker -Pattern '^rows=(\d+)$' | Select-Object -First 1
-  if ($have -and [int]$have.Matches[0].Groups[1].Value -eq $Rows) {
+  $deleteShape = Select-String -LiteralPath $marker -Pattern '^delete.columns=key2,b_ref$' | Select-Object -First 1
+  if ($have -and [int]$have.Matches[0].Groups[1].Value -eq $Rows -and $deleteShape) {
     Write-Output "already generated: $OutDir (rows=$Rows). -Force to rebuild."
     Get-Content -LiteralPath $marker | Select-Object -First 8 | ForEach-Object { Write-Output "  $_" }
     return
@@ -61,6 +75,7 @@ if ((Test-Path -LiteralPath $marker) -and
 
 $cs = @'
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Text;
@@ -147,7 +162,8 @@ public static class RdvGen2
         int qty  = (int)(Mix(2, seed, 1) % 999u) + 1;
         int unit = (int)(Mix(2, seed, 2) % 99989u) + 10;
         b.Append(Pad(n, 8)).Append(',');
-        b.Append(Pad(k2, 8)).Append(',');
+        if (k2 > 0) { b.Append(Pad(k2, 8)); }
+        b.Append(',');
         b.Append("REF-").Append(Pad(n, 8)).Append(',');
         b.Append(Date(Mix(2, seed, 3))).Append(',');
         b.Append(Pad(qty, 3)).Append(',');
@@ -202,16 +218,33 @@ public static class RdvGen2
                 + " != " + N.ToString(CultureInfo.InvariantCulture));
         }
 
+        int unmatchedARequested = Math.Max(1, N / 100);
+        int emptyIdentityRequested = Math.Max(1, N / 100);
+        int singleStart = N / 100 + N / 20 + (N * 15) / 100 + 1;
+        int singleEnd = singleStart + N / 2 - 1;
+        if (singleStart + unmatchedARequested + emptyIdentityRequested - 1 > singleEnd)
+        {
+            throw new InvalidOperationException("not enough one-row keys for unmatched sample rows");
+        }
+
         int[] rowKey = new int[N];
         int[] rowLine = new int[N];
+        bool[] blankIdentity = new bool[N];
         int at = 0;
         for (int n = 1; n <= N; n++)
         {
             int m = Multiplicity(n);
             for (int line = 1; line <= m; line++)
             {
-                rowKey[at] = n;
+                int key1 = n;
+                if (n >= singleStart && n < singleStart + unmatchedARequested)
+                {
+                    key1 = N + (n - singleStart) + 1;
+                }
+                rowKey[at] = key1;
                 rowLine[at] = line;
+                blankIdentity[at] = n >= singleStart + unmatchedARequested
+                    && n < singleStart + unmatchedARequested + emptyIdentityRequested;
                 at++;
             }
         }
@@ -223,6 +256,7 @@ public static class RdvGen2
             int j = (int)(s % (ulong)(i + 1));
             int t = rowKey[i]; rowKey[i] = rowKey[j]; rowKey[j] = t;
             t = rowLine[i]; rowLine[i] = rowLine[j]; rowLine[j] = t;
+            bool bt = blankIdentity[i]; blankIdentity[i] = blankIdentity[j]; blankIdentity[j] = bt;
         }
 
         StreamWriter w = Open(Path.Combine(dir, "tableA.csv"));
@@ -233,13 +267,59 @@ public static class RdvGen2
         // A is sorted by key1  -> key1 n is data row n-1
         // C is sorted by key2  -> key2 k is data row k-1
         long chk = 0;
+        int ledgerRows = 0;
+        int matchedA = 0;
+        int unmatchedA = 0;
+        int firstUnmatchedA = 0;
+        int firstUnmatchedIdentity = 0;
+        int blankIdentityRows = 0;
+        int firstUnreferencedC = 0;
+        int[] candidateCounts = new int[N + 1];
+        int[] firstIdentity = new int[N + 1];
+        List<int> deleteKey2 = new List<int>();
+        List<int> deleteRefKey1 = new List<int>();
+        HashSet<int> seenRefs = new HashSet<int>();
         w = Open(Path.Combine(dir, "tableB.csv"));
         w.WriteLine(HeadB);
         for (int i = 0; i < N; i++)
         {
             int k2 = Perm(i + 1);
-            w.WriteLine(RowB(rowKey[i], rowLine[i], k2));
-            chk = (chk * 31 + (rowKey[i] - 1) + (k2 - 1)) % Mod;
+            int key1 = rowKey[i];
+            w.WriteLine(RowB(key1, rowLine[i], blankIdentity[i] ? 0 : k2));
+            if (blankIdentity[i])
+            {
+                blankIdentityRows++;
+                if (firstUnreferencedC == 0 || k2 < firstUnreferencedC) { firstUnreferencedC = k2; }
+                continue;
+            }
+
+            ledgerRows++;
+            if (seenRefs.Add(key1))
+            {
+                // key2 and b_ref come from this same retained B record. The
+                // refs are kept unique as well, so both input columns satisfy
+                // the shipped strict key-validation defaults.
+                deleteKey2.Add(k2);
+                deleteRefKey1.Add(key1);
+            }
+            int aRow = -1;
+            if (key1 >= 1 && key1 <= N)
+            {
+                aRow = key1 - 1;
+                matchedA++;
+                candidateCounts[key1]++;
+                if (firstIdentity[key1] == 0) { firstIdentity[key1] = k2; }
+            }
+            else
+            {
+                unmatchedA++;
+                if (firstUnmatchedA == 0 || key1 < firstUnmatchedA)
+                {
+                    firstUnmatchedA = key1;
+                    firstUnmatchedIdentity = k2;
+                }
+            }
+            chk = (chk * 31 + aRow + (k2 - 1)) % Mod;
         }
         w.Flush(); w.Close();
 
@@ -248,20 +328,33 @@ public static class RdvGen2
         for (int k = 1; k <= N; k++) { w.WriteLine(RowC(k)); }
         w.Flush(); w.Close();
 
-        // Deterministic inputs for the shipped delete-job preview. They are
-        // deliberately small, and every value is already present in table B.
+        // One physical input supplies both delete conditions. Each row is a
+        // pair from the same retained B record; settings intersects the two
+        // independently selected row sets before deleting.
+        int deleteRows = Math.Min(342, deleteKey2.Count);
         w = Open(Path.Combine(dir, "delete.csv"));
-        w.WriteLine("key2");
-        for (int i = 0; i < Math.Min(342, N); i++) { w.WriteLine(Pad(Perm(i + 1), 8)); }
-        w.Flush(); w.Close();
-
-        w = Open(Path.Combine(dir, "delete-ref.csv"));
-        w.WriteLine("b_ref");
-        for (int n = 1; n <= Math.Min(18, N); n++) { w.WriteLine("REF-" + Pad(n, 8)); }
+        w.WriteLine("key2,b_ref");
+        for (int i = 0; i < deleteRows; i++)
+        {
+            w.WriteLine(Pad(deleteKey2[i], 8) + ",REF-" + Pad(deleteRefKey1[i], 8));
+        }
         w.Flush(); w.Close();
 
         StringBuilder exp = new StringBuilder();
         exp.Append("rows=").Append(N.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("tableA.rows=").Append(N.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("tableB.rows=").Append(N.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("tableC.rows=").Append(N.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("delete.rows=").Append(deleteRows.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("delete.columns=key2,b_ref\r\n");
+        exp.Append("ledger.rows=").Append(ledgerRows.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("matchedA.rows=").Append(matchedA.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("unmatchedA.rows=").Append(unmatchedA.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("unmatchedA.firstkey=").Append(firstUnmatchedA > 0 ? Pad(firstUnmatchedA, 8) : "").Append("\r\n");
+        exp.Append("unmatchedA.firstidentity=").Append(firstUnmatchedIdentity > 0 ? Pad(firstUnmatchedIdentity, 8) : "").Append("\r\n");
+        exp.Append("emptyIdentity.rows=").Append(blankIdentityRows.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("unreferencedC.rows=").Append(blankIdentityRows.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+        exp.Append("unreferencedC.firstkey=").Append(firstUnreferencedC > 0 ? Pad(firstUnreferencedC, 8) : "").Append("\r\n");
         exp.Append("fields=10\r\n");
         exp.Append("keylen=8\r\n");
         exp.Append("shape=one-to-many\r\n");
@@ -279,7 +372,7 @@ public static class RdvGen2
             int first = 0;
             for (int n = 1; n <= N; n++)
             {
-                if (Multiplicity(n) == want[i])
+                if (candidateCounts[n] == want[i])
                 {
                     keys++;
                     if (first == 0) { first = n; }
@@ -289,6 +382,8 @@ public static class RdvGen2
                .Append(".keys=").Append(keys.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
             exp.Append("cand").Append(want[i].ToString(CultureInfo.InvariantCulture))
                .Append(".firstkey=").Append(first > 0 ? Pad(first, 8) : "").Append("\r\n");
+            exp.Append("cand").Append(want[i].ToString(CultureInfo.InvariantCulture))
+               .Append(".firstidentity=").Append(first > 0 && firstIdentity[first] > 0 ? Pad(firstIdentity[first], 8) : "").Append("\r\n");
         }
         File.WriteAllText(Path.Combine(dir, "expected.txt"), exp.ToString(), new UTF8Encoding(false));
         return chk.ToString(CultureInfo.InvariantCulture);
@@ -305,7 +400,7 @@ $chk = [RdvGen2]::Run($OutDir, $Rows)
 $sw.Stop()
 
 Write-Output ("done in {0:N1} s   joinchecksum={1}" -f $sw.Elapsed.TotalSeconds, $chk)
-foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'delete-ref.csv', 'expected.txt') {
+foreach ($f in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'expected.txt') {
   $fi = Get-Item -LiteralPath (Join-Path $OutDir $f)
   Write-Output ("  {0,-14} {1,14:N0} bytes" -f $fi.Name, $fi.Length)
 }

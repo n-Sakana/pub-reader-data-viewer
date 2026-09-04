@@ -99,13 +99,15 @@ public static class Rdv3Ledger
         for (int t = 0; t < nt; t++)
         {
             long m = Rdv3Clock.Now();
-            tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id, d.Enc, d.Tables[t].Key);
+            tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
+                d.Enc, d.Tables[t].Key, d.Tables[t].KeyValidation);
             if (tables[t].ControlCharacterWarning.Length > 0) { r.Warnings.Add(tables[t].ControlCharacterWarning); }
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
         }
         // the definition's names against the headers actually read
         d.Bind(heads);
+        d.ValidateTypes(tables);
         for (int t = 0; t < nt; t++)
         {
             long m = Rdv3Clock.Now();
@@ -146,13 +148,21 @@ public static class Rdv3Ledger
             int matched = 0;
             for (int i = 0; i < spine.Rows; i++)
             {
-                int len;
-                int p = spine.FieldAt(i, jd.OnField, out len);
                 int rc = -1;
-                if (p >= 0 && len > 0)
+                if (spine.Cells != null)
                 {
-                    int c = ix.FindBytes(spine.Buf, p, len, out found);
-                    if (c > 0) { rc = found[0]; matched++; }
+                    found = ix.Find(spine.Field(i, jd.OnField));
+                    if (found != null && found.Count > 0) { rc = found[0]; matched++; }
+                }
+                else
+                {
+                    int len;
+                    int p = spine.FieldAt(i, jd.OnField, out len);
+                    if (p >= 0 && len > 0)
+                    {
+                        int c = ix.FindBytes(spine.Buf, p, len, out found);
+                        if (c > 0) { rc = found[0]; matched++; }
+                    }
                 }
                 rows[i] = rc;
             }

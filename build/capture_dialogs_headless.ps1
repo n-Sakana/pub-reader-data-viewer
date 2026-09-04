@@ -26,7 +26,15 @@ function Save-Offscreen([System.Windows.Forms.Form] $dialog, [string] $path) {
   $dialog.Show()
   [System.Windows.Forms.Application]::DoEvents()
   Write-Output ("dialog {0} client={1}x{2} dpi={3}" -f $dialog.Text, $dialog.ClientSize.Width, $dialog.ClientSize.Height, [RdvHeadlessDpi]::GetDpiForWindow($dialog.Handle))
-  if ($DumpDialogGeometry) { Write-Output $dialog.GeometryDump() }
+  $geometryText = $dialog.GeometryDump()
+  $geometry = $geometryText | ConvertFrom-Json
+  if ($DumpDialogGeometry) { Write-Output $geometryText }
+  if (@($geometry.clipped).Count -gt 0) {
+    $overflow = @($geometry.clipped | ForEach-Object {
+      "{0} in {1} (left={2}, top={3}, right={4}, bottom={5})" -f $_.name, $_.parent, $_.left, $_.top, $_.right, $_.bottom
+    })
+    throw ("controls exceed their parent client bounds: " + ($overflow -join '; '))
+  }
   $todo = New-Object 'System.Collections.Generic.Stack[System.Windows.Forms.Control]'
   $todo.Push($dialog)
   while ($todo.Count -gt 0) {

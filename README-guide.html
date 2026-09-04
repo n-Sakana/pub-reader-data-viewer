@@ -199,7 +199,7 @@
 <section class="chapter" id="data">
   <h2><span class="no">3</span>データと台帳</h2>
   <div class="flow">
-    <div class="box"><b>取り込むデータ</b><code>data\</code> の CSV（同梱: 表A・表B・表C と削除指定 2 本）</div>
+    <div class="box"><b>取り込むデータ</b><code>data\</code> の CSV（同梱: 表A・表B・表C と削除指定 1 本）</div>
     <div class="arrow">→</div>
     <div class="box"><b>処理内容</b>設定に並べた表操作（結合、マージ …）</div>
     <div class="arrow">→</div>
@@ -269,15 +269,19 @@
 
 <section class="chapter" id="try">
   <h2><span class="no">6</span>試してみる</h2>
-  <p>同梱のサンプルデータ（100,000 行）で検索を試すときは、番号1 に次の 8 桁を入れます（完全一致）。</p>
+  <p>同梱サンプルの表A・表B・表Cは各 1,000 行です。表Bの空の識別子 10 行を設定どおり除外するため、
+  統合台帳は 990 行になります。表Cには表Bから参照されない 10 行も含まれます。
+  削除指定は <code>delete.csv</code> 1 本の <code>key2</code> と <code>b_ref</code> を読み、2 条件とも一致するレコードだけを削除します。
+  検索を試すときは、番号1 に次の 8 桁を入れます（完全一致）。</p>
   <div class="scroll">
   <table>
     <tr><th>番号1</th><th>ヒット件数</th><th>画面の動き</th></tr>
-    <tr><td><code>00000001</code> 〜 <code>00001000</code></td><td>5 件</td><td>候補一覧が開く</td></tr>
-    <tr><td><code>00001001</code> 〜 <code>00006000</code></td><td>3 件</td><td>候補一覧が開く</td></tr>
-    <tr><td><code>00006001</code> 〜 <code>00021000</code></td><td>2 件</td><td>候補一覧が開く</td></tr>
-    <tr><td><code>00021001</code> 〜 <code>00071000</code></td><td>1 件</td><td>そのまま表示</td></tr>
-    <tr><td><code>00071001</code> 以降</td><td>0 件</td><td>「見つかりません」</td></tr>
+    <tr><td><code>00000001</code> 〜 <code>00000010</code></td><td>5 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00000011</code> 〜 <code>00000060</code></td><td>3 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00000061</code> 〜 <code>00000210</code></td><td>2 件</td><td>候補一覧が開く</td></tr>
+    <tr><td><code>00000231</code> 〜 <code>00000710</code></td><td>1 件</td><td>そのまま表示</td></tr>
+    <tr><td><code>00000211</code> 〜 <code>00000230</code>、<code>00000711</code> 〜 <code>00001000</code></td><td>0 件</td><td>「見つかりません」</td></tr>
+    <tr><td><code>00001001</code> 〜 <code>00001010</code></td><td>1 件</td><td>表Aの列は空欄</td></tr>
   </table>
   </div>
   <h3>画面の流れを手元で追う</h3>
@@ -336,8 +340,10 @@
   ReaderDataViewer.vbs          通常の入口（コンソールを出さない）
   ReaderDataViewer.cmd          同じ中身。コンソールを見たいとき
   settings.json                 設定（paths / search / watch / jobs / data / screen）
-  ReaderDataViewer-Ledger.xlsx  統合台帳の初期状態（サンプル 100,000 行、全行「未処理」）
-  data\tableA.csv  tableB.csv  tableC.csv  delete.csv  delete-ref.csv</code></pre>
+  output\                       テーブル出力（初回は空）
+  data\tableA.csv  tableB.csv  tableC.csv  delete.csv</code></pre>
+      <p>統合台帳は配布物に含めません。初回起動時に「保存済みの統合台帳がありません。CSV から新しく作成しますか?」と
+      1 回確認し、「はい」を選ぶと同じ階層に <code>ReaderDataViewer-Ledger.xlsx</code>（サンプル 990 行）を作ります。</p>
       <p><code>.vbs</code> / <code>.cmd</code> は 1 ファイルの中に PowerShell の起動部と C# のソースを抱えています。起動すると
       Windows PowerShell 5.1 がその C# を .NET Framework 同梱のコンパイラ（<code>csc</code>、C# 5）で <code>Add-Type</code> し、
       <code>Rdv3Program.Run</code> に入ります。.exe も .dll も置きません。64 ビットの PowerShell が必要です。
@@ -495,18 +501,19 @@ powershell -File build\test_exit_guard.ps1                  実配布物を起�
 
   function hitsFor(key) {
     var n = parseInt(key, 10);
-    if (n >= 1 && n <= 1000) return 5;
-    if (n >= 1001 && n <= 6000) return 3;
-    if (n >= 6001 && n <= 21000) return 2;
-    if (n >= 21001 && n <= 71000) return 1;
+    if (n >= 1 && n <= 10) return 5;
+    if (n >= 11 && n <= 60) return 3;
+    if (n >= 61 && n <= 210) return 2;
+    if (n >= 231 && n <= 710) return 1;
+    if (n >= 1001 && n <= 1010) return 1;
     return 0;
   }
   function candidatesFor(key, n) {
     var list = [];
     var statuses = ['DONE', 'OPEN', 'HOLD', 'VOID', 'DONE'];
     for (var i = 0; i < n; i++) {
-      var k2 = ('00' + ((parseInt(key, 10) * 7 + i * 13) % 100000)).slice(-5);
-      list.push({ k1: key, k2: '000' + k2, status: statuses[(parseInt(key, 10) + i) % statuses.length] });
+      var k2 = ('00000000' + (((parseInt(key, 10) * 7 + i * 13) % 1000) + 1)).slice(-8);
+      list.push({ k1: key, k2: k2, status: statuses[(parseInt(key, 10) + i) % statuses.length] });
     }
     return list;
   }

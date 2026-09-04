@@ -12,8 +12,10 @@
 #   dist\app-csharp\ReaderDataViewer.vbs            the C# product (entry point)
 #   dist\app-csharp\ReaderDataViewer.cmd            the same payload with a console
 #   dist\app-csharp\settings.json                   its settings (paths, watch, data, screen)
-#   dist\app-csharp\ReaderDataViewer-Ledger.xlsx    its initial ledger
-#   dist\app-csharp\data\table{A,B,C}.csv plus the two delete-job inputs
+#   dist\app-csharp\docs\settings.md                settings reference
+#   dist\app-csharp\docs\ui-spec.md                 screen reference
+#   dist\app-csharp\output\                          table exports (preserved on rebuild)
+#   dist\app-csharp\data\table{A,B,C}.csv plus one paired delete-job input
 # WHAT IT NEEDS, and what it does NOT need
 #   needs   Windows PowerShell 5.1 and .NET Framework csc (both in box).
 #   does NOT need administrator rights, and never asks for elevation.
@@ -23,7 +25,7 @@
 #           -ExecutionPolicy Bypass, which applies to that one process.
 #   does NOT start or touch Excel.
 #
-# The 100,000-row data set (data-100k\) is generated only if it is absent; the
+# The 1,000-row data set (data-1k\) is generated if absent or stale; the
 # practical build needs it. The archived comparison data set is not generated.
 #
 # Exit codes: 0 = every artifact listed above is present, 1 = a step failed
@@ -54,14 +56,8 @@ Write-Output ("  will build     : app-csharp only")
 
 try {
   # --- data: only the set a distributable is actually built from ------------
-  Head 'data-100k (generated only if absent)'
-  if ((Test-Path -LiteralPath (Join-Path $Root 'data-100k\tableA.csv')) -and
-      (Test-Path -LiteralPath (Join-Path $Root 'data-100k\delete.csv')) -and
-      (Test-Path -LiteralPath (Join-Path $Root 'data-100k\delete-ref.csv'))) {
-    Write-Output '  data-100k already present, left as it is'
-  } else {
-    & (Join-Path $Root 'build\gen_data2.ps1')
-  }
+  Head 'data-1k (generated if absent or stale)'
+  & (Join-Path $Root 'build\gen_data2.ps1')
 
   # The product, and only the product. Comparison builds, benchmarks, test
   # fixtures are deliberately NOT called from here: nothing that
@@ -85,8 +81,7 @@ catch {
 # half of the distribution, so both are checked. They were missing from this
 # list while the list still described the comparison builds it no longer makes.
 $app = @('dist\app-csharp\ReaderDataViewer.vbs',
-         'dist\app-csharp\ReaderDataViewer.cmd',
-         'dist\app-csharp\ReaderDataViewer-Ledger.xlsx')
+         'dist\app-csharp\ReaderDataViewer.cmd')
 # the shipped CSVs and settings are copies, so "current" means "identical to
 # the source", not "written after this run started" (Copy-Item keeps the
 # source's timestamp, and re-copying an unchanged file changes nothing)
@@ -94,14 +89,27 @@ $copies = @()
 foreach ($d in 'dist\app-csharp') {
   $copies += @{ dest = (Join-Path $d 'settings.json')
                 src  = 'src\config\settings.json' }
-  foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv', 'delete-ref.csv') {
-    $copies += @{ dest = (Join-Path (Join-Path $d 'data') $n); src = (Join-Path 'data-100k' $n) }
+  foreach ($n in 'settings.md', 'ui-spec.md') {
+    $copies += @{ dest = (Join-Path (Join-Path $d 'docs') $n); src = (Join-Path 'docs' $n) }
+  }
+  foreach ($n in 'tableA.csv', 'tableB.csv', 'tableC.csv', 'delete.csv') {
+    $copies += @{ dest = (Join-Path (Join-Path $d 'data') $n); src = (Join-Path 'data-1k' $n) }
   }
 }
 $want = @() + $app
+$requiredDirs = @('dist\app-csharp\output')
 
 Head 'produced'
 $missing = @()
+foreach ($p in $requiredDirs) {
+  $d = Join-Path $Root $p
+  if (Test-Path -LiteralPath $d -PathType Container) {
+    Write-Output ("  {0,-46} directory" -f ($p + '\'))
+  } else {
+    Write-Output ("  {0,-46} MISSING" -f ($p + '\'))
+    $missing += ($p + '\')
+  }
+}
 foreach ($p in $want) {
   $f = Join-Path $Root $p
   if (Test-Path -LiteralPath $f) {
@@ -132,16 +140,15 @@ foreach ($c in $copies) {
 }
 $want += ($copies | ForEach-Object { $_.dest })
 
-# --- dist holds the product and nothing else --------------------------------
-# Two things end up here that are not products, and BOTH have to go without the
-# operator doing anything: artifacts an older version of this script used to
-# build (the comparison files, which are no longer made but are
-# still on disk from a previous run), and runtime leftovers from the workbook
-# self tests (.log, .lock). A build that only stops MAKING them would leave a
-# dist\ that still ships them, so they are removed here and the result is
-# asserted to be exactly the allowed set.
+# --- dist holds the product and preserved table exports ---------------------
+# Old artifacts and runtime test leftovers (.log, .lock) have to go without the
+# operator doing anything. Files under app-csharp\output belong to the user and
+# are preserved across builds. Everything else is checked against the allowed
+# product set below.
 $allowed = @{}
 foreach ($p in $want) { $allowed[$p.ToLowerInvariant()] = $true }
+$outputPrefix = 'dist\app-csharp\output\'
+$outputRoot = Join-Path $Root 'dist\app-csharp\output'
 
 $distRoot = Join-Path $Root 'dist'
 $removed = @()
@@ -150,6 +157,7 @@ if (Test-Path -LiteralPath $distRoot) {
   foreach ($f in @(Get-ChildItem -LiteralPath $distRoot -Recurse -File)) {
     $rel = $f.FullName.Substring($Root.Length + 1)
     if ($allowed.ContainsKey($rel.ToLowerInvariant())) { continue }
+    if ($rel.StartsWith($outputPrefix, [StringComparison]::OrdinalIgnoreCase)) { continue }
     try {
       Remove-Item -LiteralPath $f.FullName -Force
       $removed += $rel
@@ -160,13 +168,14 @@ if (Test-Path -LiteralPath $distRoot) {
   # directories the removals emptied (an old comparison folder, say)
   foreach ($d in @(Get-ChildItem -LiteralPath $distRoot -Recurse -Directory |
                    Sort-Object { $_.FullName.Length } -Descending)) {
+    if ([string]::Equals($d.FullName, $outputRoot, [StringComparison]::OrdinalIgnoreCase)) { continue }
     if (-not @(Get-ChildItem -LiteralPath $d.FullName -Recurse -File)) {
       try { Remove-Item -LiteralPath $d.FullName -Force -Recurse } catch { }
     }
   }
 }
 
-Head 'dist holds the product only'
+Head 'dist holds the product and preserves output'
 if ($removed.Count -eq 0) {
   Write-Output '  nothing to remove'
 } else {
@@ -185,13 +194,16 @@ if (Test-Path -LiteralPath $distRoot) {
 Write-Output ("  dist now holds {0} file(s):" -f $onDisk.Count)
 foreach ($f in $onDisk) { Write-Output ('    ' + $f) }
 $extra = @($onDisk | Where-Object { -not $allowed.ContainsKey($_.ToLowerInvariant()) })
+$preservedOutput = @($extra | Where-Object { $_.StartsWith($outputPrefix, [StringComparison]::OrdinalIgnoreCase) })
+$extra = @($extra | Where-Object { -not $_.StartsWith($outputPrefix, [StringComparison]::OrdinalIgnoreCase) })
+Write-Output ("  preserved output file(s): {0}" -f $preservedOutput.Count)
 Write-Output ("  extra (not a product): {0}" -f $extra.Count)
 $missing += $extra
 
 Head 'result'
 if ($missing.Count -eq 0) {
-  Write-Output ("  {0} artifacts: every built file was rewritten by this run, and every" -f $want.Count)
-  Write-Output "  shipped CSV matches its source in data-100k."
+  Write-Output ("  {0} files and the output directory: every built file was rewritten by this run, and every" -f $want.Count)
+  Write-Output "  shipped CSV matches its source in data-1k."
   exit 0
 }
 Write-Output ("  {0} of {1} artifacts are missing or stale:" -f $missing.Count, $want.Count)

@@ -2,10 +2,9 @@
 // Rdv3Index.cs -- the one index: the .NET standard Dictionary<string, List<int>>.
 //
 // A key owns a set of rows, so the value is a list and nothing is ever
-// overwritten. A TABLE's key column is declared unique by the definition, so
-// a table index refuses a duplicate (two rows for one key would make the join
-// pick one of them in silence). The ledger's search column is one-to-many by
-// nature and is indexed without that check.
+// overwritten. Strict table keys refuse duplicates. A table configured as a
+// condition-value set has already kept only the first row for each key. The
+// ledger's search column is one-to-many by nature.
 // ============================================================================
 
 using System;
@@ -21,6 +20,8 @@ public sealed class Rdv3Index
     private readonly bool contains;
     // the width of the key this index was built on (0 for a string index)
     private readonly int keyLen;
+    private readonly bool fixedAscii;
+    private readonly Encoding keyEncoding;
 
     public int Keys { get { return (map == null) ? 0 : map.Count; } }
     public int KeyLen { get { return keyLen; } }
@@ -32,21 +33,29 @@ public sealed class Rdv3Index
         scanLines = null;
         scanColumns = null;
         contains = false;
-        keyLen = t.KeyLen;
+        fixedAscii = t.KeyValidation.UsesFixedAsciiPath;
+        keyLen = fixedAscii ? t.KeyLen : 0;
+        keyEncoding = t.Enc;
         map = new Dictionary<string, List<int>>(t.Rows, StringComparer.Ordinal);
         byte[] b = t.Buf;
         for (int i = 0; i < t.Rows; i++)
         {
-            string k = Encoding.ASCII.GetString(b, t.KeyAt[i], keyLen);
+            string k = (fixedAscii && t.Cells == null)
+                ? Encoding.ASCII.GetString(b, t.KeyAt[i], keyLen)
+                : t.Key(i);
             List<int> rows;
             if (map.TryGetValue(k, out rows))
             {
-                throw new Rdv3DataError(Rdv3Text.DataDupKey
-                    .Replace("{file}", System.IO.Path.GetFileName(t.Path))
-                    .Replace("{name}", t.Head[t.KeyCol])
-                    .Replace("{key}", k)
-                    .Replace("{row1}", (rows[0] + 2).ToString(CultureInfo.InvariantCulture))
-                    .Replace("{row2}", (i + 2).ToString(CultureInfo.InvariantCulture)));
+                if (t.KeyValidation.Unique)
+                {
+                    throw new Rdv3DataError(Rdv3Text.DataDupKey
+                        .Replace("{file}", System.IO.Path.GetFileName(t.Path))
+                        .Replace("{name}", t.Head[t.KeyCol])
+                        .Replace("{key}", k)
+                        .Replace("{row1}", t.SourceRow(rows[0]).ToString(CultureInfo.InvariantCulture))
+                        .Replace("{row2}", t.SourceRow(i).ToString(CultureInfo.InvariantCulture)));
+                }
+                continue;
             }
             rows = new List<int>(1);
             rows.Add(i);
@@ -60,6 +69,8 @@ public sealed class Rdv3Index
         scanLines = null;
         scanColumns = null;
         contains = false;
+        fixedAscii = false;
+        keyEncoding = null;
         map = new Dictionary<string, List<int>>(keys.Length, StringComparer.Ordinal);
         for (int i = 0; i < keys.Length; i++)
         {
@@ -79,6 +90,8 @@ public sealed class Rdv3Index
     public Rdv3Index(string[] lines, int[] columns, string match)
     {
         keyLen = 0;
+        fixedAscii = false;
+        keyEncoding = null;
         scanLines = lines ?? new string[0];
         scanColumns = columns ?? new int[0];
         contains = string.Equals(match, "contains", StringComparison.Ordinal);
@@ -129,11 +142,13 @@ public sealed class Rdv3Index
         return rows;
     }
 
-    // look up `len` bytes at `off`: a key of another width can never match
+    // Fixed ASCII tables retain the width check and ASCII decoder. Relaxed
+    // tables decode the actual slice with the declared data encoding.
     public int FindBytes(byte[] buf, int off, int len, out List<int> rows)
     {
-        if (len != keyLen) { rows = null; return 0; }
-        string k = Encoding.ASCII.GetString(buf, off, len);
+        if (fixedAscii && len != keyLen) { rows = null; return 0; }
+        if (!fixedAscii && keyEncoding == null) { rows = null; return 0; }
+        string k = fixedAscii ? Encoding.ASCII.GetString(buf, off, len) : keyEncoding.GetString(buf, off, len);
         if (!map.TryGetValue(k, out rows)) { return 0; }
         return rows.Count;
     }

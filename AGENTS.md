@@ -55,7 +55,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
 
 ## ガードレール
 
-- `data/`、`data-100k/`、`dist/`、`samples/`、`work/` は生成物。コミットしない。
+- `data/`、`data-1k/`、`dist/`、`samples/`、`work/` は生成物。コミットしない。
 - `archive/` の履歴資料を現行設計の根拠にしない。変更依頼がない限り整理・修正しない。
 - key1 は一対多なので、索引は必ず `key -> 行の集合` とし、単一行で上書きしない。
 - xlsx は temp 書込みから安全に置換する。保存完了前に成功表示しない。

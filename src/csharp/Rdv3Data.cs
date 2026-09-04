@@ -19,6 +19,7 @@ public sealed class Rdv3TableDef
     public string Label = "";
     public string File = "";
     public string Key = "";
+    public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int Ord;
     public string[] Head;
 }
@@ -44,6 +45,27 @@ public sealed class Rdv3ApplicationColumnDef
 {
     public string Name = "";
     public string OnSourceChange = "";
+}
+
+public sealed class Rdv3ColumnTypeDef
+{
+    public string Ref = "";
+    public string Type = "";
+    public string Format = "";
+    public int TableOrd = -1;
+    public int Field = -1;
+    public int Line;
+
+    public bool TryDate(string value, out DateTime parsed)
+    {
+        return DateTime.TryParseExact(value, Format, CultureInfo.InvariantCulture,
+            DateTimeStyles.None, out parsed);
+    }
+
+    public bool TryNumber(string value, out decimal parsed)
+    {
+        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed);
+    }
 }
 
 public sealed class Rdv3ProcessColumnDef
@@ -92,6 +114,7 @@ public sealed class Rdv3ProcessInputDef
     public string File = "";
     public string Column = "";
     public string Key = "";
+    public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int TableOrd = -1;
     public bool IsTable { get { return TableOrd >= 0; } }
 }
@@ -146,6 +169,8 @@ public sealed class Rdv3Data
     public List<Rdv3TableDef> Tables = new List<Rdv3TableDef>();
     public Dictionary<string, string> Labels = new Dictionary<string, string>(StringComparer.Ordinal);
     public List<string> LabelOrder = new List<string>();
+    public Dictionary<string, Rdv3ColumnTypeDef> Types = new Dictionary<string, Rdv3ColumnTypeDef>(StringComparer.Ordinal);
+    public List<Rdv3ColumnTypeDef> TypeOrder = new List<Rdv3ColumnTypeDef>();
     public List<Rdv3ProcessJobDef> Jobs = new List<Rdv3ProcessJobDef>();
 
     // The first update job is the automatic/start-up job.
@@ -191,6 +216,12 @@ public sealed class Rdv3Data
         return -1;
     }
 
+    public Rdv3ColumnTypeDef TypeOf(string reference)
+    {
+        Rdv3ColumnTypeDef type;
+        return reference != null && Types.TryGetValue(reference, out type) ? type : null;
+    }
+
     public string[] ColumnRefs
     {
         get
@@ -211,10 +242,23 @@ public sealed class Rdv3Data
         }
     }
 
+    private static Rdv3KeyValidation ReadKeyValidation(Rdv3Json owner)
+    {
+        Rdv3KeyValidation result = new Rdv3KeyValidation();
+        Rdv3Json rules = owner.Obj("keyValidation", false);
+        if (rules == null) { return result; }
+        rules.Only("characters", "length", "duplicates", "empty");
+        result.Ascii = rules.Word("characters", "ascii", "ascii", "unicode") == "ascii";
+        result.FixedLength = rules.Word("length", "fixed", "fixed", "variable") == "fixed";
+        result.Unique = rules.Word("duplicates", "error", "error", "distinct") == "error";
+        result.SkipEmpty = rules.Word("empty", "error", "error", "skip") == "skip";
+        return result;
+    }
+
     public static Rdv3Data Read(Rdv3Json o)
     {
         Rdv3Data d = new Rdv3Data();
-        o.Only("encoding", "tables", "labels", "jobs", "ledger");
+        o.Only("encoding", "tables", "labels", "types", "jobs", "ledger");
 
         d.EncodingName = o.StrOr("encoding", "utf-8");
         try
@@ -236,12 +280,13 @@ public sealed class Rdv3Data
             }
             if (id == "ledger") { throw to.Fail("ledger is a reserved value name"); }
             if (to.Kind != Rdv3Json.TObject) { throw to.Fail("must be an object { label, file, key }"); }
-            to.Only("label", "file", "key");
+            to.Only("label", "file", "key", "keyValidation");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
             t.Label = to.Need("label");
             t.File = to.Need("file");
             t.Key = to.Need("key");
+            t.KeyValidation = ReadKeyValidation(to);
             t.Ord = d.Tables.Count;
             d.Tables.Add(t);
             d.Labels.Add(t.Id, t.Label);
@@ -256,6 +301,35 @@ public sealed class Rdv3Data
             if (d.Labels.ContainsKey(key)) { throw val.Fail(key + " already has a table label"); }
             d.Labels.Add(key, val.Str);
             d.LabelOrder.Add(key);
+        }
+
+        Rdv3Json types = o.Obj("types", false);
+        if (types != null)
+        {
+            for (int i = 0; i < types.Order.Count; i++)
+            {
+                string reference = types.Order[i];
+                Rdv3Json at = types.Member(reference);
+                Rdv3ColumnRef column = ParseRef(d, reference, at);
+                at.Only("type", "format");
+                Rdv3ColumnTypeDef type = new Rdv3ColumnTypeDef();
+                type.Ref = column.Ref;
+                type.TableOrd = column.TableOrd;
+                type.Type = at.Word("type", "", "date", "number");
+                type.Line = at.Line;
+                if (type.Type == "date")
+                {
+                    type.Format = at.Need("format");
+                    try { DateTime.Now.ToString(type.Format, CultureInfo.InvariantCulture); }
+                    catch (FormatException ex) { throw at.Member("format").Fail("is not a date format (" + ex.Message + ")"); }
+                }
+                else if (at.Has("format"))
+                {
+                    throw at.Member("format").Fail("is used only when type is date");
+                }
+                d.Types.Add(type.Ref, type);
+                d.TypeOrder.Add(type);
+            }
         }
 
         List<Rdv3Json> jobs = o.Objs("jobs", true);
@@ -387,16 +461,18 @@ public sealed class Rdv3Data
                 input.File = table.File;
                 input.Column = table.Key;
                 input.Key = table.Id + "." + table.Key;
+                input.KeyValidation = table.KeyValidation;
                 input.TableOrd = table.Ord;
             }
             else
             {
-                io.Only("id", "label", "file", "column", "key");
+                io.Only("id", "label", "file", "column", "key", "keyValidation");
                 input.Id = io.Need("id");
                 input.Label = io.Need("label");
                 input.File = io.Need("file");
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");
+                input.KeyValidation = ReadKeyValidation(io);
             }
             if (input.Id == "ledger") { throw io.Fail("ledger is a reserved value name"); }
             if (inputNames.ContainsKey(input.Id)) { throw io.Fail(input.Id + " is listed twice in inputs"); }
@@ -919,7 +995,7 @@ public sealed class Rdv3Data
         while (p < expression.Length)
         {
             char ch = expression[p];
-            if (char.IsWhiteSpace(ch) || "+-*/()".IndexOf(ch) >= 0) { p++; continue; }
+            if (char.IsWhiteSpace(ch) || "+-*/(),".IndexOf(ch) >= 0) { p++; continue; }
             if (ch == '\'')
             {
                 p++;
@@ -933,8 +1009,15 @@ public sealed class Rdv3Data
             }
             int start = p;
             while (p < expression.Length && !char.IsWhiteSpace(expression[p])
-                   && "+-*/()".IndexOf(expression[p]) < 0) { p++; }
+                   && "+-*/(),".IndexOf(expression[p]) < 0) { p++; }
             string token = expression.Substring(start, p - start);
+            int next = p;
+            while (next < expression.Length && char.IsWhiteSpace(expression[next])) { next++; }
+            if (next < expression.Length && expression[next] == '(')
+            {
+                if (!Rdv3Expression.IsFunctionName(token)) { throw at.Fail("unknown expression function " + token); }
+                continue;
+            }
             decimal number;
             if (!decimal.TryParse(token, NumberStyles.Number, CultureInfo.InvariantCulture, out number))
             {
@@ -982,7 +1065,51 @@ public sealed class Rdv3Data
             c.Field = FieldOf(heads[c.TableOrd], c.Column);
             if (c.Field < 0) { throw Missing(Tables[c.TableOrd], c.Column, "ledger.columns"); }
         }
+        for (int i = 0; i < TypeOrder.Count; i++)
+        {
+            Rdv3ColumnTypeDef type = TypeOrder[i];
+            int dot = type.Ref.IndexOf('.');
+            string column = type.Ref.Substring(dot + 1);
+            type.Field = FieldOf(heads[type.TableOrd], column);
+            if (type.Field < 0) { throw Missing(Tables[type.TableOrd], column, "types"); }
+        }
         Rdv3Process.ValidateColumns(this, heads);
+    }
+
+    // Called before the window opens and again when an update re-reads the
+    // sources. Empty cells remain a valid missing value; every non-empty value
+    // must obey the declared representation exactly.
+    public void ValidateTypes(Rdv3Table[] tables)
+    {
+        for (int i = 0; i < TypeOrder.Count; i++)
+        {
+            Rdv3ColumnTypeDef type = TypeOrder[i];
+            Rdv3Table table = (tables == null || type.TableOrd < 0 || type.TableOrd >= tables.Length)
+                ? null : tables[type.TableOrd];
+            if (table == null) { continue; }
+            for (int row = 0; row < table.Rows; row++)
+            {
+                string value = table.Field(row, type.Field);
+                if (value.Length == 0) { continue; }
+                bool valid;
+                DateTime date;
+                decimal number;
+                if (type.Type == "date") { valid = type.TryDate(value, out date); }
+                else { valid = type.TryNumber(value, out number); }
+                if (!valid)
+                {
+                    string displayType = (type.Type == "date")
+                        ? Rdv3Text.TypeDateFormat.Replace("{format}", type.Format)
+                        : Rdv3Text.TypeNumber;
+                    throw new Rdv3DataError(Rdv3Text.DataTypedValue
+                        .Replace("{file}", System.IO.Path.GetFileName(table.Path))
+                        .Replace("{row}", table.SourceRow(row).ToString(CultureInfo.InvariantCulture))
+                        .Replace("{name}", type.Ref)
+                        .Replace("{value}", value)
+                        .Replace("{type}", displayType));
+                }
+            }
+        }
     }
 
     private static Rdv3DataError Missing(Rdv3TableDef t, string column, string where)
@@ -1013,6 +1140,7 @@ public sealed class Rdv3Data
         sb.Append(" appColumns=").Append(string.Join(",", ApplicationColumns.ToArray()));
         sb.Append(" sourceChange=").Append(WorkStateOnSourceChange);
         sb.Append(" encoding=").Append(EncodingName);
+        sb.Append(" types=").Append(TypeOrder.Count.ToString(CultureInfo.InvariantCulture));
         return sb.ToString();
     }
 }

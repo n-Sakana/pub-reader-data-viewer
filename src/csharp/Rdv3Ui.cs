@@ -21,13 +21,153 @@ public sealed class Rdv3CandRow
     public string Stored;
 }
 
+// ---------------------------------------------------------------------------
+// Every height the screen is laid out with, taken from the font instead of
+// pinned to a number. The layout is authored at 96 dpi and WinForms scales it
+// for the screen the app actually runs on, so every answer here is in those
+// 96 dpi units. Changing the font in settings.json moves the whole screen.
+public static class Rdv3Metrics
+{
+    // The font the screen was built with. A dialog normally takes its font
+    // from the window that opened it; the ones opened without an owner would
+    // otherwise fall back to the system font and be drawn in a different face
+    // from everything around them.
+    public static Font ScreenFont;
+    public static int Gap = 8;
+
+    // The definition owns the visible spacing. Small offsets needed by native
+    // frames are derived from that one gap and from Windows' own edge sizes;
+    // controls must not each invent a different top or bottom margin.
+    public static int Edge() { return Math.Max(1, SystemInformation.BorderSize.Height); }
+    public static int HalfGap() { return Math.Max(0, Gap / 2); }
+    public static int FieldAir() { return Math.Max(Edge(), HalfGap() / 2); }
+    public static int LabelAir() { return HalfGap() + Edge(); }
+    public static int SearchTop() { return Gap + HalfGap() + Edge(); }
+    public static Padding FramedPadding()
+    {
+        int top = Math.Max(GroupFrame(), HalfGap());
+        int bottom = Math.Max(GroupFrame(), Gap - Edge());
+        return new Padding(Gap, top, Gap, bottom);
+    }
+    public static Padding FieldListPadding()
+    {
+        // A field value already keeps one native edge above and below itself.
+        // Subtract that air from the parent so its visible border has the same
+        // inset as a text box that fills the frame without a margin.
+        Padding padding = FramedPadding();
+        int air = Edge();
+        return new Padding(padding.Left, Math.Max(GroupFrame(), padding.Top - air),
+            padding.Right, Math.Max(GroupFrame(), padding.Bottom - air));
+    }
+
+    // One line of this font: the same number Font.Height reports on a 96 dpi
+    // screen, worked out from the family instead of asking the current one.
+    public static int TextHeight(Font font)
+    {
+        int em = font.FontFamily.GetEmHeight(font.Style);
+        int line = font.FontFamily.GetLineSpacing(font.Style);
+        if (em <= 0 || line <= 0) { return 12; }
+        return Math.Max(1, (int)Math.Ceiling(font.SizeInPoints * 96.0f * line / (72.0f * em)));
+    }
+
+    // A GroupBox keeps exactly one line of text for its caption and then
+    // honours its own padding; what is left over is its DisplayRectangle.
+    public static int Caption(Font font) { return TextHeight(font); }
+
+    // The sunken frame a standard TextBox draws round itself.
+    public static int BoxFrame() { return Edge() * 4 + GroupFrame(); }
+
+    // The stock GroupBox leaves its three-dimensional lower edge clear by
+    // exactly these two system frame measurements. Custom Padding must retain
+    // that room or a Fill-docked child paints over the line.
+    public static int GroupFrame()
+    {
+        return SystemInformation.Border3DSize.Height + SystemInformation.BorderSize.Height;
+    }
+
+    // One row holding a labelled value: the text, that frame, and a pixel of
+    // air above and below so two rows do not run together.
+    public static int FieldRow(Font font) { return TextHeight(font) + BoxFrame() + Edge() * 2; }
+
+    // A Details ListView, header and one row.
+    public static int ListHeader(Font font) { return TextHeight(font) + Math.Max(0, Gap - Edge() * 2); }
+    public static int ListRow(Font font) { return TextHeight(font) + Edge() * 2; }
+    public static int ListHeight(Font font, int rows)
+    {
+        return ListHeader(font) + Math.Max(0, rows) * ListRow(font);
+    }
+
+    // A button sizes itself to its caption; this is the room a row has to
+    // leave for one, including the margin a flow panel puts round it.
+    public static int ButtonHeight(Font font) { return TextHeight(font) + Gap + Edge() * 4; }
+    public static int ButtonRow(Font font) { return ButtonHeight(font) + Math.Max(0, Gap - Edge() * 2); }
+    public static int ButtonBarHeight(Font font) { return ButtonHeight(font) + Gap * 2; }
+    public static int Scaled(Font font, int logical)
+    {
+        return Math.Max(0, (int)Math.Ceiling(logical * (double)font.Height / TextHeight(font)));
+    }
+}
+
+// Geometry diagnostics use the immediate parent as the clipping boundary.
+// Comparing every control with the form alone misses a child that paints over
+// the edge of an otherwise well-positioned container.
+public static class Rdv3Geometry
+{
+    public static void AppendClipped(StringBuilder sb, Control root)
+    {
+        List<string> clipped = new List<string>();
+        CollectClipped(root, clipped);
+        clipped.Sort(StringComparer.Ordinal);
+        sb.Append("\"clipped\":[");
+        for (int i = 0; i < clipped.Count; i++)
+        {
+            if (i > 0) { sb.Append(','); }
+            sb.Append(clipped[i]);
+        }
+        sb.Append(']');
+    }
+
+    private static void CollectClipped(Control parent, List<string> clipped)
+    {
+        // DisplayRectangle is the parent's usable client area: unlike raw
+        // ClientRectangle it excludes the padding that the layout promised to
+        // keep clear, and it also follows a scrollable parent's current view.
+        Rectangle client = parent.DisplayRectangle;
+        foreach (Control child in parent.Controls)
+        {
+            Rectangle bounds = child.Bounds;
+            int left = Math.Max(0, client.Left - bounds.Left);
+            int top = Math.Max(0, client.Top - bounds.Top);
+            int right = Math.Max(0, bounds.Right - client.Right);
+            int bottom = Math.Max(0, bounds.Bottom - client.Bottom);
+            if (left > 0 || top > 0 || right > 0 || bottom > 0)
+            {
+                string name = (child.Name == null || child.Name.Length == 0)
+                    ? child.GetType().Name : child.Name;
+                string parentName = (parent.Name == null || parent.Name.Length == 0)
+                    ? parent.GetType().Name : parent.Name;
+                clipped.Add("{\"name\":\"" + Escape(name) + "\",\"parent\":\"" + Escape(parentName)
+                    + "\",\"left\":" + left.ToString(CultureInfo.InvariantCulture)
+                    + ",\"top\":" + top.ToString(CultureInfo.InvariantCulture)
+                    + ",\"right\":" + right.ToString(CultureInfo.InvariantCulture)
+                    + ",\"bottom\":" + bottom.ToString(CultureInfo.InvariantCulture) + "}");
+            }
+            CollectClipped(child, clipped);
+        }
+    }
+
+    private static string Escape(string s)
+    {
+        return s.Replace("\\", "\\\\").Replace("\"", "\\\"");
+    }
+}
+
 public sealed class Rdv3Form : Form
 {
     private sealed class BoundControl
     {
         public Control Control;
         public Rdv3Bind Bind;
-        public bool EmptyAsDash;
     }
 
     public readonly Rdv3Screen Screen;
@@ -51,6 +191,8 @@ public sealed class Rdv3Form : Form
     private readonly List<ToolStripStatusLabel> statusPanels = new List<ToolStripStatusLabel>();
     private readonly Panel contentHost = new Panel();
     private readonly TableLayoutPanel content = new TableLayoutPanel();
+    private readonly List<int> growRows = new List<int>();
+    private readonly List<Control> growBoxes = new List<Control>();
     private readonly Panel commandBar = new Panel();
     private readonly FlowLayoutPanel commandFlow = new FlowLayoutPanel();
     private readonly Panel statusHost = new Panel();
@@ -69,9 +211,9 @@ public sealed class Rdv3Form : Form
     private Rdv3Judgment judgmentDef;
     private List<Rdv3CandRow> cands = new List<Rdv3CandRow>();
     private int candTotal;
-    private Rdv3Toast toast;
-    private string sharedNotice = "";
-    private long sharedNoticeAt;
+    private const int StatusNoticeDurationMs = 3600;
+    private string statusNotice = "";
+    private long statusNoticeAt;
 
     public Rdv3Form(Rdv3Screen screen)
     {
@@ -81,7 +223,7 @@ public sealed class Rdv3Form : Form
         // it quietly hands back Microsoft Sans Serif, which carries no Japanese
         // glyphs. Compare the name we asked for with the one we got.
         Font named = null;
-        try { named = new Font(screen.FontFamily, 9.0f, FontStyle.Regular); }
+        try { named = new Font(screen.FontFamily, (float)screen.FontSize, FontStyle.Regular); }
         catch { named = null; }
         if (named != null && !string.Equals(named.Name, screen.FontFamily, StringComparison.OrdinalIgnoreCase))
         {
@@ -89,6 +231,8 @@ public sealed class Rdv3Form : Form
             named = null;
         }
         Font = (named != null) ? named : SystemFonts.MessageBoxFont;
+        Rdv3Metrics.ScreenFont = Font;
+        Rdv3Metrics.Gap = Math.Max(0, (int)Math.Round(screen.Gap));
         AutoScaleDimensions = new SizeF(96.0f, 96.0f);
         AutoScaleMode = AutoScaleMode.Dpi;
         ClientSize = new Size((int)Math.Round(screen.StartWidth), (int)Math.Round(screen.StartHeight));
@@ -122,8 +266,9 @@ public sealed class Rdv3Form : Form
         commandBar.Dock = DockStyle.Fill;
         commandBar.AutoSize = true;
         commandBar.AutoSizeMode = AutoSizeMode.GrowAndShrink;
-        commandBar.MinimumSize = new Size(0, 36);
-        commandBar.Padding = new Padding(6, 4, 6, 3);
+        // The preceding section already owns one Gap below itself. Put the
+        // matching Gap below the buttons so both sides of the row are equal.
+        commandBar.Padding = new Padding(0, 0, 0, Rdv3Metrics.Gap);
         commandBar.BackColor = SystemColors.Control;
         commandFlow.Name = "commandButtons";
         commandFlow.Dock = DockStyle.Top;
@@ -146,8 +291,6 @@ public sealed class Rdv3Form : Form
         // of the screen; the professional one paints a gradient of its own
         status.RenderMode = ToolStripRenderMode.System;
         status.GripStyle = ToolStripGripStyle.Hidden;
-        status.Padding = new Padding(1, 0, 14, 0);
-
         statusHost.Controls.Add(status);
         Controls.Add(contentHost);
         Controls.Add(statusHost);
@@ -156,10 +299,36 @@ public sealed class Rdv3Form : Form
         clock.Interval = 1000;
         clock.Tick += delegate { RefreshValues(); };
         clock.Start();
-        FormClosed += delegate { clock.Stop(); if (toast != null) { toast.Dismiss(); } };
+        FormClosed += delegate { clock.Stop(); };
         Shown += delegate { if (txtKey != null && txtKey.Enabled) { txtKey.Focus(); } };
         RefreshValues();
         ResumeLayout(false);
+        PerformLayout();
+        LetFreeTextTakeTheSlack();
+    }
+
+    // Stretching the window downwards has to reach the free-text boxes and
+    // nothing else: the other sections hold a fixed number of rows and have no
+    // use for the room. Measure the screen once at its natural height, keep
+    // that as the floor the host scrolls below, then hand each of those rows
+    // the share of the height it already occupies -- so at the start size
+    // nothing moves, and every pixel added after that goes to those boxes.
+    private void LetFreeTextTakeTheSlack()
+    {
+        if (growRows.Count == 0) { return; }
+        int[] heights = content.GetRowHeights();
+        for (int i = 0; i < growRows.Count; i++)
+        {
+            if (growRows[i] >= heights.Length || heights[growRows[i]] <= 0) { return; }
+        }
+        content.MinimumSize = new Size(0, content.Height);
+        for (int i = 0; i < growRows.Count; i++)
+        {
+            content.RowStyles[growRows[i]] = new RowStyle(SizeType.Percent, heights[growRows[i]]);
+            growBoxes[i].Dock = DockStyle.Fill;
+        }
+        content.AutoSize = false;
+        content.Dock = DockStyle.Fill;
         PerformLayout();
     }
 
@@ -190,6 +359,7 @@ public sealed class Rdv3Form : Form
             if (c == null) { continue; }
             c.Margin = SectionMargin(s);
             content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            if (s.Type == "textBox") { growRows.Add(content.RowCount); growBoxes.Add(c); }
             content.Controls.Add(c, 0, content.RowCount++);
         }
         if (statusSection != null) { BuildBottom(statusSection, sendSection); }
@@ -224,13 +394,14 @@ public sealed class Rdv3Form : Form
         split.Dock = DockStyle.Fill;
         split.ColumnCount = 2;
         split.RowCount = 1;
-        split.Padding = new Padding(7, 5, 7, 6);
+        split.Padding = Padding.Empty;
         split.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 220f));
         split.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         split.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
         TableLayoutPanel figure = new TableLayoutPanel();
         figure.Dock = DockStyle.Fill;
+        figure.Margin = Padding.Empty;
         figure.RowCount = 2;
         figure.ColumnCount = 1;
         figure.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
@@ -238,30 +409,33 @@ public sealed class Rdv3Form : Form
         figure.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         Label fl = NewLabel(name + ".figureLabel", s.Label);
         fl.Dock = DockStyle.Fill;
+        fl.Margin = Padding.Empty;
         Label fv = NewReadOnlyLabel(name + ".figure");
         fv.Dock = DockStyle.Fill;
-        fv.Font = new Font(Font.FontFamily, 15.0f, FontStyle.Bold);
+        fv.Margin = Padding.Empty;
+        fv.Font = new Font(Font.FontFamily, (float)Screen.KeyValueFontSize, FontStyle.Bold);
         fv.TextAlign = ContentAlignment.MiddleCenter;
         figure.Controls.Add(fl, 0, 0);
         figure.Controls.Add(fv, 0, 1);
-        Bind(fv, s.Value, true);
+        Bind(fv, s.Value);
 
         FlowLayoutPanel input = new FlowLayoutPanel();
         input.Name = name + ".inputRow";
         input.Dock = DockStyle.Fill;
         input.FlowDirection = FlowDirection.LeftToRight;
         input.WrapContents = false;
-        input.Padding = new Padding(6, 13, 0, 0);
+        input.Padding = new Padding(0, Rdv3Metrics.SearchTop(), 0, 0);
+        input.Margin = new Padding(Rdv3Metrics.Gap, 0, 0, 0);
         Label il = NewLabel(name + ".inputLabel", s.InputLabel);
         il.AutoSize = true;
-        il.Margin = new Padding(0, 5, 5, 0);
+        il.Margin = new Padding(0, Rdv3Metrics.LabelAir(), Rdv3Metrics.Gap, 0);
         txtKey = new TextBox();
         txtKey.Name = "searchInput";
         txtKey.Width = (int)Math.Round(s.InputWidth);
         txtKey.MaxLength = s.MaxLength;
         txtKey.BackColor = SystemColors.Window;
         txtKey.BorderStyle = BorderStyle.Fixed3D;
-        txtKey.Margin = new Padding(0, 2, 5, 0);
+        txtKey.Margin = new Padding(0, Rdv3Metrics.FieldAir(), Rdv3Metrics.Gap, 0);
         txtKey.KeyDown += delegate(object sender, KeyEventArgs e)
         {
             if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; RaiseSearch(); }
@@ -310,43 +484,44 @@ public sealed class Rdv3Form : Form
         return (n <= 0) ? 1 : n;
     }
 
-    private static int DesignFontHeight(Font font)
-    {
-        int em = font.FontFamily.GetEmHeight(font.Style);
-        int line = font.FontFamily.GetLineSpacing(font.Style);
-        if (em <= 0 || line <= 0) { return 12; }
-        return Math.Max(1, (int)Math.Ceiling(font.SizeInPoints * 96.0f * line / (72.0f * em)));
-    }
-
     private Control BuildFieldList(Rdv3Section s, string name)
     {
         GroupBox box = NewGroup(name, s.Title);
+        box.Padding = Rdv3Metrics.FieldListPadding();
         TableLayoutPanel rows = new TableLayoutPanel();
         rows.Name = name + ".rows";
         rows.Dock = DockStyle.Top;
-        rows.Padding = new Padding(7, 5, 7, 7);
+        rows.Padding = Padding.Empty;
         rows.ColumnCount = 2;
         rows.RowCount = s.Rows.Count;
         rows.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, (float)s.LabelWidth));
         rows.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        int rh = Math.Max(23, (int)Math.Round(s.RowHeight));
+        // a floor pinned to a number went stale the moment the font grew: ask
+        // the font how tall a row of values has to be
+        int rh = Math.Max(Rdv3Metrics.FieldRow(Font), (int)Math.Round(s.RowHeight));
         rows.Height = rows.Padding.Vertical + rh * s.Rows.Count;
         for (int i = 0; i < s.Rows.Count; i++)
         {
             rows.RowStyles.Add(new RowStyle(SizeType.Absolute, rh));
             Label l = NewLabel(name + ".label" + i.ToString(CultureInfo.InvariantCulture), s.Rows[i].Label);
             l.Dock = DockStyle.Fill;
+            l.Margin = Padding.Empty;
             l.TextAlign = ContentAlignment.MiddleLeft;
             Label v = NewReadOnlyLabel(name + ".value" + i.ToString(CultureInfo.InvariantCulture));
             v.Dock = DockStyle.Fill;
             v.TextAlign = ContentAlignment.MiddleRight;
-            v.Margin = new Padding(2, 1, 0, 1);
+            v.Margin = new Padding(Rdv3Metrics.Gap, Rdv3Metrics.Edge(), 0, Rdv3Metrics.Edge());
+            v.Font = new Font(Font, FontStyle.Bold);
             rows.Controls.Add(l, 0, i);
             rows.Controls.Add(v, 1, i);
-            Bind(v, s.Rows[i].Value, true);
+            Bind(v, s.Rows[i].Value);
         }
-        box.Height = 25 + rh * s.Rows.Count;
-        box.AutoSize = false;
+        // The caption and the frame are the GroupBox's own business and only it
+        // knows how tall they come out on this screen, so let it add them to
+        // the rows itself. Working the total out here is what painted over the
+        // bottom line of the frame.
+        box.AutoSize = true;
+        box.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         box.Controls.Add(rows);
         return box;
     }
@@ -358,12 +533,15 @@ public sealed class Rdv3Form : Form
         v.Multiline = true;
         v.ScrollBars = ScrollBars.Vertical;
         v.Dock = DockStyle.Fill;
-        v.Margin = new Padding(7);
-        box.Padding = new Padding(8, 4, 8, 7);
-        box.Height = 28 + Math.Max(1, s.Lines) * (DesignFontHeight(Font) + 2);
+        v.Margin = Padding.Empty;
+        // caption, the box's own padding, the frame round the text area, and
+        // the number of lines the definition asks for
+        box.Height = Rdv3Metrics.Caption(Font) + box.Padding.Vertical
+            + SystemInformation.BorderSize.Height * 4
+            + Math.Max(1, s.Lines) * (Rdv3Metrics.TextHeight(Font) + 2);
         box.AutoSize = false;
         box.Controls.Add(v);
-        Bind(v, s.Value, true);
+        Bind(v, s.Value);
         return box;
     }
 
@@ -380,8 +558,8 @@ public sealed class Rdv3Form : Form
         title.AutoSize = true;
         judgmentText = NewLabel(name + ".judgment", Rdv3Text.Unsearched);
         judgmentText.AutoSize = true;
-        judgmentResultFont = new Font(Font.FontFamily, 15.0f, FontStyle.Bold);
-        judgmentUnsearchedFont = new Font(Font.FontFamily, 12.0f, FontStyle.Bold);
+        judgmentResultFont = new Font(Font.FontFamily, (float)Screen.JudgmentFontSize, FontStyle.Bold);
+        judgmentUnsearchedFont = new Font(Font.FontFamily, (float)Screen.UnsearchedFontSize, FontStyle.Bold);
         judgmentText.Font = judgmentUnsearchedFont;
         judgmentText.ForeColor = Color.FromArgb(96, 96, 96);
         judgmentSub = NewLabel(name + ".sub", "");
@@ -391,10 +569,12 @@ public sealed class Rdv3Form : Form
         box.Controls.Add(judgmentSub);
         box.Layout += delegate
         {
-            int gap = judgmentSub.Text.Length == 0 ? 0 : 8;
-            int total = judgmentText.Width + gap + judgmentSub.Width;
-            title.Location = new Point(6, Math.Max(0, (box.ClientSize.Height - title.Height) / 2));
-            judgmentText.Location = new Point(Math.Max(0, (box.ClientSize.Width - total) / 2),
+            int gap = judgmentSub.Text.Length == 0 ? 0 : Rdv3Metrics.Scaled(Font, Rdv3Metrics.Gap);
+            title.Location = new Point(Rdv3Metrics.Scaled(Font, Rdv3Metrics.Gap),
+                Math.Max(0, (box.ClientSize.Height - title.Height) / 2));
+            // The judgment itself owns the centre of the band. The secondary
+            // facts follow it; they do not pull the judgment to the left.
+            judgmentText.Location = new Point(Math.Max(0, (box.ClientSize.Width - judgmentText.Width) / 2),
                 Math.Max(0, (box.ClientSize.Height - judgmentText.Height) / 2));
             judgmentSub.Location = new Point(judgmentText.Right + gap,
                 Math.Max(0, (box.ClientSize.Height - judgmentSub.Height) / 2));
@@ -409,7 +589,15 @@ public sealed class Rdv3Form : Form
 
     private void BuildBottom(Rdv3Section s, Rdv3Section send)
     {
-        for (int i = s.Buttons.Count - 1; i >= 0; i--) { commandFlow.Controls.Add(CreateButton(s.Buttons[i])); }
+        for (int i = s.Buttons.Count - 1; i >= 0; i--)
+        {
+            Control button = CreateButton(s.Buttons[i]);
+            if (i == s.Buttons.Count - 1)
+            {
+                button.Margin = new Padding(0, button.Margin.Top, 0, button.Margin.Bottom);
+            }
+            commandFlow.Controls.Add(button);
+        }
         commandBar.Margin = new Padding(0);
         content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         content.Controls.Add(commandBar, 0, content.RowCount++);
@@ -430,7 +618,7 @@ public sealed class Rdv3Form : Form
             p.TextAlign = ContentAlignment.MiddleLeft;
             p.BorderSides = ToolStripStatusLabelBorderSides.All;
             p.BorderStyle = Border3DStyle.SunkenOuter;
-            p.Margin = new Padding(0, 0, 2, 0);
+            p.Margin = new Padding(0, 0, SystemInformation.Border3DSize.Width, 0);
             status.Items.Add(p);
             statusPanels.Add(p);
             if (i < s.Segments.Count) { segmentDefs.Add(s.Segments[i]); }
@@ -444,7 +632,9 @@ public sealed class Rdv3Form : Form
         bar.Name = "sendBar";
         bar.Dock = DockStyle.Top;
         bar.AutoSize = false;
-        bar.Height = Math.Max(28, (int)Math.Round(s.Height));
+        // the band is a rule and a button, and the button decides how tall it
+        // has to be
+        bar.Height = Math.Max(2 + Rdv3Metrics.ButtonRow(Font), (int)Math.Round(s.Height));
         bar.ColumnCount = 2;
         bar.RowCount = 2;
         bar.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
@@ -463,12 +653,12 @@ public sealed class Rdv3Form : Form
         pendingLabel = NewLabel("sendBar.pending", "");
         pendingLabel.Dock = DockStyle.Fill;
         pendingLabel.TextAlign = ContentAlignment.MiddleLeft;
-        pendingLabel.Margin = new Padding(0, 5, 0, 0);
+        pendingLabel.Margin = new Padding(0, Rdv3Metrics.LabelAir(), 0, 0);
         bar.Controls.Add(pendingLabel, 0, 1);
 
         Control button = CreateButton(s.Buttons[0]);
         button.Name = "button.sendChanges";
-        button.Margin = new Padding(5, 4, 0, 0);
+        button.Margin = new Padding(Rdv3Metrics.Gap, Rdv3Metrics.HalfGap(), 0, 0);
         bar.Controls.Add(button, 1, 1);
         return bar;
     }
@@ -491,7 +681,7 @@ public sealed class Rdv3Form : Form
             cb.UseVisualStyleBackColor = false;
             cb.AutoSize = true;
             cb.MinimumSize = new Size(0, 25);
-            cb.Margin = new Padding(0, 1, 5, 0);
+            cb.Margin = new Padding(0, 0, Rdv3Metrics.Gap, 0);
             cb.Click += delegate { if (OnWorkState != null) { OnWorkState(); } };
             if (Screen.Work != null && Screen.Work.ButtonTip.Length > 0) { tips.SetToolTip(cb, Screen.Work.ButtonTip); }
             btnWork = cb;
@@ -508,7 +698,7 @@ public sealed class Rdv3Form : Form
         b.AutoSize = true;
         b.AutoSizeMode = AutoSizeMode.GrowAndShrink;
         b.MinimumSize = new Size(0, 25);
-        b.Margin = new Padding(0, 1, 5, 0);
+        b.Margin = new Padding(0, 0, Rdv3Metrics.Gap, 0);
         b.NotifyDefault(d.Primary);
         b.Click += delegate { RunButton(d); };
         if (d.Tip.Length > 0) { tips.SetToolTip(b, d.Tip); }
@@ -541,6 +731,7 @@ public sealed class Rdv3Form : Form
         b.Text = title;
         b.Dock = DockStyle.Top;
         b.BackColor = SystemColors.Control;
+        b.Padding = Rdv3Metrics.FramedPadding();
         return b;
     }
 
@@ -580,12 +771,11 @@ public sealed class Rdv3Form : Form
         return t;
     }
 
-    private void Bind(Control c, Rdv3Bind b, bool dash)
+    private void Bind(Control c, Rdv3Bind b)
     {
         BoundControl x = new BoundControl();
         x.Control = c;
         x.Bind = b;
-        x.EmptyAsDash = dash;
         bound.Add(x);
     }
 
@@ -753,8 +943,7 @@ public sealed class Rdv3Form : Form
             BoundControl x = bound[i];
             Rdv3Value value = Rdv3Eval.Evaluate(x.Bind, View, fields, Screen.Work);
             string t = value.Text;
-            if (x.EmptyAsDash && (t == null || t.Length == 0)) { t = Rdv3Text.Dash; }
-            x.Control.Text = t;
+            x.Control.Text = (t == null) ? "" : t;
             x.Control.ForeColor = (value.Tone == Rdv3Value.Error) ? Color.Maroon
                 : (value.Tone == Rdv3Value.Muted) ? SystemColors.GrayText : SystemColors.ControlText;
         }
@@ -815,16 +1004,16 @@ public sealed class Rdv3Form : Form
             statusPanels[i].ForeColor = SystemColors.ControlText;
             statusPanels[i].ToolTipText = "";
         }
-        if (sharedNotice.Length > 0)
+        if (statusNotice.Length > 0)
         {
-            if (Rdv3Clock.MsSince(sharedNoticeAt) >= Screen.ToastMs) { sharedNotice = ""; }
+            if (Rdv3Clock.MsSince(statusNoticeAt) >= StatusNoticeDurationMs) { statusNotice = ""; }
             else if (n > 0)
             {
                 int panel = (n > 2) ? 2 : n - 1;
-                statusPanels[panel].Text = sharedNotice;
+                statusPanels[panel].Text = statusNotice;
                 statusPanels[panel].ForeColor = Color.DarkGreen;
-                statusPanels[panel].ToolTipText = sharedNotice;
-                status.AccessibleName = sharedNotice;
+                statusPanels[panel].ToolTipText = statusNotice;
+                status.AccessibleName = statusNotice;
             }
         }
     }
@@ -856,7 +1045,9 @@ public sealed class Rdv3Form : Form
             sb.Append("\"").Append(Json(c.Name)).Append("\":[").Append(p.X).Append(",").Append(p.Y).Append(",")
               .Append(c.Width).Append(",").Append(c.Height).Append("]");
         }
-        sb.Append("},\"clipped\":[]}");
+        sb.Append("},");
+        Rdv3Geometry.AppendClipped(sb, this);
+        sb.Append('}');
         return sb.ToString();
     }
 
@@ -879,28 +1070,26 @@ public sealed class Rdv3Form : Form
 
     public Rectangle CardBounds { get { return RectangleToScreen(new Rectangle(0, 0, ClientSize.Width, ClientSize.Height)); } }
 
-    public void Notice(string text) { ShowToast(text, true); }
-    public void Error(string text) { ShowToast(text, false); }
-
-    public void SharedNotice(string text)
+    public void Notice(string text)
     {
         Ui(delegate
         {
-            sharedNotice = (text == null) ? "" : text;
-            sharedNoticeAt = Rdv3Clock.Now();
+            statusNotice = (text == null) ? "" : text;
+            statusNoticeAt = Rdv3Clock.Now();
             RefreshStatus();
         });
     }
 
-    private void ShowToast(string text, bool completion)
+    public void Error(string text)
     {
         Ui(delegate
         {
             if (text == null || text.Length == 0) { return; }
-            if (toast == null) { toast = new Rdv3Toast(this); }
-            toast.Show(text, completion, Screen.ToastMs);
+            MessageBox.Show(this, text, Rdv3Text.AppTitle, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         });
     }
+
+    public void SharedNotice(string text) { Notice(text); }
 
     public bool Ask(string title, string body) { return Rdv3ConfirmForm.Ask(this, title, body); }
 

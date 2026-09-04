@@ -243,6 +243,9 @@ public sealed class Rdv3WorkState
     public List<Rdv3Transition> Transitions = new List<Rdv3Transition>();
     public string ButtonText = "{state}";
     public string ButtonTip = "";
+    // automatic: a single hit from the watched application advances the
+    // state; manual: only the work-state button can advance it.
+    public string Trigger = "automatic";
 
     public Rdv3StateDef ById(string id)
     {
@@ -278,8 +281,9 @@ public sealed class Rdv3WorkState
 
     public static Rdv3WorkState Read(Rdv3Json o)
     {
-        o.Only("store", "states", "initial", "transitions", "button");
+        o.Only("store", "states", "initial", "transitions", "button", "trigger");
         Rdv3WorkState w = new Rdv3WorkState();
+        w.Trigger = o.Word("trigger", w.Trigger, "automatic", "manual");
         Rdv3Json store = o.Obj("store", true);
         store.Only("column");
         w.Column = store.Need("column");
@@ -638,8 +642,15 @@ public sealed class Rdv3Screen
     public double Gap = 17;
     public double[] Padding = { 14.3, 14.3, 14.2, 14.3 };   // top, right, bottom, left
     public string FontFamily = "Yu Gothic UI";
-    public int ToastMs = 3600;
-
+    // point size of the screen font; every height on the screen is measured
+    // from it, so raising it here raises the rows and the boxes with it
+    public double FontSize = 9;
+    // The three emphasized sizes are separate from the body font so a screen
+    // definition can keep labels quiet while making the current value and the
+    // central judgment easy to find.
+    public double KeyValueFontSize = 15;
+    public double JudgmentFontSize = 15;
+    public double UnsearchedFontSize = 12;
     public List<Rdv3Section> Sections = new List<Rdv3Section>();
     public Rdv3CandidatesDef Candidates;
     public Dictionary<string, Rdv3Judgment> Judgments = new Dictionary<string, Rdv3Judgment>(StringComparer.Ordinal);
@@ -675,12 +686,13 @@ public sealed class Rdv3Screen
     // ---- reading the "screen" member -------------------------------------------
     public static Rdv3Screen Read(Rdv3Json root)
     {
-        root.Only("card", "toast", "judgments", "workState", "export", "sections", "candidates");
+        root.Only("card", "judgments", "workState", "export", "sections", "candidates");
         Rdv3Screen s = new Rdv3Screen();
         Rdv3Json card = root.Obj("card", false);
         if (card != null)
         {
-            card.Only("width", "startSize", "gap", "padding", "font");
+            card.Only("width", "startSize", "gap", "padding", "font", "fontSize",
+                      "keyValueFontSize", "judgmentFontSize", "unsearchedFontSize");
             s.CardWidth = card.DblOr("width", s.CardWidth, 600, 4000);
             double[] start = card.Box("startSize");
             if (start != null)
@@ -694,14 +706,11 @@ public sealed class Rdv3Screen
             if (pad != null) { s.Padding = pad; }
             s.FontFamily = card.StrOr("font", s.FontFamily);
             if (s.FontFamily.Trim().Length == 0) { throw card.Member("font").Fail("must name a font"); }
+            s.FontSize = card.DblOr("fontSize", s.FontSize, 6, 24);
+            s.KeyValueFontSize = card.DblOr("keyValueFontSize", s.KeyValueFontSize, 6, 36);
+            s.JudgmentFontSize = card.DblOr("judgmentFontSize", s.JudgmentFontSize, 6, 36);
+            s.UnsearchedFontSize = card.DblOr("unsearchedFontSize", s.UnsearchedFontSize, 6, 36);
         }
-        Rdv3Json toast = root.Obj("toast", false);
-        if (toast != null)
-        {
-            toast.Only("durationMs");
-            s.ToastMs = toast.IntOr("durationMs", s.ToastMs, 500, 60000);
-        }
-
         Rdv3Json js = root.Obj("judgments", false);
         if (js != null)
         {
@@ -824,6 +833,11 @@ public sealed class Rdv3Screen
         sb.Append(" states=").Append((Work == null) ? "0" : Work.States.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append(" columns=").Append((Candidates == null) ? "0" : Candidates.Columns.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append(" font=").Append(FontFamily);
+        sb.Append(" fontSize=").Append(FontSize.ToString(CultureInfo.InvariantCulture));
+        sb.Append(" emphasis=").Append(KeyValueFontSize.ToString(CultureInfo.InvariantCulture));
+        sb.Append('/').Append(JudgmentFontSize.ToString(CultureInfo.InvariantCulture));
+        sb.Append('/').Append(UnsearchedFontSize.ToString(CultureInfo.InvariantCulture));
+        sb.Append(" trigger=").Append((Work == null) ? "-" : Work.Trigger);
         return sb.ToString();
     }
 }

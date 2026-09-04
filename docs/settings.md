@@ -12,11 +12,11 @@ settings.json               設定 — この 1 枚に全部入っています
 
 | 部分 | 中身 | 誰が書くか |
 |---|---|---|
-| `paths` | CSV フォルダー、統合台帳、ログの場所 | 人、または「設定」ボタン |
+| `paths` | 入力表フォルダー、統合台帳、ログの場所 | 人、または「設定」ボタン |
 | `search` | 番号の形式 (正規表現)、候補一覧の最大行数 | 人、または「設定」ボタン |
 | `watch` | 監視する窓と欄 (UI Automation) | 人、または「設定」ボタン |
 | `jobs` | バックグラウンド処理の時間上限 | 人 |
-| `data` | CSV、表示名、更新／削除ジョブ、台帳の列 | 人 |
+| `data` | CSV / Excel、表示名、更新／削除ジョブ、台帳の列 | 人 |
 | `screen` | 画面に出すもの (部品、値、判定、作業状態、候補一覧) — [ui-spec.md](ui-spec.md) | 人 |
 
 - `//` 行コメントと `/* ... */` ブロックコメントを書けます。
@@ -38,7 +38,7 @@ settings.json               設定 — この 1 枚に全部入っています
 | 正規表現として読めない `search.pattern` | `search.pattern: is not a usable regular expression (...)` |
 | 名前が何も指していない | 無い表・列・状態・判定を名指しした、台帳の列に無い列を画面が使った |
 | `schema` がこの版と違う | `schema: this program reads schema 3; the file says 2` |
-| 定義が CSV と合わない | `tableA.csv に列 a_notes がありません (data.ledger.columns)` — 窓を開く前にヘッダー行で検査 |
+| 定義が入力表と合わない | `tableA.csv に列 a_notes がありません (data.ledger.columns)` — 窓を開く前にヘッダー行で検査 |
 
 「設定」ボタンの保存も同じです。保存の直前にファイルを読み直し、読めなければ**保存を拒否して**理由を
 出します (手で壊したファイルに上書きしません)。形式 (正規表現) が不正なとき、パスが空のときは、
@@ -58,11 +58,11 @@ settings.json               設定 — この 1 枚に全部入っています
 | `sales-wide` | 販売と同じ CSV | 画面の組み方を変えたもの: タイトルバー、3 カラム (重み 2:1:1、中に textBox)、2 段目、判定の帯 2 本、計時のセグメント、Meiryo、幅 1400 |
 | `factory-compact` | 製造と同じ CSV | 1 カラムの詰めた画面: 全幅 12 行、余白 8、セクションの margin、縦長の起動サイズ、狭い候補一覧 |
 
-## `data` — CSV と台帳
+## `data` — CSV / Excel と台帳
 
 ```jsonc
 "data": {
-  "encoding": "utf-8",                       // または "shift_jis" など Windows が知る名前
+  "encoding": "utf-8",                       // CSVだけ。"shift_jis" なども可
   "tables": {
     "A": { "label": "表A", "file": "tableA.csv", "key": "key1" },
     "B": { "label": "表B", "file": "tableB.csv", "key": "key2" },
@@ -72,6 +72,10 @@ settings.json               設定 — この 1 枚に全部入っています
     "A.key1": "番号1", "B.key1": "番号1", "B.key2": "番号2", "C.key2": "番号2",
     "ledger": "統合台帳",
     "middle1": "中間1", "middle2": "中間2"
+  },
+  "types": {
+    "B.b_date": { "type": "date", "format": "yyyyMMdd" },
+    "B.b_qty": { "type": "number" }
   },
   "jobs": [
     {
@@ -99,11 +103,13 @@ settings.json               設定 — この 1 枚に全部入っています
 | メンバー | 意味 |
 |---|---|
 | `tables.<id>.label` | ダイアログに出す表の名前 |
-| `tables.<id>.file` | `paths.dataDir` の中のファイル名 |
-| `tables.<id>.key` | その表の 1 行を特定する列 (**一意**。重複があれば止まる) |
+| `tables.<id>.file` | `paths.dataDir` の中の `.csv` または `.xlsx` ファイル名 |
+| `tables.<id>.key` | その表を照合する列。`keyValidation` 省略時は一意キー |
+| `tables.<id>.keyValidation` | その表のキー検証。省略時は従来どおり ASCII・固定長・重複エラー・空欄エラー |
 | `labels` | 処理内容とテーブル出力に出す画面向けの名前。内部名は画面へ出さない |
+| `types` | 日付・数値として扱う列だけを宣言。日付は `format` 必須。未指定列は文字列 |
 | `jobs[]` | ボタンから参照する更新／削除ジョブ。配列だが、利用者が選ぶ一覧は画面に出さない |
-| `jobs[].inputs` | 取り込む表、または外部ファイル。ダイアログはファイルから分かる行数と列一致だけを表示 |
+| `jobs[].inputs` | 取り込む表、または外部ファイル。外部ファイルにも `keyValidation` を指定できる |
 | `jobs[].steps` | 順序どおりの操作。各 `output` は、そのまま後段の `target1` / `target2` にできる |
 | マージ段の3指定 | `sourceOnly`: `add` / `ignore`、`both`: `update` / `keep`、`targetOnly`: `keep` / `delete`。`targetOnly` の省略値は `keep` |
 | `ledger.identity` | 台帳の1行を特定する、入力表の一意キー |
@@ -111,6 +117,47 @@ settings.json               設定 — この 1 枚に全部入っています
 | `ledger.columns.application` | アプリが持つ列。`name` は現在 `workState`。`onSourceChange` は入力側の列が変わったとき `reset` (初期値へ戻す) / `preserve` (保持) |
 | `ledger.search.columns` | 検索欄が照合する1列以上の配列 (`columns.source` のどれか) |
 | `ledger.search.match` | `exact` (完全一致、辞書索引) または `contains` (部分一致) |
+
+`.xlsx` は1枚目のシートを表として読み、先頭行を見出しにします。CSVと同じく、見出し名、行の列数と、
+設定されたキー規則を検査します。`data.encoding` はCSVの読取りだけに使い、Excelのセルには影響しません。
+`data.types` に書いた非空値は窓を開く前に全行を検査し、合わなければ列名と実際の値を示して停止します。
+値の形から型を推測することはありません。
+
+### キー列の検証
+
+`keyValidation` は `data.tables.<id>` または、ファイルを直接読む `jobs[].inputs[]` に指定します。
+省略した表は、既存設定との互換のため次の既定値を使います。
+
+```jsonc
+"keyValidation": {
+  "characters": "ascii",
+  "length": "fixed",
+  "duplicates": "error",
+  "empty": "error"
+}
+```
+
+| メンバー | 値 |
+|---|---|
+| `characters` | `ascii`（ASCII以外をエラー）/ `unicode`（設定した文字コードで読む） |
+| `length` | `fixed`（最初の有効行と同じ文字数）/ `variable` |
+| `duplicates` | `error` / `distinct`（同じキーは最初の1行だけを残す） |
+| `empty` | `error` / `skip`（キーが空の行を読み込み対象から除く） |
+
+一意性が要らない条件値一覧には、たとえば次を指定します。除外と重複整理は読み込み時に行うため、
+後続の `join` / `extract` / `update` / `delete` などは通常の表と同じように使えます。
+
+```jsonc
+{ "id": "conditions", "label": "条件一覧", "file": "conditions.csv",
+  "column": "照合値", "key": "A.code",
+  "keyValidation": {
+    "characters": "unicode", "length": "variable",
+    "duplicates": "distinct", "empty": "skip"
+  } }
+```
+
+同じファイルの複数列を別々の条件にするときは、`jobs[].inputs` に同じ `file` を複数回書き、異なる
+`id` / `column` / `key` を指定します。各入力に別の `keyValidation` を設定できます。
 
 操作は、対象の種類が合う順ならジョブの `kind` にかかわらず組み合わせられます。対象は表、ある表に結び付いた
 行集合、台帳の3種類です。たとえば `append` や `update` も更新ジョブと削除ジョブのどちらにも置けます。
@@ -133,15 +180,42 @@ settings.json               設定 — この 1 枚に全部入っています
 `where` は `column / operator / value` です。`operator` は `equals` / `notEquals` / `contains` /
 `startsWith` / `endsWith` / `empty` / `notEmpty` / `greater` / `atLeast` / `less` / `atMost`。
 数値条件で空セルは不一致です。数値の並べ替えでは、昇順・降順のどちらでも空セルを末尾へ置きます。
-式は列名、数値、シングルクォートで囲んだ文字、丸括弧と `+ - * /` だけです。任意のコードや関数は実行しません。
+式は列名、数値、シングルクォートで囲んだ文字、丸括弧、`+ - * /` と、下記3つの文字列関数です。
+任意のコードや、一覧にない関数は実行しません。
 改名列と新しい列は `<output>.<asまたはcolumn>` という名前になり、`labels` に画面向けの名前を置きます。
+
+### 文字列関数
+
+`calculate.expression` と `update.set[].expression` で使えます。文字列と正規表現・区切り文字は
+シングルクォートで囲みます。シングルクォート自体は `''` と2つ重ねます。
+
+| 関数 | 結果 |
+|---|---|
+| `regexExtract(値, '正規表現')` | 左から最初に一致した文字列全体 |
+| `splitPart(値, '区切り文字', 位置)` | 区切った要素。位置は0起点で、空の要素も数える |
+| `substring(値, 開始位置, 文字数)` | 開始位置（0起点）から指定文字数の部分文字列 |
+
+正規表現と区切り文字は空にできません。分割位置と開始位置は0以上の整数、文字数は1以上の整数です。
+入力が空、正規表現が不一致、位置が範囲外、または結果が空なら処理をエラーで止めます。空文字をキーとして
+後続行どうしが意図せず一致することはありません。
+
+```jsonc
+{ "operation": "calculate", "target1": "orders", "condition": "",
+  "column": "code", "expression": "splitPart(orders.raw, '-', 1)",
+  "output": "withCode" },
+{ "operation": "join", "target1": "withCode", "target2": "master",
+  "keys": ["withCode.code", "master.code"], "condition": "left", "output": "joined" }
+```
+
+生成列は通常の列として保持されるため、後続の `join`、表同士の `extract`、`where`、`update`、
+`delete` などで列や照合キーに指定できます。
 
 `merge` は、元だけの行を追加し、両方にある行の取り込み側列を更新し、先だけの行を残す設定にできます。
 `targetOnly` を `delete` と明記したときだけ先だけの行を消します。`replace` も更新段として使え、元の行だけで
 台帳を作り直します。入力側の列が変わった行でアプリ所有列をどうするかは、列ごとの `onSourceChange` が決めます。
 
-入力列名は CSV のヘッダー行そのものです。名前はファイルを読んだ時点で定義の中で、
-起動時に CSV のヘッダー行と突き合わせます。
+入力列名は CSV / Excel のヘッダー行そのものです。名前はファイルを読んだ時点で定義の中で、
+起動時に入力表のヘッダー行と突き合わせます。
 
 ### CSV の読み方
 
@@ -152,8 +226,8 @@ CSV はそのまま読みます。次のものは**ファイル名と行番号�
 |---|---|
 | 列数がヘッダー行と違う行 | 列がずれる |
 | 引用符 `"` で始まる列 | この読み方は引用符を外さないので、黙ってずれるより止める |
-| キー列が空、ASCII 以外、1 行目と幅が違う行 | キーの比較はバイト幅固定。Excel に先頭ゼロを落とされた CSV を止める |
-| 同じキーが 2 行にある表 | `key` は一意の約束。どちらを結合するか決められない |
+| キー列が空、ASCII 以外、最初の有効行と幅が違う行 | `keyValidation` が既定値または対応する規則を指定している場合 |
+| 同じキーが 2 行にある表 | `duplicates` が `error` の場合。`distinct` なら最初の1行を使う |
 | ヘッダーに同じ列名が 2 つ | どちらの列か決められない |
 
 ヘッダー行の空白は取り除きます。UTF-8 の BOM、CRLF / LF はどちらも読めます。定義が使わない列が CSV に
@@ -215,10 +289,10 @@ AutomationId を持つ段だけを中間パスに残して、ウィンドウ・�
 | メンバー | 既定 | 意味 |
 |---|---:|---|
 | `schema` | (必須) | この版は `3` |
-| `paths.dataDir` | `data` | CSV のあるフォルダー |
+| `paths.dataDir` | `data` | CSV / Excel のあるフォルダー |
 | `paths.ledger` | `ReaderDataViewer-Ledger.xlsx` | 統合台帳 |
 | `paths.log` | `ReaderDataViewer.log` | 実行ログ |
-| `data.encoding` | `utf-8` | CSV の文字コード |
+| `data.encoding` | `utf-8` | CSV の文字コード（Excelには使わない） |
 | `watch.pollMs` | 40 | 監視間隔 |
 | `watch.stableMs` | 120 | この時間だけ値が変わらなければ確定 |
 | `watch.rebindMs` | 400 | 未接続の対象を探し直す間隔 |
@@ -234,5 +308,5 @@ AutomationId を持つ段だけを中間パスに残して、ウィンドウ・�
 
 「既定」は書かなかったときの値です。書いた値が範囲外なら起動しません。
 
-`paths.*` と `data` の変更は**次回の起動から**有効です (台帳・CSV は起動時に読むため)。`search` と
+`paths.*` と `data` の変更は**次回の起動から**有効です (台帳・入力表は起動時に読むため)。`search` と
 `watch` は設定モーダルの保存で**即座に反映**されます (監視は張り直します)。

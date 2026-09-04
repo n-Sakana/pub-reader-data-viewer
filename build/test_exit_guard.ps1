@@ -19,6 +19,22 @@ $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [Text.Encoding]::UTF8
 if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path) }
 
+$sampleFacts = @{}
+$sampleExpected = Join-Path $Root 'data-1k\expected.txt'
+if (-not (Test-Path -LiteralPath $sampleExpected)) { throw 'not generated: run build\gen_data2.ps1 first' }
+foreach ($line in [IO.File]::ReadAllLines($sampleExpected)) {
+  $eq = $line.IndexOf('=')
+  if ($eq -gt 0) { $sampleFacts[$line.Substring(0, $eq)] = $line.Substring($eq + 1) }
+}
+foreach ($key in 'ledger.rows', 'cand1.firstkey', 'cand1.firstidentity') {
+  if (-not $sampleFacts.ContainsKey($key) -or [string]::IsNullOrEmpty($sampleFacts[$key])) {
+    throw ('expected.txt lacks ' + $key)
+  }
+}
+$ExpectedLedgerRows = [int]$sampleFacts['ledger.rows']
+$TargetKey1 = $sampleFacts['cand1.firstkey']
+$TargetIdentity = $sampleFacts['cand1.firstidentity']
+
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
 Add-Type -AssemblyName System.IO.Compression.FileSystem
@@ -121,10 +137,8 @@ function Check([string] $b, [string] $name, [bool] $ok, [string] $detail) {
 }
 function Say([string] $s) { Write-Output ("{0}  {1}" -f (Get-Date -Format 'HH:mm:ss'), $s) }
 
-# key1 00021001 owns exactly ONE ledger row in this dataset (the generator's
-# 1-row block runs from 21001 to 71000), so a search on it puts a single record
-# on screen -- which is what the processed button needs.
-$TargetKey1 = '00021001'
+# The generator records a key with exactly one retained ledger row and that
+# row's identity. Keeping this test on the oracle avoids a sample-size constant.
 
 # the app's modals are its own windows (the caption is the title); their
 # buttons are WinForms buttons that take BM_CLICK
@@ -164,7 +178,7 @@ function Write-TestMarker([string] $path, [long] $version, [string] $kind, [int]
   $host64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('REMOTE-HOST'))
   $user64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('remote-user'))
   $writer64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes('remote-writer'))
-  $text = "RDV-MARKER-1`t$version`t$host64`t$user64`t$writer64`t$([DateTime]::UtcNow.Ticks)`t100000`t$kind`t$done`t$todo`r`n"
+  $text = "RDV-MARKER-1`t$version`t$host64`t$user64`t$writer64`t$([DateTime]::UtcNow.Ticks)`t$ExpectedLedgerRows`t$kind`t$done`t$todo`r`n"
   $temp = $path + '.test-tmp'
   [IO.File]::WriteAllText($temp, $text, (New-Object Text.UTF8Encoding($false)))
   [IO.File]::Replace($temp, $path, [NullString]::Value)
@@ -219,8 +233,12 @@ function Wait-Log([string] $p, [object] $enc, [string] $pattern, [int] $from, [i
   return $null
 }
 
-if (-not (Test-Path -LiteralPath (Join-Path $Root 'dist\app-csharp\ReaderDataViewer-Ledger.xlsx'))) {
+$distProduct = Join-Path $Root 'dist\app-csharp'
+if (-not (Test-Path -LiteralPath (Join-Path $distProduct 'ReaderDataViewer.cmd'))) {
   throw "not built: run build\build_app.ps1 first"
+}
+if (Test-Path -LiteralPath (Join-Path $distProduct 'ReaderDataViewer-Ledger.xlsx')) {
+  throw 'the distribution must not contain ReaderDataViewer-Ledger.xlsx'
 }
 Say ("target key1 = " + $TargetKey1)
 
@@ -266,9 +284,17 @@ function Test-CSharp {
       Start-Sleep -Milliseconds 50
     }
     if ($appHostPid -eq 0) { Check $b 'host' $false 'the app host process was not found'; return }
+    # The shipping folder intentionally has no ledger. Exercise the real
+    # first-run contract here: the app must ask once, and approving it must
+    # create the scratch ledger before READY. This remains the existing ready
+    # check rather than increasing the guard assertion count.
+    if (-not (Answer-Dialog ([Rdv3Text]::ConfirmUpdateTitle) ([Rdv3Text]::BtnYes) 90)) {
+      Check $b 'ready' $false 'the first-run create-ledger dialog never appeared'
+      return
+    }
     $ready = Wait-Log $log $enc "`tdecision`tready " 0 $ReadyTimeoutSec 200
     if ($null -eq $ready) { Check $b 'ready' $false 'never reached READY'; return }
-    Check $b 'ready' $true $ready[1]
+    Check $b 'ready' $true ('first-run create approved; ' + $ready[1])
     $pendingLine = Wait-Log $log $enc "`tpending`tpath=.* count=" 0 10 100
     if ($null -ne $pendingLine -and $pendingLine[1] -match "`tpending`tpath=(.*) count=[0-9]+$") { $pendingFile = $Matches[1] }
     Check $b 'pending_path' (-not [string]::IsNullOrEmpty($pendingFile)) $pendingFile
@@ -366,21 +392,27 @@ function Test-CSharp {
     # A marker from another writer must be noticed without polling the xlsx.
     # Consecutive send notices replace one StatusStrip item without creating a
     # dialog; update notifications still ask whether to switch.
+    $markerReader = New-Object Rdv3SharedFiles $ledger, 'REMOTE-HOST', 'remote-user', 'remote-reader'
+    $observedMarker = $markerReader.ReadMarker()
+    if ($null -eq $observedMarker) { throw 'the scratch ledger has no marker after send' }
+    $remoteFirstVersion = [long]($observedMarker.Version + 1)
+    $remoteSecondVersion = [long]($observedMarker.Version + 2)
+    $remoteUpdateVersion = [long]($observedMarker.Version + 3)
     $remoteFrom = (Read-Log $log $enc).Count
-    Write-TestMarker ($ledger + '.version') 2 'send' 12 3
+    Write-TestMarker ($ledger + '.version') $remoteFirstVersion 'send' 12 3
     $remoteFirst = Wait-Log $log $enc "`tnotice`ttarget=status text=remote-user が 12 件を処理済、3 件を未処理にしました" $remoteFrom 15 100
-    Write-TestMarker ($ledger + '.version') 3 'send' 7 4
+    Write-TestMarker ($ledger + '.version') $remoteSecondVersion 'send' 7 4
     $remoteSecond = Wait-Log $log $enc "`tnotice`ttarget=status text=remote-user が 7 件を処理済、4 件を未処理にしました" $remoteFrom 15 100
     $noSendDialog = -not (Dialog-Present '台帳が更新されました')
     Check $b 'remote_send_status' (($null -ne $remoteFirst) -and ($null -ne $remoteSecond) -and $noSendDialog) ('first=' + $(if ($null -ne $remoteFirst) { $remoteFirst[1] } else { 'missing' }) + '; second=' + $(if ($null -ne $remoteSecond) { $remoteSecond[1] } else { 'missing' }) + '; noDialog=' + $noSendDialog)
-    $remoteReload = Wait-Log $log $enc "`treload`tversion=3 .*rows=100000" $remoteFrom 30 100
+    $remoteReload = Wait-Log $log $enc ("`treload`tversion=" + $remoteSecondVersion + " .*rows=" + $ExpectedLedgerRows) $remoteFrom 30 100
     Check $b 'remote_send_reload' ($null -ne $remoteReload) $(if ($null -ne $remoteReload) { $remoteReload[1] } else { 'no reload line' })
-    $remoteReady = Wait-Log $log $enc "`tshared`tready .*note=marker-3" $remoteFrom 30 100
-    Check $b 'remote_send_ready' ($null -ne $remoteReady) $(if ($null -ne $remoteReady) { $remoteReady[1] } else { 'marker-3 was not adopted' })
+    $remoteReady = Wait-Log $log $enc ("`tshared`tready .*note=marker-" + $remoteSecondVersion) $remoteFrom 30 100
+    Check $b 'remote_send_ready' ($null -ne $remoteReady) $(if ($null -ne $remoteReady) { $remoteReady[1] } else { 'latest remote marker was not adopted' })
 
     $updateFrom = (Read-Log $log $enc).Count
-    $changedMarker = Write-ChangedLedger $ledger $settings (Join-Path $dir 'data') '00089897'
-    Check $b 'remote_update_written' (($changedMarker.Version -eq 4) -and ((Count-TrueRows $ledger) -eq 0)) ('version ' + $changedMarker.Version + ', processed=TRUE rows 0')
+    $changedMarker = Write-ChangedLedger $ledger $settings (Join-Path $dir 'data') $TargetIdentity
+    Check $b 'remote_update_written' (($changedMarker.Version -eq $remoteUpdateVersion) -and ((Count-TrueRows $ledger) -eq 0)) ('version ' + $changedMarker.Version + ', processed=TRUE rows 0')
     $updateBody = Wait-DialogText '台帳の更新' '台帳が更新されました。切り替えますか' 15
     Check $b 'remote_update_dialog' $updateBody 'the update asks before switching'
     $resetBody = Wait-DialogText '台帳の更新' '中身が変わったため未処理に戻ったレコード: 1 件' 5
@@ -389,8 +421,8 @@ function Test-CSharp {
     Check $b 'remote_update_reset_count' $resetBody 'the update dialog reports one reset record'
     Check $b 'remote_update_reset_list' $resetList 'the reset records use one standard Details ListView'
     [void](Answer-Dialog '台帳の更新' 'OK' 5)
-    $updateReady = Wait-Log $log $enc "`tshared`tready .*note=marker-4" $updateFrom 30 100
-    Check $b 'remote_update_switch' ($null -ne $updateReady) $(if ($null -ne $updateReady) { $updateReady[1] } else { 'no marker-4 ready line' })
+    $updateReady = Wait-Log $log $enc ("`tshared`tready .*note=marker-" + $remoteUpdateVersion) $updateFrom 30 100
+    Check $b 'remote_update_switch' ($null -ne $updateReady) $(if ($null -ne $updateReady) { $updateReady[1] } else { 'no latest-marker ready line' })
 
     # A fresh lock is live, so it is not removed. Closing while this send is
     # still waiting must end the app without a write-in-flight refusal.

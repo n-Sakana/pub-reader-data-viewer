@@ -19,9 +19,10 @@ xll/nuget/
 
 # 取得・生成するデータ (日本郵便のデータ、100万件の入力・出力・辞書)
 data/
+data-1k/
 data-100k/
 data-tiny/
-samples/
+/samples/
 work/
 
 # Excel の一時ファイル

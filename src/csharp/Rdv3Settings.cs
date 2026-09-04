@@ -39,16 +39,23 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
         Label hint = LabelOf("settings.hint", Rdv3Text.SettingsHint);
         hint.Dock = DockStyle.Top;
         hint.AutoSize = true;
-        hint.Padding = new Padding(8, 8, 8, 2);
+        hint.Padding = new Padding(Rdv3Metrics.Gap, Rdv3Metrics.Gap, Rdv3Metrics.Gap, 0);
 
         TableLayoutPanel body = new TableLayoutPanel();
         body.Name = "settings.body";
         body.Dock = DockStyle.Fill;
-        body.Padding = new Padding(8, 2, 8, 4);
+        body.Padding = new Padding(Rdv3Metrics.Gap);
         body.ColumnCount = 1;
-        body.RowCount = 3;
-        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 112f));
-        body.RowStyles.Add(new RowStyle(SizeType.Absolute, 91f));
+        // each group is as tall as it needs to be; the spare row at the bottom
+        // takes whatever is left over so no group has to stretch
+        body.RowCount = 4;
+        int pathsRow = GroupHeight(ButtonFieldRow, 3, Padding.Empty) + Rdv3Metrics.Gap;
+        int searchRow = GroupHeight(RowHeight, 2, Padding.Empty) + Rdv3Metrics.Gap;
+        int watchRow = Rdv3Metrics.Caption(Font) + Rdv3Metrics.Gap * 3
+            + ButtonFieldRow + RowHeight;
+        body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        body.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         body.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
         body.Controls.Add(BuildPaths(), 0, 0);
         body.Controls.Add(BuildSearch(), 0, 1);
@@ -57,17 +64,24 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
         FlowLayoutPanel foot = new FlowLayoutPanel();
         foot.Name = "settings.buttons";
         foot.Dock = DockStyle.Bottom;
-        foot.Height = 42;
         foot.FlowDirection = FlowDirection.RightToLeft;
-        foot.Padding = new Padding(6);
+        foot.Padding = new Padding(Rdv3Metrics.Gap);
+        foot.Height = Rdv3Metrics.ButtonBarHeight(Font);
         Button cancel = ButtonOf("settings.cancel", Rdv3Text.BtnCancel, DialogResult.Cancel);
         Button save = ButtonOf("settings.save", Rdv3Text.BtnOk, DialogResult.None);
         save.Click += delegate { SaveAndClose(); };
         foot.Controls.Add(cancel);
         foot.Controls.Add(save);
+        // The controls inside each framed settings group finish two shared
+        // gaps from the client edge (body-to-frame, then frame-to-content).
+        // Put the footer on that same vertical line.
+        AlignRightButtons(foot, Rdv3Metrics.Gap * 2);
         AcceptButton = save;
         CancelButton = cancel;
 
+        ClientSize = new Size(ClientSize.Width,
+            Rdv3Metrics.Caption(Font) + hint.Padding.Vertical + body.Padding.Vertical
+            + pathsRow + searchRow + watchRow + foot.Height);
         Controls.Add(body);
         Controls.Add(foot);
         Controls.Add(hint);
@@ -96,12 +110,22 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
         GroupBox box = Group("settings.searchGroup", Rdv3Text.SecSearch);
         TableLayoutPanel grid = Grid("settings.search", 2, 116, false);
         PrepareEdit(pattern, "settings.pattern");
-        pattern.Dock = DockStyle.Fill;
+        StretchAcross(pattern);
+        pattern.Margin = new Padding(0, 1, 0, 1);
         candidateRows.Name = "settings.candidateRows";
         candidateRows.Minimum = 1;
         candidateRows.Maximum = 1000;
         candidateRows.Width = 74;
-        candidateRows.Dock = DockStyle.Left;
+        // A spinner insists on its own height, so a Fill dock left it sitting
+        // at the top of its cell while the label beside it stayed in the
+        // middle. Anchoring it on one side only centres it in the row, and its
+        // own margin has to be the same as the boxes above it or the anchor
+        // has nothing to centre inside.
+        // (a spinner is a container control and scales its own margin a second
+        // time on a high-dpi screen, which is what pushed it down; with no
+        // margin of its own the anchor has the whole row to centre it in)
+        candidateRows.Margin = Padding.Empty;
+        candidateRows.Anchor = AnchorStyles.Left;
         AddRow(grid, 0, Rdv3Text.LblKeyPatternShort, pattern);
         AddRow(grid, 1, Rdv3Text.LblCandidateRows, candidateRows);
         box.Controls.Add(grid);
@@ -113,63 +137,104 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
         GroupBox box = Group("settings.watchGroup", Rdv3Text.SecTargets);
         TableLayoutPanel grid = new TableLayoutPanel();
         grid.Name = "settings.watch";
-        grid.Dock = DockStyle.Fill;
-        grid.Padding = new Padding(8, 5, 8, 7);
-        grid.ColumnCount = 3;
+        grid.Dock = DockStyle.Top;
+        grid.AutoSize = true;
+        grid.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        grid.Padding = Padding.Empty;
+        grid.ColumnCount = 5;
         grid.RowCount = 2;
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 82f));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Rdv3Metrics.Gap));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 104f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27f));
-        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 27f));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Rdv3Metrics.Gap));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, ButtonFieldRow));
+        grid.RowStyles.Add(new RowStyle(SizeType.Absolute, RowHeight));
         target.Name = "settings.target";
         target.ReadOnly = true;
         target.TabStop = false;
         target.BackColor = SystemColors.Control;
         target.BorderStyle = BorderStyle.Fixed3D;
-        target.Dock = DockStyle.Fill;
+        StretchAcross(target);
+        target.Margin = new Padding(0, 1, 0, 1);
         read.Name = "settings.read";
         read.ReadOnly = true;
         read.TabStop = false;
         read.BackColor = SystemColors.Control;
         read.BorderStyle = BorderStyle.Fixed3D;
-        read.Dock = DockStyle.Fill;
+        StretchAcross(read);
+        read.Margin = new Padding(0, 1, 0, 1);
         Button pick = ButtonOf("settings.pick", Rdv3Text.BtnInspect, DialogResult.None);
-        pick.Dock = DockStyle.Fill;
+        StretchAcross(pick);
+        pick.Margin = Padding.Empty;
         pick.Click += delegate { PickTarget(); };
         AddCellLabel(grid, 0, Rdv3Text.LblTarget);
         AddCellLabel(grid, 1, Rdv3Text.LblRead);
-        grid.Controls.Add(target, 1, 0);
-        grid.Controls.Add(pick, 2, 0);
-        grid.Controls.Add(read, 1, 1);
-        grid.SetColumnSpan(read, 2);
+        grid.Controls.Add(target, 2, 0);
+        grid.Controls.Add(pick, 4, 0);
+        grid.Controls.Add(read, 2, 1);
+        grid.SetColumnSpan(read, 3);
         box.Controls.Add(grid);
         return box;
     }
 
+    // The caption line and the frame belong to the GroupBox, and only it knows
+    // how tall they come out on this screen. Working the total out here left it
+    // a pixel or two short of its own rows, and the row that did not fit was
+    // drawn over the bottom of the frame.
     private static GroupBox Group(string name, string title)
     {
         GroupBox box = new GroupBox();
         box.Name = name;
         box.Text = title;
-        box.Dock = DockStyle.Fill;
-        box.Margin = new Padding(0, 0, 0, 6);
+        box.Dock = DockStyle.Top;
+        box.AutoSize = true;
+        box.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        box.Padding = new Padding(Rdv3Metrics.Gap);
+        box.Margin = new Padding(0, 0, 0, Rdv3Metrics.Gap);
         return box;
     }
 
-    private static TableLayoutPanel Grid(string name, int rows, int labelWidth, bool browse)
+    private TableLayoutPanel Grid(string name, int rows, int labelWidth, bool browse)
     {
         TableLayoutPanel grid = new TableLayoutPanel();
         grid.Name = name;
-        grid.Dock = DockStyle.Fill;
-        grid.Padding = new Padding(8, 3, 8, 1);
-        grid.ColumnCount = browse ? 3 : 2;
+        grid.Dock = DockStyle.Top;
+        grid.AutoSize = true;
+        grid.AutoSizeMode = AutoSizeMode.GrowAndShrink;
+        grid.Padding = Padding.Empty;
+        grid.ColumnCount = browse ? 5 : 3;
         grid.RowCount = rows;
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, labelWidth));
+        grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Rdv3Metrics.Gap));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        if (browse) { grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 78f)); }
-        for (int i = 0; i < rows; i++) { grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 26f)); }
+        if (browse)
+        {
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, Rdv3Metrics.Gap));
+            grid.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
+        }
+        float height = browse ? ButtonFieldRow : RowHeight;
+        for (int i = 0; i < rows; i++) { grid.RowStyles.Add(new RowStyle(SizeType.Absolute, height)); }
         return grid;
+    }
+
+    // one row of the dialog: a labelled box, measured from the font
+    private int RowHeight { get { return Rdv3Metrics.FieldRow(Font); } }
+
+    // a row that also carries a button; a button will not go below the size it
+    // needs for its own caption, so the row has to be at least that tall or it
+    // hangs over the bottom of the group and rubs out the frame
+    private int ButtonFieldRow
+    {
+        get { return Math.Max(RowHeight, Rdv3Metrics.ButtonHeight(Font)); }
+    }
+
+    // a group of rows: the caption, the shared GroupBox padding, the grid's
+    // padding, and the rows themselves
+    private int GroupHeight(int rowHeight, int rows, Padding gridPadding)
+    {
+        return Rdv3Metrics.Caption(Font) + Rdv3Metrics.Gap * 2
+            + gridPadding.Vertical + rows * rowHeight;
     }
 
     private static void PrepareEdit(TextBox box, string name)
@@ -182,25 +247,28 @@ public sealed class Rdv3SettingsForm : Rdv3Dialog
     private static void AddPathRow(TableLayoutPanel grid, int row, string label, TextBox box, Action browse)
     {
         PrepareEdit(box, "settings.path" + row.ToString(CultureInfo.InvariantCulture));
-        box.Dock = DockStyle.Fill;
+        StretchAcross(box);
+        box.Margin = new Padding(0, 1, 0, 1);
         Button button = ButtonOf("settings.browse" + row.ToString(CultureInfo.InvariantCulture), Rdv3Text.BtnBrowse, DialogResult.None);
-        button.Dock = DockStyle.Fill;
+        StretchAcross(button);
+        button.Margin = Padding.Empty;
         button.Click += delegate { browse(); };
         AddCellLabel(grid, row, label);
-        grid.Controls.Add(box, 1, row);
-        grid.Controls.Add(button, 2, row);
+        grid.Controls.Add(box, 2, row);
+        grid.Controls.Add(button, 4, row);
     }
 
     private static void AddRow(TableLayoutPanel grid, int row, string label, Control value)
     {
         AddCellLabel(grid, row, label);
-        grid.Controls.Add(value, 1, row);
+        grid.Controls.Add(value, 2, row);
     }
 
     private static void AddCellLabel(TableLayoutPanel grid, int row, string text)
     {
         Label label = LabelOf(grid.Name + ".label" + row.ToString(CultureInfo.InvariantCulture), text);
         label.Dock = DockStyle.Fill;
+        label.Margin = Padding.Empty;
         label.TextAlign = ContentAlignment.MiddleLeft;
         grid.Controls.Add(label, 0, row);
     }
@@ -332,45 +400,48 @@ public sealed class Rdv3PickerForm : Rdv3Dialog
 
         Label how = LabelOf("picker.how", Rdv3Text.PickHow);
         how.Dock = DockStyle.Top;
-        how.Height = 40;
-        how.Padding = new Padding(8, 12, 8, 4);
+        how.Padding = new Padding(Rdv3Metrics.Gap);
+        how.Height = Rdv3Metrics.Caption(Font) + how.Padding.Vertical;
         how.Font = new Font(Font, FontStyle.Bold);
 
         TableLayoutPanel grid = new TableLayoutPanel();
         grid.Name = "picker.values";
         grid.Dock = DockStyle.Fill;
-        grid.Padding = new Padding(8, 4, 8, 4);
+        grid.Padding = new Padding(Rdv3Metrics.Gap);
         grid.ColumnCount = 2;
-        grid.RowCount = 6;
+        grid.RowCount = 7;
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 118f));
         grid.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
         string[] labels = { Rdv3Text.LblControlTypes, Rdv3Text.LblAutomationId, Rdv3Text.LblClassName,
                             Rdv3Text.LblName, Rdv3Text.LblProcessOf, Rdv3Text.PickReading };
         for (int i = 0; i < 6; i++)
         {
-            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, 31f));
+            grid.RowStyles.Add(new RowStyle(SizeType.Absolute, Rdv3Metrics.FieldRow(Font) + 6));
             Label label = LabelOf("picker.label" + i.ToString(CultureInfo.InvariantCulture), labels[i]);
             label.Dock = DockStyle.Fill;
             label.TextAlign = ContentAlignment.MiddleLeft;
             values[i] = ReadOnlyBox("picker.value" + i.ToString(CultureInfo.InvariantCulture));
-            values[i].Dock = DockStyle.Fill;
-            values[i].Margin = new Padding(2, 2, 0, 2);
+            StretchAcross(values[i]);
+            values[i].Margin = new Padding(Rdv3Metrics.Gap, 2, 0, 2);
             grid.Controls.Add(label, 0, i);
             grid.Controls.Add(values[i], 1, i);
         }
+        // the spare row keeps the leftover height out of the last field's row
+        grid.RowStyles.Add(new RowStyle(SizeType.Percent, 100f));
 
         FlowLayoutPanel foot = new FlowLayoutPanel();
         foot.Name = "picker.buttons";
         foot.Dock = DockStyle.Bottom;
-        foot.Height = 45;
         foot.FlowDirection = FlowDirection.RightToLeft;
-        foot.Padding = new Padding(6);
+        foot.Padding = new Padding(Rdv3Metrics.Gap);
+        foot.Height = Rdv3Metrics.ButtonBarHeight(Font);
         Button close = ButtonOf("picker.close", Rdv3Text.BtnClose, DialogResult.Cancel);
         Label esc = LabelOf("picker.escape", Rdv3Text.PickEsc);
         esc.AutoSize = true;
-        esc.Margin = new Padding(0, 7, 140, 0);
+        esc.Margin = Padding.Empty;
         foot.Controls.Add(close);
         foot.Controls.Add(esc);
+        AlignRightButtons(foot);
         CancelButton = close;
 
         Controls.Add(grid);

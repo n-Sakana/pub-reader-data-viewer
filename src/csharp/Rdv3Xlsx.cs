@@ -35,6 +35,148 @@ public static class Rdv3Xlsx
 {
     public const string SheetName = "LEDGER";
 
+    // A workbook named by data.tables is an ordinary input table: its first
+    // non-empty row is the header and the remaining rows are source records.
+    // The saved ledger reader below deliberately remains separate because it
+    // has the additional application-owned state column contract.
+    public static string[] ReadTableHead(string path)
+    {
+        string[] head;
+        string[][] rows;
+        string warning;
+        ReadTableCore(path, true, out head, out rows, out warning);
+        return head;
+    }
+
+    public static void ReadTable(string path, out string[] head, out string[][] rows, out string warning)
+    {
+        ReadTableCore(path, false, out head, out rows, out warning);
+    }
+
+    private static void ReadTableCore(string path, bool headOnly, out string[] head,
+                                      out string[][] rows, out string warning)
+    {
+        warning = "";
+        head = null;
+        List<string[]> result = new List<string[]>();
+        string file = Path.GetFileName(path);
+        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read,
+                                               FileShare.ReadWrite | FileShare.Delete))
+        using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
+        {
+            string[] shared = ReadSharedStrings(z);
+            ZipArchiveEntry sheet = FindSheet(z);
+            if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
+            using (XmlReader xr = XmlReader.Create(sheet.Open()))
+            {
+                List<string> cells = null;
+                bool inRow = false;
+                int col = 0;
+                int rowNumber = 0;
+                while (xr.Read())
+                {
+                    if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "row")
+                    {
+                        inRow = true;
+                        cells = new List<string>();
+                        col = 0;
+                        rowNumber++;
+                        int stated;
+                        string rowRef = xr.GetAttribute("r");
+                        if (rowRef != null && int.TryParse(rowRef, NumberStyles.Integer,
+                            CultureInfo.InvariantCulture, out stated) && stated > 0) { rowNumber = stated; }
+                        if (xr.IsEmptyElement) { inRow = false; }
+                        continue;
+                    }
+                    if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "c" && inRow)
+                    {
+                        string cellRef = xr.GetAttribute("r");
+                        if (cellRef != null && cellRef.Length > 0)
+                        {
+                            int referenced = ColOf(cellRef);
+                            if (referenced >= 0) { col = referenced; }
+                        }
+                        while (cells.Count <= col) { cells.Add(""); }
+                        cells[col] = ReadCellValue(xr, xr.GetAttribute("t"), shared);
+                        col++;
+                        continue;
+                    }
+                    if (xr.NodeType == XmlNodeType.EndElement && xr.LocalName == "row" && inRow)
+                    {
+                        inRow = false;
+                        if (cells.Count == 0) { continue; }
+                        string[] values = cells.ToArray();
+                        for (int c = 0; c < values.Length; c++)
+                        {
+                            values[c] = SafeSourceCell(values[c], file, rowNumber, ref warning);
+                        }
+                        if (head == null)
+                        {
+                            head = CheckTableHead(values, file);
+                            if (headOnly) { break; }
+                            continue;
+                        }
+                        if (values.Length > head.Length)
+                        {
+                            throw new Rdv3DataError(Rdv3Text.DataColumnCount.Replace("{file}", file)
+                                .Replace("{row}", rowNumber.ToString(CultureInfo.InvariantCulture))
+                                .Replace("{n}", values.Length.ToString(CultureInfo.InvariantCulture))
+                                .Replace("{cols}", head.Length.ToString(CultureInfo.InvariantCulture)));
+                        }
+                        Array.Resize(ref values, head.Length);
+                        for (int c = 0; c < values.Length; c++) { if (values[c] == null) { values[c] = ""; } }
+                        result.Add(values);
+                    }
+                }
+            }
+        }
+        if (head == null || (!headOnly && result.Count == 0))
+        {
+            throw new Rdv3DataError(Rdv3Text.DataNoRows.Replace("{file}", file).Replace("{row}", "0"));
+        }
+        rows = result.ToArray();
+    }
+
+    private static string[] CheckTableHead(string[] values, string file)
+    {
+        for (int i = 0; i < values.Length; i++)
+        {
+            values[i] = values[i].Trim();
+            if (values[i].Length == 0)
+            {
+                throw new Rdv3DataError(Rdv3Text.DataBlankHeader.Replace("{file}", file).Replace("{row}", "1"));
+            }
+            for (int k = 0; k < i; k++)
+            {
+                if (string.Equals(values[k], values[i], StringComparison.Ordinal))
+                {
+                    throw new Rdv3DataError(Rdv3Text.DataDupHeader.Replace("{file}", file)
+                        .Replace("{row}", "1").Replace("{name}", values[i]));
+                }
+            }
+        }
+        return values;
+    }
+
+    private static string SafeSourceCell(string value, string file, int row, ref string warning)
+    {
+        if (value == null || value.Length == 0) { return ""; }
+        char[] safe = null;
+        for (int i = 0; i < value.Length; i++)
+        {
+            if (value[i] >= ' ') { continue; }
+            if (warning.Length == 0)
+            {
+                warning = Rdv3Text.DataControlChar.Replace("{file}", file)
+                    .Replace("{row}", row.ToString(CultureInfo.InvariantCulture))
+                    .Replace("{code}", ((int)value[i]).ToString("X2", CultureInfo.InvariantCulture));
+            }
+            if (safe == null) { safe = value.ToCharArray(); }
+            safe[i] = '?';
+        }
+        return (safe == null) ? value : new string(safe);
+    }
+
     // ---- write -------------------------------------------------------------
     public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId)
     {

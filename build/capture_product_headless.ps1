@@ -17,6 +17,7 @@ using System.Text;
 public static class RdvProductShot {
   public delegate bool EnumProc(IntPtr h, IntPtr l);
   [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc p, IntPtr l);
+  [DllImport("user32.dll")] static extern bool EnumChildWindows(IntPtr root, EnumProc p, IntPtr l);
   [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
   [DllImport("user32.dll", CharSet=CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder b, int n);
   [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
@@ -39,6 +40,32 @@ public static class RdvProductShot {
       return true;
     }, IntPtr.Zero);
     return found;
+  }
+
+  public static IntPtr FindModal(int processId) {
+    IntPtr found = IntPtr.Zero;
+    EnumWindows(delegate(IntPtr h, IntPtr l) {
+      uint pid; GetWindowThreadProcessId(h, out pid);
+      if (pid != (uint)processId || !IsWindowVisible(h)) return true;
+      StringBuilder b = new StringBuilder(256); GetWindowTextW(h, b, b.Capacity);
+      if (!b.ToString().StartsWith("Reader Data Viewer", StringComparison.Ordinal)) { found = h; return false; }
+      return true;
+    }, IntPtr.Zero);
+    return found;
+  }
+
+  public static bool ClickYes(IntPtr dialog) {
+    bool clicked = false;
+    EnumChildWindows(dialog, delegate(IntPtr h, IntPtr l) {
+      StringBuilder b = new StringBuilder(64); GetWindowTextW(h, b, b.Capacity);
+      if (String.Equals(b.ToString(), "\u306f\u3044", StringComparison.Ordinal)) {
+        PostMessage(h, 0x00F5, IntPtr.Zero, IntPtr.Zero);
+        clicked = true;
+        return false;
+      }
+      return true;
+    }, IntPtr.Zero);
+    return clicked;
   }
 
   public static string Measure(IntPtr h) {
@@ -66,7 +93,6 @@ $runFolder = Join-Path $folder ("capture-run-$stamp")
 New-Item -ItemType Directory -Path $runFolder | Out-Null
 $ledger = Join-Path $runFolder 'ReaderDataViewer-Ledger.xlsx'
 $log = Join-Path $folder ("capture-vbs-$stamp.log")
-Copy-Item -LiteralPath (Join-Path $Root 'dist\app-csharp\ReaderDataViewer-Ledger.xlsx') -Destination $ledger
 if (Test-Path -LiteralPath $OutPath) { Remove-Item -LiteralPath $OutPath -Force }
 
 $oldHeadless = $env:RDV_HEADLESS_TEST
@@ -81,6 +107,7 @@ $hwnd = [IntPtr]::Zero
 $measureClock = [Diagnostics.Stopwatch]::StartNew()
 $samples = New-Object 'System.Collections.Generic.List[string]'
 $lastMetric = ''
+$createApproved = $false
 try {
   $arguments = '//B //Nologo "' + $vbs + '" -ledger "' + $ledger + '" -log "' + $log + '"'
   $launcher = Start-Process -FilePath (Join-Path $env:SystemRoot 'System32\wscript.exe') -ArgumentList $arguments -WindowStyle Hidden -PassThru
@@ -100,6 +127,14 @@ try {
         if ($appPid -eq 0 -and $line -match "`tboot`tpid=(\d+)") { $appPid = [int]$Matches[1] }
         if ($line -match "`tdecision`tready rows=") { $ready = $true }
       }
+      if ($appPid -ne 0 -and -not $createApproved) {
+        $createDialog = [RdvProductShot]::FindModal($appPid)
+        if ($createDialog -ne [IntPtr]::Zero -and [RdvProductShot]::ClickYes($createDialog)) {
+          # Keep the whole interaction off-screen and let the product create
+          # its scratch ledger from the shipped CSVs.
+          $createApproved = $true
+        }
+      }
       if ($appPid -ne 0 -and $hwnd -eq [IntPtr]::Zero) { $hwnd = [RdvProductShot]::Find($appPid) }
       if ($hwnd -ne [IntPtr]::Zero) {
         $metric = [RdvProductShot]::Measure($hwnd)
@@ -113,6 +148,7 @@ try {
     Start-Sleep -Milliseconds 100
   }
   if ($appPid -eq 0 -or -not $ready) { throw "the VBS product did not reach READY; log=$log" }
+  if (-not $createApproved -or -not (Test-Path -LiteralPath $ledger)) { throw "the first-run ledger was not created; log=$log" }
   $stableUntil = (Get-Date).AddMilliseconds(1500)
   while ((Get-Date) -lt $stableUntil) {
     if ($hwnd -eq [IntPtr]::Zero) { $hwnd = [RdvProductShot]::Find($appPid) }

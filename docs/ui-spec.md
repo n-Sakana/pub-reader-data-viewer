@@ -23,9 +23,10 @@
 | `statusBar` | 下端のステータスバー (区画) と、下部のボタン列 | `height`, `segments[]` {prefix, value, bold, dot}, `buttons[]` |
 
 共通の `margin` (数値 1〜4 個、CSS 風) で部品の外側の余白を上書きできます。`card` は
-{ `width`, `startSize` [幅, 高さ], `gap`, `padding`, `font` } で、`startSize` が起動時の窓の
-クライアント寸法、`font` は名前で指定する Windows の書体です (無い書体を指定するとシステム書体になります)。
-`toast.durationMs` は通知の表示時間です。
+{ `width`, `startSize` [幅, 高さ], `gap`, `padding`, `font`, `fontSize`, `keyValueFontSize`,
+`judgmentFontSize`, `unsearchedFontSize` } で、`startSize` が起動時の窓のクライアント寸法、`font` は
+名前で指定する Windows の書体です。`gap` は枠どうし、枠と中身、下部ボタンの上下に共通する間隔、
+`padding` は画面外周の余白です。後ろの3サイズは、現在番号・判定結果・未検索の強調に使います。
 
 ボタンの `action` は 9 つです。押したときの処理はプログラム側にあります。
 
@@ -47,14 +48,14 @@
 ## 2. 値 (value)
 
 ```jsonc
-{ "field": "A.a_name" }                                   // 1 列: <表>.<CSV の列名>
+{ "field": "A.a_name" }                                   // 1 列: <表>.<入力表の列名>
 { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " }  // 複数列を連結 (空の列は飛ばす)
 { "state": "searchKey" }                                  // アプリの値 (下表)
 ```
 
 共通オプションは `format` ({"kind":"number","group":true} / {"kind":"date","from":"yyyyMMdd","to":"yyyy-MM-dd"})
 と `empty` (レコードはあるが値が空のときの表示。既定 `N/A`、薄い色)。`<表>.<列>` は
-`data.ledger.columns.source` のどれかでなければ起動しません。列名は CSV のヘッダー行そのものです。
+`data.ledger.columns.source` のどれかでなければ起動しません。列名は入力表のヘッダー行そのものです。
 
 `state` の名前: `searchKey`, `candidateCount`, `workState`, `workStateShort`, `rowNumber`,
 `appState`, `watchLabel`, `watchDetail`, `ledgerFile`, `ledgerRows`, `ledgerSaved`, `pendingCount`,
@@ -82,6 +83,7 @@
 
 ```jsonc
 "workState": {
+  "trigger": "automatic",
   "store": { "column": "処理済み" },
   "states": [ { "id": "todo", "text": "未処理", "short": "未", "look": "neutral", "stored": "FALSE" },
               { "id": "done", "text": "処理済", "short": "済", "look": "accent",  "stored": "TRUE" } ],
@@ -115,6 +117,12 @@
 }
 ```
 
+出力ダイアログでは条件を複数追加でき、すべてに一致する行だけを書き出します。型指定のない文字列列は
+「を含む／と等しい／で始まる／を含まない」、`data.types` の日付・数値列は両端を含む「範囲」です。
+日付は `DateTimePicker` から選びます。出力項目の選択と絞り込み項目は独立しています。
+
+`trigger` は `automatic`（既定。監視対象からの1件検索で自動遷移）または `manual`（ボタン操作だけ）です。
+
 ## 6. 候補一覧 (candidates)
 
 `title`, `hint`, `width`, `maxHeight`, `rowHeight`, `headerHeight`, `columns[]`
@@ -128,8 +136,8 @@
   確定します。一致しなければ通知「{検索列のラベル} が形式 … に一致しません」。照合先は
   `data.ledger.search.columns[]`、方法は `exact` / `contains`。0 件は「見つかりません」、1 件は
   そのまま表示、2 件以上は候補一覧が開き、行を選ぶまで作業状態は変わりません。
-- 監視対象から読んだ番号で 1 件だけ当たったときは、確認なしで最初の遷移 (未処理 → 処理済) を
-  自動で行います。手で検索したときは行いません。
+- `workState.trigger` が `automatic` で、監視対象から読んだ番号が 1 件だけ当たったときは、確認なしで
+  最初の遷移 (未処理 → 処理済) を自動で行います。`manual` または手検索では行いません。
 - 作業状態ボタン: 上記。保存中は状態語「{状態}を保存中」、帯の副題に「(保存中...)」。保存の結果が
   出るまで次の変更と終了を受け付けません。
 - 送信: 確認モーダルのあと、共有のロックファイルを取り、共有台帳を読み直してから、手元の変更を
@@ -141,12 +149,14 @@
   使って「{誰} が N 件を{初期状態からの遷移先}、M 件を{初期状態}にしました」とステータスバーへ
   一時表示します。続けて届いた通知は同じ区画を更新するため、窓を増やしません。更新なら
   「切り替えますか」と尋ねてから読み直します。
-- テーブル出力: 出す列を選んで、統合台帳を CSV (UTF-8、BOM 付き) に書き出します。
+- テーブル出力: 出す列とAND条件を選んで、統合台帳を CSV (UTF-8、BOM 付き) に書き出します。
+- 値が無い表示欄は空白のままにし、代替のハイフンは表示しません。
 - 設定: `paths` / `search` / `watch` だけを書き戻し、監視を張り直します。`data` と `screen` と
   コメントは触りません。
 - 起動できない / 続行できない: 設定ファイルが読めないときは Windows のダイアログ (ファイル、行、理由)、
-  CSV や台帳が読めないときは「データを読めません」(ファイル名と行番号) を出して終了します。
-- 通知: 右下の小さな窓に、完了は緑、エラーは赤系で出て、`toast.durationMs` で消えます。
+  入力表や台帳が読めないときは「データを読めません」(ファイル名と行番号) を出して終了します。
+- 通知: エラーは親画面に結び付いた Windows の警告ダイアログで出します。完了や該当なしなどの
+  お知らせは、操作を止めないようステータスバーへ一時表示します。
 - ステータスバーの状態語: 起動中 / 更新を確認中 / 台帳を更新中 / レコードを削除中 / 送信中 /
   台帳を読み直し中 / 台帳が空くのを待機中 / 監視中 / {対象} を待機中 / 監視対象なし /
   {状態}を保存中 / 台帳がありません。

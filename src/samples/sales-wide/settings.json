@@ -1,0 +1,234 @@
+// ============================================================================
+// サンプル「販売 (ワイド)」 -- sales と同じ CSV で、画面の組み方を変えたもの
+//
+// レイアウト検査用: タイトルバー (ブランド・タグ・ボタンをここへ)、3 カラム
+// (重み 2:1:1、中に textBox)、2 段目の 2 カラム、判定の帯 2 本 (出荷状況と備考)、
+// ステータスバーに計時の値、Meiryo、カード幅 1400、起動サイズ 1180×960、
+// ボタン文言にテンプレート。
+// ============================================================================
+{
+  "schema": 3,
+
+  "paths": {
+    "dataDir": "data",
+    "ledger": "sales-wide-Ledger.xlsx",
+    "log": "ReaderDataViewer.log"
+  },
+
+  "search": { "pattern": "^JU[0-9]{7}$", "candidateRowsShown": 30 },
+
+  "watch": {
+    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": { "className": "Notepad", "scope": "children" },
+        "path": [],
+        "field": { "controlTypes": ["Document", "Edit"], "requireValuePattern": true, "scope": "descendants" },
+        "read": "value"
+      }
+    ]
+  },
+
+  "jobs": {
+    "checkTimeoutMs": 180000,
+    "searchTimeoutMs": 30000,
+    "saveTimeoutMs": 60000,
+    "markOverdueMs": 180000,
+    "pumpMs": 1000
+  },
+
+  "data": {
+    "encoding": "shift_jis",
+    "tables": {
+      "J": { "label": "受注明細", "file": "juchu_meisai.csv", "key": "明細番号" },
+      "T": { "label": "得意先", "file": "tokuisaki.csv", "key": "得意先コード" },
+      "S": { "label": "商品", "file": "shohin.csv", "key": "商品コード" }
+    },
+    "types": {
+      "J.受注日": { "type": "date", "format": "yyyyMMdd" },
+      "J.納期": { "type": "date", "format": "yyyyMMdd" },
+      "T.取引開始日": { "type": "date", "format": "yyyyMMdd" },
+      "J.数量": { "type": "number" },
+      "J.単価": { "type": "number" },
+      "J.金額": { "type": "number" },
+      "T.与信限度額": { "type": "number" },
+      "S.標準単価": { "type": "number" },
+      "S.在庫数": { "type": "number" }
+    },
+    "labels": {
+      "J.得意先コード": "得意先コード", "T.得意先コード": "得意先コード",
+      "J.商品コード": "商品コード", "S.商品コード": "商品コード", "J.明細番号": "明細番号",
+      "ledger": "統合台帳",
+      "middle1": "中間1", "middle2": "中間2"
+    },
+    "jobs": [
+      {
+        "id": "replace-ledger", "name": "受注明細から統合台帳を作り直す", "kind": "update",
+        "inputs": [ { "table": "T" }, { "table": "J" }, { "table": "S" } ],
+        "steps": [
+          { "operation": "join", "target1": "J", "target2": "T", "keys": ["J.得意先コード", "T.得意先コード"], "condition": "left", "output": "middle1" },
+          { "operation": "join", "target1": "middle1", "target2": "S", "keys": ["J.商品コード", "S.商品コード"], "condition": "left", "output": "middle2" },
+          { "operation": "replace", "target1": "middle2", "target2": "ledger", "keys": ["J.明細番号", "J.明細番号"], "condition": "", "output": "ledger" }
+        ]
+      }
+    ],
+    "ledger": {
+      "identity": "J.明細番号",
+      "search": { "columns": ["J.受注番号"], "match": "exact" },
+      "columns": {
+        "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+        "source": [
+        "J.受注番号", "J.明細番号", "J.得意先コード", "J.商品コード", "J.受注日", "J.数量", "J.単価", "J.金額", "J.納期", "J.出荷状況", "J.備考",
+        "T.得意先名", "T.担当者", "T.電話番号", "T.都道府県", "T.与信限度額", "T.取引開始日", "T.締日",
+        "S.商品名", "S.規格", "S.単位", "S.標準単価", "S.在庫数", "S.倉庫", "S.仕入先"
+        ]
+      }
+    }
+  },
+
+  "screen": {
+    "card": { "width": 1400, "startSize": [1180, 960], "gap": 12, "padding": [10, 12, 10], "font": "Meiryo" },
+    "judgments": {
+      "shipping": {
+        "source": { "field": "J.出荷状況" },
+        "rules": [
+          { "equals": ["出荷済"], "result": "ok" },
+          { "equals": ["未出荷", "一部出荷"], "result": "ng" },
+          { "equals": ["キャンセル"], "result": "cancel" }
+        ],
+        "results": {
+          "ok": { "text": "出荷済", "look": "ok", "icon": "check" },
+          "ng": { "text": "未出荷", "look": "ng" },
+          "cancel": { "text": "取消", "look": "undefined" },
+          "undefined": { "text": "未定義", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      },
+      "remark": {
+        "source": { "field": "J.備考" },
+        "rules": [
+          { "empty": true, "result": "none" },
+          { "equals": ["至急"], "result": "urgent" }
+        ],
+        "results": {
+          "none": { "text": "備考なし", "look": "ok" },
+          "urgent": { "text": "至急", "look": "ng" },
+          "undefined": { "text": "要確認", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      }
+    },
+
+    "workState": {
+      "store": { "column": "確認" },
+      "states": [
+        { "id": "todo", "text": "未確認", "short": "未", "look": "neutral", "stored": "0" },
+        { "id": "done", "text": "確認済", "short": "済", "look": "accent", "stored": "1" }
+      ],
+      "initial": "todo",
+      "transitions": [
+        { "from": "todo", "to": "done",
+          "confirm": "受注 {J.受注番号} の明細 {J.明細番号}（{S.商品名}）を確認済にします。よろしいですか?",
+          "done": "明細を確認済として保存しました" }
+      ],
+      "button": { "text": "状態: {state}", "tip": "表示中の明細を確認済にします (確認あり)" }
+    },
+
+    "export": {
+      "defaultFields": ["J.明細番号", "J.得意先コード", "J.商品コード", "$work"]
+    },
+
+    "sections": [
+      { "type": "titleBar", "brand": "販売管理 照会",
+        "tags": [ { "text": "受注", "look": "accent" }, { "text": "検証用", "look": "outline" } ],
+        "buttons": [
+          { "action": "refreshLedger", "text": "台帳更新", "icon": "refresh", "tip": "CSV の変更を確認して台帳を更新します" },
+          { "action": "settings", "text": "設定", "icon": "gear", "tip": "監視対象や動作の設定を変更します" }
+        ] },
+
+      { "type": "keyPanel",
+        "figure": { "label": "受注番号", "value": { "state": "searchKey" } },
+        "input": { "placeholder": "JU + 7 桁", "width": 320, "maxLength": 12 },
+        "buttons": [
+          { "action": "search", "text": "検索", "icon": "search", "primary": true, "tip": "受注番号で台帳を検索します" },
+          { "action": "clear", "text": "クリア", "tip": "入力と結果表示を消します" },
+          { "action": "workState" }
+        ] },
+
+      { "type": "columns", "weights": [2, 1, 1], "gap": 12, "stackBelow": 1000,
+        "items": [
+          { "type": "fieldList", "title": "受注明細", "labelWidth": 96, "rowHeight": 38,
+            "rows": [
+              { "label": "受注番号", "value": { "field": "J.受注番号" } },
+              { "label": "明細番号", "value": { "field": "J.明細番号" } },
+              { "label": "受注日", "value": { "field": "J.受注日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy年M月d日" } } },
+              { "label": "納期", "value": { "field": "J.納期", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy年M月d日" } } },
+              { "label": "数量", "value": { "field": "J.数量", "format": { "kind": "number", "group": true } } },
+              { "label": "単価", "value": { "field": "J.単価", "format": { "kind": "number", "group": true } } },
+              { "label": "金額", "value": { "field": "J.金額", "format": { "kind": "number", "group": true } } },
+              { "label": "出荷状況", "value": { "field": "J.出荷状況" } }
+            ] },
+          { "type": "fieldList", "title": "得意先", "labelWidth": 110, "rowHeight": 38,
+            "rows": [
+              { "label": "得意先名", "value": { "field": "T.得意先名", "empty": "（得意先なし）" } },
+              { "label": "担当者", "value": { "field": "T.担当者" } },
+              { "label": "都道府県", "value": { "field": "T.都道府県" } },
+              { "label": "与信限度額", "value": { "field": "T.与信限度額", "format": { "kind": "number", "group": true } } },
+              { "label": "取引開始日", "value": { "field": "T.取引開始日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+              { "label": "締日", "value": { "field": "T.締日" } }
+            ] },
+          { "type": "textBox", "title": "商品", "lines": 7, "value": { "fields": ["S.商品名", "S.規格", "S.仕入先"], "joiner": "\n" } }
+        ] },
+
+      { "type": "columns", "weights": [1, 1], "gap": 12, "stackBelow": 800,
+        "items": [
+          { "type": "textBox", "title": "備考", "lines": 2, "value": { "field": "J.備考", "empty": "（備考なし）" } },
+          { "type": "fieldList", "title": "商品情報", "labelWidth": 96, "rowHeight": 34,
+            "rows": [
+              { "label": "単位", "value": { "field": "S.単位" } },
+              { "label": "標準単価", "value": { "field": "S.標準単価", "format": { "kind": "number", "group": true } } },
+              { "label": "在庫数", "value": { "field": "S.在庫数", "format": { "kind": "number", "group": true } } },
+              { "label": "倉庫", "value": { "field": "S.倉庫" } }
+            ] }
+        ] },
+
+      { "type": "statusBand", "label": "出荷状況", "judgment": "shipping", "height": 96,
+        "sub": [ { "field": "J.出荷状況" }, { "state": "workState" }, { "field": "J.納期", "format": { "kind": "date", "from": "yyyyMMdd", "to": "納期 yyyy/MM/dd" } } ], "joiner": " / " },
+
+      { "type": "statusBand", "label": "備考", "judgment": "remark", "height": 72, "margin": [0, 12, 4],
+        "sub": [ { "field": "J.備考", "empty": "-" } ] },
+
+      { "type": "statusBar", "height": 44,
+        "segments": [
+          { "value": { "state": "appState" }, "bold": true, "dot": true },
+          { "value": { "state": "watchLabel" } },
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } },
+          { "prefix": "結合 ", "value": { "state": "mergeMs" } },
+          { "prefix": "検索 ", "value": { "state": "searchMs" } },
+          { "value": { "state": "pid" } }
+        ],
+        "buttons": [] }
+    ],
+
+    "candidates": {
+      "title": "明細の候補", "hint": "行をクリックすると明細を表示します",
+      "width": 1200, "maxHeight": 480, "rowHeight": 40, "headerHeight": 32,
+      "columns": [
+        { "header": "#", "width": 34, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "明細番号", "width": 140, "value": { "field": "J.明細番号" }, "bold": true },
+        { "header": "受注日", "width": 100, "value": { "field": "J.受注日", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+        { "header": "納期", "width": 100, "value": { "field": "J.納期", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+        { "header": "商品コード", "width": 100, "value": { "field": "J.商品コード" } },
+        { "header": "商品名", "value": { "field": "S.商品名", "empty": "（商品マスタなし）" } },
+        { "header": "数量", "width": 64, "align": "right", "value": { "field": "J.数量", "format": { "kind": "number", "group": true } } },
+        { "header": "金額", "width": 100, "align": "right", "value": { "field": "J.金額", "format": { "kind": "number", "group": true } } },
+        { "header": "出荷状況", "width": 100, "value": { "field": "J.出荷状況" }, "render": "tag",
+          "looks": { "出荷済": "accent", "未出荷": "outline", "一部出荷": "neutral", "キャンセル": "faded", "*": "neutral" } },
+        { "header": "備考", "width": 110, "value": { "field": "J.備考", "empty": "-" }, "muted": true },
+        { "header": "確認", "width": 60, "value": { "state": "workStateShort" }, "render": "tag" }
+      ]
+    }
+  }
+}

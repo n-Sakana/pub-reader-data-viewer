@@ -44,7 +44,7 @@ public static class Rdv3Text
     public const string NotYet = "--";
     public const string MsUnit = " ms";
 
-    // ---- notices (the 完了 toast) --------------------------------------------
+    // ---- notices (shown in the status bar) ----------------------------------
     public const string NoteNoDiff = "更新はありません (台帳は最新です)";
     public const string NoteUpdated = "台帳を更新しました";
     public const string NoteRejected = "更新を見送りました (保存済み台帳のまま)";
@@ -77,10 +77,10 @@ public static class Rdv3Text
         return first + "(入力側の列が変わった行は、作業状態を「" + initialState + "」へ戻します)";
     }
 
-    // ---- errors (the エラー toast) ------------------------------------------
+    // ---- errors (shown in a warning dialog) ---------------------------------
     public const string ErrNo64 = "64 ビットのプロセスが必要です。";
     public const string ErrAlreadyRunning = "同じ統合台帳を開いている Reader Data Viewer が、すでに起動しています。";
-    public const string ErrNoData = "CSV が見つかりません: ";
+    public const string ErrNoData = "データファイルが見つかりません: ";
     public const string ErrBadLedgerPath = "統合台帳のパスが不正です: ";
     public const string ErrNoLedger = "統合台帳がありません。検索できません。";
     public const string ErrCheckFailed = "更新確認に失敗しました: ";
@@ -128,13 +128,16 @@ public static class Rdv3Text
     public const string DataColumnCount = "{file} の {row} 行目: 列数が {n} です (ヘッダー行は {cols} 列)";
     public const string DataEmptyKey = "{file} の {row} 行目: キー列 {name} が空です";
     public const string DataKeyNotAscii = "{file} の {row} 行目: キー列 {name} に ASCII 以外の文字があります";
-    public const string DataKeyWidth = "{file} の {row} 行目: キー列 {name} の幅が 1 行目 ({n} 文字) と違います";
+    public const string DataKeyWidth = "{file} の {row} 行目: キー列 {name} の幅が最初の有効行 ({n} 文字) と違います";
     public const string DataDupKey = "{file}: キー列 {name} の値 {key} が {row1} 行目と {row2} 行目にあります (キーは一意である必要があります)";
     public const string DataLedgerHeader = "{file} の見出し行が、作業状態の列と画面定義の台帳列に一致しません";
     public const string DataControlChar = "{file} の {row} 行目: 制御文字 (0x{code}) を代替文字 (?) に置き換えて読み進めました";
     public const string DataLedgerTab = "{file} の {row} 行目: セルのタブ文字を代替文字 (?) に置き換えて読み進めました";
     public const string DataLedgerBlankIdentity = "{file} の {row} 行目: {name} が空です";
     public const string DataLedgerDupIdentity = "{file}: {name} の値 {key} が {row1} 行目と {row2} 行目にあります (台帳の 1 行は {name} で特定します)";
+    public const string DataTypedValue = "{file} の {row} 行目: 列 {name} の実際の値「{value}」を {type} として読めません";
+    public const string TypeDateFormat = "日付（{format}）";
+    public const string TypeNumber = "数値";
     public const string ProcessBlankIdentity = "ジョブ「{job}」の出力で、識別列「{column}」が空です";
     public const string ProcessDuplicateIdentity = "ジョブ「{job}」の出力で、識別列「{column}」の値「{value}」が重複しています";
 
@@ -148,7 +151,6 @@ public static class Rdv3Text
     public const string BtnClose = "閉じる";
     public const string BtnOk = "OK";
     public const string BtnBrowse = "参照...";
-    public const string Dash = "—";
     public const string Unsearched = "未検索";
     public const string CandidateHitsFmt = "該当 {n} 件";
 
@@ -244,7 +246,7 @@ public static class Rdv3Text
             case "both": return "両方";
             case "exclude": return "除く";
         }
-        return (condition == null || condition.Length == 0) ? Dash : condition;
+        return (condition == null) ? "" : condition;
     }
 
     public static string JoinConditionLabel(string condition)
@@ -305,9 +307,24 @@ public static class Rdv3Text
     public const string ExportSelectedFmt = "出力する項目（{n}）";
     public const string ExportDefault = "既定に戻す";
     public const string ExportDestination = "出力先";
-    public const string ExportDefaultPath = "data\\export-{yyyyMMdd-HHmmss}.csv";
+    public const string ExportDefaultPath = "output\\export-{yyyyMMdd-HHmmss}.csv";
     public const string ExportNeedField = "出力する項目を 1 つ以上選んでください。";
     public const string ExportDoneFmt = "CSV を出力しました: {file}";
+    public const string ExportFilterGroup = "絞り込み条件（すべてに一致）";
+    public const string ExportFilterField = "項目";
+    public const string ExportFilterCondition = "条件";
+    public const string ExportFilterValue = "値";
+    public const string ExportFilterAdd = "追加";
+    public const string ExportFilterRemove = "削除";
+    public const string ExportFilterContains = "を含む";
+    public const string ExportFilterEquals = "と等しい";
+    public const string ExportFilterStarts = "で始まる";
+    public const string ExportFilterNotContains = "を含まない";
+    public const string ExportFilterRange = "の範囲";
+    public const string ExportFilterRangeMark = "～";
+    public const string ExportFilterNeedValue = "絞り込む値を入力してください。";
+    public const string ExportFilterNeedNumber = "範囲の両端に数値を入力してください。";
+    public const string ExportFilterOrder = "範囲の先頭は末尾以下にしてください。";
     public const string BtnMoveRight = "▶";
     public const string BtnMoveLeft = "◀";
 

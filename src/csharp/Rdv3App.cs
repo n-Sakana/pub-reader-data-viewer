@@ -29,7 +29,7 @@
 // read shared ledger while holding the ledger's shared-file lease.
 //
 // The execution log is always on: one tab-separated line per event, next to
-// the .cmd. The screen shows notices and errors as toasts.
+// the .cmd. The screen shows notices in its status bar and errors in warning dialogs.
 // ============================================================================
 
 using System;
@@ -115,6 +115,7 @@ public sealed class Rdv3App
     // Timer is ambiguous with System.Threading.Timer
     private readonly System.Windows.Forms.Timer watchdog = new System.Windows.Forms.Timer();
 
+    private readonly string appDir;
     private readonly string dataDir;
     private readonly string ledgerPath;
     private readonly int pid;
@@ -168,7 +169,7 @@ public sealed class Rdv3App
     private bool headlessSearchStarted;
     private bool headlessCaptureDone;
 
-    public Rdv3App(Rdv3Form f, string data, string ledger, string logPath, Rdv3Config settings,
+    public Rdv3App(Rdv3Form f, string appBaseDir, string data, string ledger, string logPath, Rdv3Config settings,
                    Rdv3PendingStore pendingChanges, Rdv3SharedFiles sharedFiles, Rdv3SharedMarker initialMarker)
     {
         form = f;
@@ -176,6 +177,7 @@ public sealed class Rdv3App
         screen = settings.Screen;
         work = screen.Work;
         dataDef = settings.Data;
+        appDir = appBaseDir;
         dataDir = data;
         ledgerPath = ledger;
         pid = System.Diagnostics.Process.GetCurrentProcess().Id;
@@ -486,7 +488,7 @@ public sealed class Rdv3App
     }
 
     // adopt = make these lines the active, searchable ledger (worker builds the
-    // index so the UI thread never runs over 100,000 rows)
+    // index so the UI thread never runs over the whole ledger)
     private void AdoptLedger(string rid, string[] lines, string[] states, string[] head, string note)
     {
         Rdv3Job job = new Rdv3Job();
@@ -909,6 +911,7 @@ public sealed class Rdv3App
 
     private void AutoCompleteDetected()
     {
+        if (work.Trigger != "automatic") { return; }
         if (shownRow < 0 || shownRow >= ledStates.Length) { return; }
         Rdv3StateDef current = work.ByStored(ledStates[shownRow]);
         if (current == null || current.Id != work.Initial) { return; }
@@ -1335,8 +1338,21 @@ public sealed class Rdv3App
     private void OpenTableExport()
     {
         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
-        string baseDir = System.IO.Path.GetDirectoryName(ledgerPath);
-        Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, screen, baseDir);
+        string exportDir = System.IO.Path.GetDirectoryName(
+            System.IO.Path.Combine(appDir, Rdv3Text.ExportDefaultPath));
+        try
+        {
+            if (exportDir != null && exportDir.Length > 0 && !Directory.Exists(exportDir))
+            {
+                Directory.CreateDirectory(exportDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            form.Error(Rdv3Text.ErrExport + ex.Message);
+            return;
+        }
+        Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, screen, appDir);
         if (request == null) { return; }
         string[] lines = ledLines;
         string[] states = ledStates;
@@ -1365,9 +1381,11 @@ public sealed class Rdv3App
                 output.Append(CsvCell(heading));
             }
             output.Append("\r\n");
+            int exported = 0;
             for (int row = 0; row < lines.Length; row++)
             {
                 string[] values = Rdv3Ledger.SplitLine(lines[row]);
+                if (!request.Matches(dataDef, values, states[row])) { continue; }
                 for (int i = 0; i < columns.Count; i++)
                 {
                     if (i > 0) { output.Append(','); }
@@ -1375,11 +1393,14 @@ public sealed class Rdv3App
                     output.Append(CsvCell(value));
                 }
                 output.Append("\r\n");
+                exported++;
             }
             string dir = System.IO.Path.GetDirectoryName(request.Path);
             if (dir != null && dir.Length > 0 && !Directory.Exists(dir)) { Directory.CreateDirectory(dir); }
             File.WriteAllText(request.Path, output.ToString(), new UTF8Encoding(true));
-            log.Write(tag, "export", "rows=" + lines.Length.ToString(CultureInfo.InvariantCulture) + " fields="
+            log.Write(tag, "export", "rows=" + exported.ToString(CultureInfo.InvariantCulture) + " source_rows="
+                + lines.Length.ToString(CultureInfo.InvariantCulture) + " filters="
+                + request.Filters.Count.ToString(CultureInfo.InvariantCulture) + " fields="
                 + columns.Count.ToString(CultureInfo.InvariantCulture) + " path=" + request.Path);
             form.RunOnUi(delegate { form.Notice(Rdv3Text.ExportDoneFmt.Replace("{file}", request.Path)); });
         }
@@ -1822,6 +1843,19 @@ public static class Rdv3Program
                 heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Enc);
             }
             cfg.Data.Bind(heads);
+            if (cfg.Data.TypeOrder.Count > 0)
+            {
+                Rdv3Table[] typedTables = new Rdv3Table[cfg.Data.Tables.Count];
+                for (int i = 0; i < cfg.Data.TypeOrder.Count; i++)
+                {
+                    int tableOrd = cfg.Data.TypeOrder[i].TableOrd;
+                    if (typedTables[tableOrd] != null) { continue; }
+                    Rdv3TableDef table = cfg.Data.Tables[tableOrd];
+                    typedTables[tableOrd] = Rdv3Table.Read(Path.Combine(dataDir, table.File),
+                        table.Id, cfg.Data.Enc, table.Key, table.KeyValidation);
+                }
+                cfg.Data.ValidateTypes(typedTables);
+            }
         }
         catch (Exception ex)
         {
@@ -1890,7 +1924,7 @@ public static class Rdv3Program
                 form.Location = new System.Drawing.Point(-32000, -32000);
                 form.ShowInTaskbar = false;
             }
-            Rdv3App app = new Rdv3App(form, dataDir, ledgerPath, logPath, cfg, pending, shared, initialMarker);
+            Rdv3App app = new Rdv3App(form, baseDir, dataDir, ledgerPath, logPath, cfg, pending, shared, initialMarker);
             app.LogBoot(compileMs);
             Application.Run(form);
             return 0;
