@@ -1,102 +1,26 @@
 # Reader Data Viewer
 
-Windows 上で動く C# / WinForms アプリです。UI Automation で監視対象の入力欄を読み、CSV / Excel の表に JSON で並べた表操作を適用して検索結果を表示します。画面も JSON の画面定義から組み立てます。
+Reader Data Viewer は C# / WPF の窓に WebView2 を載せる Windows デスクトップアプリです。
 
-現在の製品版は **C# 版 1 種類**です。VBA 版、方式比較、方式選定ベンチ、旧 UI 案、VBA Pixel Bridge 展示は
-すべて [`archive/`](archive/) に保全してあり、通常のビルドには入りません。
+`ReaderDataViewer.vbs` から黒いコンソールを出さずに起動し、承認済み v13 の HTML 画面を表示します。検索、候補選択、処理状態、台帳更新・削除、送信、CSV 出力、設定、UI Automation 監視は WebView2 の JSON ブリッジから既存の処理本体へ接続されています。画面の構成と寸法はルートの `settings.json` にある `screen` 定義から組み立てます。
 
-## 配布物を作る
-
-リポジトリ直下の `build.bat` をダブルクリックします。管理者権限、Excel、インストール作業は不要です。
-
-生成先は `dist\app-csharp\` です。
+通常起動は `ReaderDataViewer.vbs` をダブルクリックします。起動ログをコンソールで確認するときだけ `ReaderDataViewer.cmd` を使います。どちらも管理者権限やインストールを必要としません。
 
 ```text
-ReaderDataViewer.vbs          通常の入口。コンソールを表示しない
-ReaderDataViewer.cmd          コンソールを確認したいときの入口
-settings.json                 設定 (場所、監視対象、番号の形式、入力表の定義、画面定義)
-docs\settings.md              設定ファイルの書き方
-docs\ui-spec.md               画面定義の書き方
-output\                       テーブル出力（初回は空）
-data\tableA.csv
-data\tableB.csv
-data\tableC.csv
-data\delete.csv               削除例（番号2と参照番号の 2 列）
+ReaderDataViewer.vbs     コンソールを出さない通常入口
+ReaderDataViewer.cmd     起動失敗をコンソールで確認する入口
+ReaderDataViewer.ps1     WPF / WebView2 の起動と C# の Add-Type コンパイル
+src/                     現役版の C# ソース
+web/index.html            v13 モックから取り出した窓とダイアログの正本
+web/app.js                screen 定義の描画と WebView2 操作ブリッジ
+web/app.css               settings.json の寸法を受ける v13 補助スタイル
+settings.json             データ、処理、画面の設定
+lib/                     WebView2 の再配布 DLL と表示文書
+archive/winforms/        フェーズ17完了時点で凍結した WinForms 版
 ```
 
-テーブル出力は `.cmd` と同じ階層の `output\` に保存します。ビルド時に空のフォルダーを用意し、無ければテーブル出力を開くときにも作成します。
-統合台帳は配布物に含めません。初回起動時に「保存済みの統合台帳がありません。CSV から新しく作成しますか?」と確認し、
-「はい」を選ぶと同じ階層に `ReaderDataViewer-Ledger.xlsx` を作ります。
-
-Windows PowerShell 5.1 と、Windows に含まれる .NET Framework の C# コンパイラを使います。`dist\` と入力データは生成物なので Git には含めません。
-
-同梱のデータと画面は脱色したサンプルです (表A / 表B / 表C、`SAMPLE-A-0000001` のような値)。現実的な
-ダミーで動かしてみるには `build\gen_samples.ps1` が `samples\` に 3 組 (販売 / 製造 / 施設予約) を
-作るので、その `settings.json` と `data\` を `.vbs` の隣に置いて起動します。
-
-## 使う
-
-1. `dist\app-csharp\ReaderDataViewer.vbs` を起動します。
-2. 監視対象の入力欄へ番号を入れるか、画面の検索欄へ直接入力します。
-3. 複数候補がある場合は候補一覧から 1 件を選びます。
-4. 判定 (OK / NG / 未定義) は画面定義の規則で入力表の値から決まります。
-5. 作業状態 (未処理 → 処理済) は手元へ控えられ、「送信」を押したときだけ共有台帳へ反映されます。
-
-同梱サンプルの表A・表B・表Cは各 1,000 行です。表Bの空の識別子 10 行を設定どおり除外するため、
-統合台帳は 990 行になります。表Cには表Bから参照されない 10 行も含まれます。
-削除例は `delete.csv` 1 本の `key2` と `b_ref` を読み、2 条件とも一致するレコードだけを削除します。
-検索を試すときは、番号1 に次の 8 桁を入れます (完全一致)。
-
-| 番号1 | ヒット件数 |
-|---|---|
-| `00000001` 〜 `00000010` | 5 件 (候補一覧が開く) |
-| `00000011` 〜 `00000060` | 3 件 (候補一覧が開く) |
-| `00000061` 〜 `00000210` | 2 件 (候補一覧が開く) |
-| `00000231` 〜 `00000710` | 1 件 (そのまま表示) |
-| `00000211` 〜 `00000230`、`00000711` 〜 `00001000` | 0 件 (「見つかりません」) |
-| `00001001` 〜 `00001010` | 1 件 (表Aの列は空欄) |
-
-ジョブは結合、抽出、追加、更新、削除、列操作、計算、集計、並べ替え、重複除去、マージ、置換を順に組み合わせます。
-台帳へマージするときの3方向の行き先、入力側の列が変わったときのアプリ所有列、検索列と完全一致／部分一致も JSON で指定します。
-
-アプリはローカルだけで動き、実行時にネットワークへ接続しません。監視対象は UI Automation だけで読み取り、対象アプリへ書き込みません。
-
-## 現行フォルダ
-
-```text
-src/
-  csharp/       製品コード
-  config/       出荷設定と画面定義
-  launcher/     .vbs / .cmd のヘッダーとブートストラップ
-  samples/      検査用の見本設定 (販売 / 製造 / 施設予約 + 画面を変えた 2 変種)
-build/          C# 製品の生成と受け入れ検査
-docs/           現行 C# 版の設計・設定・UI 資料
-archive/        退役物の保全。現行製品からは参照しない
-```
-
-現行製品はこの 4 つだけで成り立ちます。`archive/` の中身は [アーカイブ案内](archive/README.md) を見てください。
-
-詳しい入口は次のとおりです。
-
-- [現行ドキュメント一覧](docs/README.md)
-- [アーキテクチャ](docs/architecture.md)
-- [設定ファイル](docs/settings.md)
-- [画面定義 (`screen`)](docs/ui-spec.md)
-- [アーカイブ案内](archive/README.md)
-
-## 開発時の確認
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File build\build_dist.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\compile_check.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_contract.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_settings_geometry.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_samples.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File build\test_exit_guard.ps1
-```
-
-`build.bat` は C# 製品だけを作り、`archive/` には触れません。
+WinForms 版は [archive/winforms](archive/winforms/) に、内容を変えず一式で保全しています。現役版はそこからコードを参照しません。
 
 ## ライセンス
 
-ソースコードは [CC0 1.0 Universal](LICENSE) です。
+本体は [CC0 1.0 Universal](LICENSE) です。同梱する WebView2 の表示は [第三者ソフトウェアの表示](THIRD-PARTY-NOTICES.md) を参照してください。

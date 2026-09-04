@@ -1,0 +1,393 @@
+// ============================================================================
+// Reader Data Viewer — 設定ファイル
+//
+// ReaderDataViewer.cmd がプログラム本体で、このファイルがそれ以外の設定を
+// すべて持ちます。.cmd と同じフォルダーに置き、起動時に読み込みます。
+// 内容は次の六つです。
+//
+//   paths     入力表、統合台帳、実行ログの場所
+//   search    番号の形式と、候補一覧に表示する最大件数
+//   watch     番号を読み取る外部ウィンドウ（UI Automation）
+//   jobs      バックグラウンド処理の制限時間と確認間隔
+//   data      入力表、列、処理手順、統合台帳の定義
+//   screen    画面に置く部品、値、判定、作業状態、候補一覧の定義
+//
+// このファイルは厳格に読みます。プログラムが知らないメンバー（入力ミス）、
+// 種類や範囲が違う値、存在しない表・列・状態などを参照する名前が一つでも
+// あれば、該当行と理由を示して起動を止めます。黙って無視したり、既定値へ
+// 差し替えたりはしません。設定したつもりの値が効かないまま動くことを防ぐためです。
+//
+//   - // の行コメントと /* ... */ のブロックコメントを使用できます。
+//   - 相対パスは ReaderDataViewer.cmd のあるフォルダーを基準にします。
+//   - 画面の「設定」ボタンが書き戻すのは paths / search / watch だけです。
+//     それ以外と、この冒頭コメントはそのまま残ります。三つのメンバー内へ
+//     書いたコメントは保存時に残らないため、三つの説明はここにまとめています。
+//
+// paths の書き方:
+//   dataDir   CSV / Excel の入力表を置くフォルダー
+//   ledger    統合台帳（.xlsx）のファイル
+//   log       実行ログのファイル
+//   paths の変更は次回起動から有効です。
+//
+// search の書き方:
+//   pattern               入力値全体に一致させる正規表現
+//   candidateRowsShown    候補一覧へ表示する最大行数（総件数は別に表示）
+//   search の変更は「設定」の保存直後から有効です。
+//
+// watch の書き方:
+//   pollMs / stableMs / rebindMs は、順に監視間隔、値を確定するまでの安定時間、
+//   未接続の対象を探し直す間隔（いずれもミリ秒）です。
+//   preferFocusedWindow が true なら、同じ条件の窓が複数あるとき前面を優先します。
+//   targets には同時に監視する対象を並べます。enabled が false の対象は保持だけし、
+//   監視しません。空の配列なら何も監視しません。
+//
+//   一つの対象は window -> path[0] -> path[1] -> field の順にたどります。
+//   各段は UI Automation が公開する次の属性で絞ります。
+//     automationId   アプリが付けた安定した識別子（あれば最優先）
+//     className      ウィンドウまたはコントロールのクラス名
+//     name           表示名の完全一致
+//     nameLike       * と ? を使える表示名
+//     processName    .exe を除いた実行ファイル名
+//     controlTypes   Edit / Document / DataGrid / Pane / Custom など
+//     index          複数一致したときの番号（0 が先頭）
+//     scope          descendants（既定）または children
+//   read は値の読み方で、value（通常）/ text（文書）/ name（表示名）から選びます。
+//
+//   対象を手で書く場合の例:
+//   { "enabled": false,
+//     "name": "在庫照会",
+//     "window": { "processName": "LobApp", "nameLike": "在庫照会*", "scope": "children" },
+//     "path": [ { "automationId": "tabMain" }, { "automationId": "pnlSearch" } ],
+//     "field": { "automationId": "txtBarcode", "controlTypes": ["Edit"] },
+//     "read": "value" }
+//   画面の「画面から選ぶ」を使えば、対象欄へカーソルを合わせて Ctrl + Shift を
+// 押すだけで、この定義を UI Automation の実物から作れます。
+//
+// 全メンバーの説明は docs/settings.md、screen の詳しい書き方は
+// docs/ui-spec.md にあります。どちらも配布物に同梱されます。
+//
+// 下の data と screen は出荷用の脱色したサンプルです。表A / 表B / 表C と
+// SAMPLE-A-0000001 のような値を使っています。現地では data と screen を
+// 実際の入力表と画面へ置き換えます。
+// ============================================================================
+{
+  "schema": 3,
+
+  "paths": {
+    "dataDir": "data",
+    "ledger": "ReaderDataViewer-Ledger.xlsx",
+    "log": "ReaderDataViewer.log"
+  },
+
+  "search": { "pattern": "^[0-9]{8}$", "candidateRowsShown": 100 },
+
+  "watch": {
+    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": { "className": "Notepad", "scope": "children" },
+        "path": [],
+        "field": { "controlTypes": ["Document", "Edit"], "requireValuePattern": true, "scope": "descendants" },
+        "read": "value"
+      }
+    ]
+  },
+
+  // バックグラウンド処理の時間はすべてミリ秒です。
+  // checkTimeoutMs / searchTimeoutMs / saveTimeoutMs は、更新確認・検索・保存の上限。
+  // markOverdueMs は保存が長引いていると知らせるまで、pumpMs は画面側の確認間隔。
+  // lockRetryMs は共有ロックの再試行間隔、lockStaleMs は停止した端末の古いロックを
+  // 解除するまで、markerPollMs は他端末からの更新通知を確認する間隔です。
+  "jobs": {
+    "checkTimeoutMs": 180000,
+    "searchTimeoutMs": 30000,
+    "saveTimeoutMs": 60000,
+    "markOverdueMs": 180000,
+    "pumpMs": 1000,
+    "lockRetryMs": 250,
+    "lockStaleMs": 600000,
+    "markerPollMs": 3000
+  },
+
+  // 入力表と統合台帳の定義。
+  //
+  // tables は paths.dataDir 内の CSV / Excel を短い ID で定義します。
+  // label は画面向けの表名、file はファイル名、key は一行を特定する一意列です。
+  // labels は処理内容とテーブル出力に出す画面向けの名前です。
+  // jobs は更新・削除ボタンから呼ぶ入力と操作を実行順に並べます。利用者が
+  // ジョブを選ぶ画面はありません。各操作の output は後段の対象名にできます。
+  // ledger.columns は入力側が持つ source 列と、アプリが持つ application 列を分けます。
+  // ledger.search は検索対象の一列以上と exact（完全一致）/ contains（部分一致）です。
+  //
+  // 列名は CSV / Excel の先頭行そのものです。窓を開く前に、ここで使う列名を
+  // 実ファイルの見出しと照合します。encoding は CSV だけに使う文字コードで、
+  // utf-8（既定）や shift_jis など Windows が知る名前を書けます。Excel には使いません。
+  //
+  // keyValidation は tables の各表と、jobs.inputs で直接読む外部ファイルに書けます。
+  // 省略時は従来どおり ASCII・固定長・重複エラー・空欄エラーです。照合条件の
+  // 値一覧として読む場合は、次のように Unicode・可変長を許し、重複は最初の
+  // 1行だけを残し、キーが空の行を除外できます。
+  //   "keyValidation": {
+  //     "characters": "unicode", "length": "variable",
+  //     "duplicates": "distinct", "empty": "skip"
+  //   }
+  // 同じファイルを jobs.inputs に複数回書き、column だけを変えれば、複数列を
+  // それぞれ別の照合条件として使えます。
+  //
+  // types は日付・数値として扱う列だけを書く任意メンバーです。書かない列は文字列です。
+  // 日付には実データの書式を format で必ず指定します。書き方は次のとおりです。
+  // この出荷サンプルの実際の宣言は、tables のすぐ下にあります。
+  //   "types": {
+  //     "B.b_date": { "type": "date", "format": "yyyyMMdd" },
+  //     "B.b_qty": { "type": "number" }
+  //   },
+  //
+  // calculate の expression と update の set.expression では、列の一部を新しい列にできます。
+  // 文字列と正規表現・区切り文字はシングルクォートで囲み、位置は 0 を先頭とします。
+  //   regexExtract(B.b_ref, '[A-Z]+[0-9]+')  最初に一致した文字列
+  //   splitPart(B.b_ref, '-', 1)              - で分けた 2 番目
+  //   substring(B.b_ref, 0, 6)                先頭から 6 文字
+  // 空の入力、一致なし、存在しない位置、空の抽出結果は処理エラーになります。
+  // 作った列は output.column の名前で、後続の結合・抽出・更新・削除に使えます。
+  "data": {
+    "encoding": "utf-8",
+    "tables": {
+      "A": { "label": "表A", "file": "tableA.csv", "key": "key1" },
+      "B": { "label": "表B", "file": "tableB.csv", "key": "key2", "keyValidation": { "empty": "skip" } },
+      "C": { "label": "表C", "file": "tableC.csv", "key": "key2" }
+    },
+    "types": {
+      "A.a_date": { "type": "date", "format": "yyyyMMdd" },
+      "B.b_date": { "type": "date", "format": "yyyyMMdd" },
+      "C.c_exp": { "type": "date", "format": "yyyyMMdd" },
+      "A.a_rate": { "type": "number" },
+      "A.a_amount": { "type": "number" },
+      "B.b_qty": { "type": "number" },
+      "B.b_total": { "type": "number" },
+      "C.c_price": { "type": "number" },
+      "C.c_stock": { "type": "number" }
+    },
+    "labels": {
+      "B.key1": "番号1",
+      "B.key2": "番号2",
+      "B.b_line": "行番号",
+      "B.b_ref": "参照番号",
+      "B.b_date": "日付",
+      "B.b_qty": "数量",
+      "B.b_unit": "単位",
+      "B.b_total": "合計",
+      "B.b_status": "状態",
+      "B.b_memo": "メモ",
+      "A.a_name": "名称",
+      "A.a_code": "コード",
+      "A.a_grade": "区分",
+      "A.a_dept": "部門",
+      "A.a_amount": "金額",
+      "C.c_code": "コード",
+      "C.c_name": "名称",
+      "C.c_cat": "分類",
+      "C.c_price": "単価",
+      "C.c_stock": "在庫",
+      "A.key1": "番号1",
+      "C.key2": "番号2",
+      "ledger": "統合台帳",
+      "middle1": "中間1",
+      "middle2": "中間2",
+      "target1": "対象1",
+      "target2": "対象2",
+      "target": "対象"
+    },
+    "jobs": [
+      {
+        "id": "merge-ledger",
+        "name": "3表を統合して台帳へマージする",
+        "kind": "update",
+        "inputs": [
+          { "table": "A" },
+          { "table": "B" },
+          { "table": "C" }
+        ],
+        "steps": [
+          { "operation": "join", "target1": "B", "target2": "A", "keys": ["B.key1", "A.key1"], "condition": "left", "output": "middle1" },
+          { "operation": "join", "target1": "middle1", "target2": "C", "keys": ["B.key2", "C.key2"], "condition": "left", "output": "middle2" },
+          { "operation": "merge", "target1": "middle2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger",
+            "sourceOnly": "add", "both": "update", "targetOnly": "keep" }
+        ]
+      },
+      {
+        "id": "delete-listed-records",
+        "name": "指定ファイルに一致するレコードを削除",
+        "kind": "delete",
+        "inputs": [
+          { "id": "D1", "label": "delete.csv", "file": "delete.csv", "column": "key2", "key": "B.key2" },
+          { "id": "D2", "label": "delete.csv", "file": "delete.csv", "column": "b_ref", "key": "B.b_ref" }
+        ],
+        "steps": [
+          { "operation": "extract", "target1": "ledger", "target2": "D1", "keys": ["B.key2", "B.key2"], "condition": "match", "output": "target1" },
+          { "operation": "extract", "target1": "ledger", "target2": "D2", "keys": ["B.b_ref", "B.b_ref"], "condition": "match", "output": "target2" },
+          { "operation": "extract", "target1": "target1", "target2": "target2", "condition": "both", "output": "target" },
+          { "operation": "delete", "target1": "ledger", "target2": "target", "condition": "", "output": "ledger" }
+        ]
+      }
+    ],
+    "ledger": {
+      "identity": "B.key2",
+      "search": { "columns": ["B.key1"], "match": "exact" },
+      "columns": {
+        "application": [
+          { "name": "workState", "onSourceChange": "reset" }
+        ],
+        "source": [
+        "B.key1", "B.key2",
+        "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note",
+        "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo",
+        "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"
+        ]
+      }
+    }
+  },
+
+  // 画面の定義。
+  //
+  // value の書き方:
+  //   { "field": "A.a_name" }                              台帳の一列
+  //   { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " } 複数列を連結
+  //   { "state": "searchKey" }                            アプリの状態値
+  //   "format": { "kind": "number", "group": true }     数値の表示書式
+  //   "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy-MM-dd" } 日付書式
+  //   "empty": "N/A"                                      空値の代わりに出す文字
+  //
+  // judgments の rules は上から順に試します。equals は完全一致の一覧、pattern は
+  // 正規表現、empty は空かどうかです。どれにも一致しなければ undefined、元の値を
+  // 読めなければ error です。どちらも OK へ読み替えず、そのまま画面に出します。
+  //
+  // workState の stored は store.column に保存する文字列、initial は新規または変更後の
+  // 初期状態です。transitions はボタンを押したときの遷移を定義します。確認文の
+  // {B.key2} や {state} は、表示中の値に置き換わります。
+  //
+  // export.defaultFields は、テーブル出力を開いたときに選ぶ列を表示順に並べます。
+  //
+  // card.width は下の寸法の基準幅、startSize は起動時のクライアント領域の大きさ
+  //（CSS px）です。ウィンドウを伸縮すると、画面もその大きさに合わせて組み直します。
+  // card.gap は枠どうし、枠と中身、下部ボタンの上下に共通する間隔です。
+  // card.padding は画面外周と最初の部品との余白です。
+  //
+  // sections は titleBar / keyPanel / columns / fieldList / textBox / statusBand /
+  // sendBar / statusBar を表示順に並べます。寸法は CSS px で、Windows の表示倍率に
+  // 合わせて拡大・縮小します。詳細と各メンバーの一覧は docs/ui-spec.md を参照してください。
+  "screen": {
+    "card": { "width": 780, "startSize": [780, 671], "gap": 8, "padding": [8], "font": "Meiryo UI", "fontSize": 10, "keyValueFontSize": 15, "judgmentFontSize": 15, "unsearchedFontSize": 12 },
+    "judgments": {
+      "status1": {
+        "source": { "field": "B.b_status" },
+        "rules": [
+          { "equals": ["DONE", "OPEN"], "result": "ok" },
+          { "equals": ["HOLD", "VOID"], "result": "ng" }
+        ],
+        "results": {
+          "ok": { "text": "OK", "look": "ok", "icon": "check" },
+          "ng": { "text": "NG", "look": "ng" },
+          "undefined": { "text": "未定義", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      }
+    },
+
+    "workState": {
+      "store": { "column": "処理済み" },
+      "states": [
+        { "id": "todo", "text": "未処理", "short": "未", "look": "neutral", "stored": "FALSE" },
+        { "id": "done", "text": "処理済", "short": "済", "look": "accent", "stored": "TRUE" }
+      ],
+      "initial": "todo",
+      "transitions": [
+        { "from": "todo", "to": "done",
+          "confirm": "表示中のレコード (番号2 = {B.key2}) を処理済にします。よろしいですか?",
+          "done": "処理済の保存が完了しました" },
+        { "from": "done", "to": "todo",
+          "done": "未処理に戻しました" }
+      ],
+      "button": { "text": "{state}(&W)", "tip": "表示中のレコードの処理状態を切り替えます" }
+    },
+
+    "export": {
+      "defaultFields": ["B.key1", "B.key2", "A.a_name", "B.b_status", "$work"]
+    },
+
+    "sections": [
+      { "type": "keyPanel", "title": "検索",
+        "figure": { "label": "現在の番号（番号1）:", "value": { "state": "searchKey" } },
+        "input": { "label": "番号1(&N):", "placeholder": "", "width": 150, "maxLength": 64 },
+        "buttons": [
+          { "action": "search", "text": "検索(&S)", "primary": true, "tip": "入力した番号1 で統合台帳を検索します" },
+          { "action": "clear", "text": "クリア(&C)", "tip": "入力と結果表示を消します (台帳と処理済は消えません)" },
+          { "action": "workState" }
+        ] },
+
+      { "type": "columns", "weights": [1, 1], "gap": 8,
+        "items": [
+          { "type": "fieldList", "title": "番号", "labelWidth": 64, "rowHeight": 24,
+            "rows": [
+              { "label": "番号1", "value": { "field": "B.key1" } },
+              { "label": "番号2", "value": { "field": "B.key2" } },
+              { "label": "行番号", "value": { "field": "B.b_line" } }
+            ] },
+          { "type": "fieldList", "title": "表A の項目", "labelWidth": 78, "rowHeight": 24,
+            "rows": [
+              { "label": "名称", "value": { "field": "A.a_name" } },
+              { "label": "コード", "value": { "field": "A.a_code" } },
+              { "label": "区分", "value": { "field": "A.a_grade" } },
+              { "label": "部門", "value": { "field": "A.a_dept" } },
+              { "label": "日付", "value": { "field": "A.a_date" } },
+              { "label": "金額", "value": { "field": "A.a_amount" } },
+              { "label": "率 ・ フラグ", "value": { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " } }
+            ] }
+        ] },
+
+      { "type": "textBox", "title": "メモ（表B: b_memo）", "lines": 4, "value": { "field": "B.b_memo" } },
+      { "type": "textBox", "title": "備考（表C: c_remark）", "lines": 2, "value": { "field": "C.c_remark" } },
+
+      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 46,
+        "sub": [ { "field": "B.b_status" }, { "state": "workState" } ], "joiner": " ・ " },
+
+      { "type": "sendBar", "height": 31, "value": { "state": "pendingCount" },
+        "buttons": [
+          { "action": "sendChanges", "text": "送信(&U)", "primary": true, "tip": "未送信の処理状態を共有台帳へ送信します" }
+        ] },
+
+      { "type": "statusBar", "height": 20,
+        "segments": [
+          { "value": { "state": "appState" }, "bold": true },
+          { "prefix": "", "value": { "state": "watchLabel" } },
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } },
+          { "prefix": "", "value": { "state": "clock" } }
+        ],
+        "buttons": [
+          { "action": "tableExport", "text": "テーブル出力(&T)...", "tip": "統合台帳を CSV に出力します" },
+          { "action": "updateRecords", "job": "merge-ledger", "text": "レコード更新(&R)...", "tip": "JSON に定義された更新ジョブを表示します" },
+          { "action": "deleteRecords", "job": "delete-listed-records", "text": "レコード削除(&D)...", "tip": "JSON に定義された削除ジョブを表示します" },
+          { "action": "settings", "text": "設定(&S)...", "tip": "監視対象や動作の設定を変更します" }
+        ] }
+    ],
+
+    "candidates": {
+      "title": "候補一覧", "hint": "行をクリックするとレコード詳細を表示します",
+      "width": 744, "maxHeight": 168, "rowHeight": 20, "headerHeight": 20,
+      "columns": [
+        { "header": "#", "width": 26, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "番号2", "width": 84, "value": { "field": "B.key2" }, "bold": true },
+        { "header": "行番号", "width": 54, "align": "right", "value": { "field": "B.b_line" } },
+        { "header": "参照番号", "width": 96, "value": { "field": "B.b_ref" } },
+        { "header": "日付", "width": 76, "value": { "field": "B.b_date" } },
+        { "header": "数量", "width": 50, "align": "right", "value": { "field": "B.b_qty" } },
+        { "header": "状態", "width": 64, "value": { "field": "B.b_status" }, "render": "tag",
+          "looks": { "DONE": "accent", "HOLD": "outline", "VOID": "faded", "*": "neutral" } },
+        { "header": "コード", "width": 72, "value": { "field": "C.c_code" } },
+        { "header": "名称", "width": 94, "value": { "field": "C.c_name" } },
+        { "header": "処理済", "value": { "state": "workStateShort" }, "render": "tag" }
+      ]
+    }
+  }
+}
