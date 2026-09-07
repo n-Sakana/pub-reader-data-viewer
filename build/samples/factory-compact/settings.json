@@ -1,0 +1,188 @@
+// ============================================================================
+// サンプル「製造 (コンパクト)」 -- factory と同じ CSV で、1 カラムの詰めた画面
+//
+// レイアウト検査用: columns を使わない (全幅の fieldList 12 行、行高 34)、
+// 余白を詰める (gap 8 / padding 8、セクションの margin)、起動サイズは縦長
+// 720×900、ボタンの並びを 検索 / 状態 / クリア に、候補一覧は幅 700 で 5 列。
+// ============================================================================
+{
+  "schema": 3,
+
+  "paths": {
+    "dataDir": "data",
+    "ledger": "factory-compact-Ledger.xlsx",
+    "log": "ReaderDataViewer.log"
+  },
+
+  "search": { "pattern": "^LT[0-9]{6}$", "candidateRowsShown": 100 },
+
+  "watch": {
+    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": { "className": "Notepad", "scope": "children" },
+        "path": [],
+        "field": { "controlTypes": ["Document", "Edit"], "requireValuePattern": true, "scope": "descendants" },
+        "read": "value"
+      }
+    ]
+  },
+
+  "jobs": {
+    "checkTimeoutMs": 180000,
+    "searchTimeoutMs": 30000,
+    "saveTimeoutMs": 60000,
+    "markOverdueMs": 180000,
+    "pumpMs": 1000
+  },
+
+  "data": {
+    "encoding": "utf-8",
+    "tables": {
+      "I": { "label": "検査記録", "file": "inspections.csv", "key": "inspection_id" },
+      "L": { "label": "ロット", "file": "lots.csv", "key": "lot_no" },
+      "P": { "label": "製品", "file": "products.csv", "key": "part_no" },
+      "M": { "label": "設備", "file": "machines.csv", "key": "machine_id" }
+    },
+    "types": {
+      "I.inspected_at": { "type": "date", "format": "yyyyMMddHHmm" },
+      "L.produced_on": { "type": "date", "format": "yyyyMMdd" },
+      "I.measured": { "type": "number" },
+      "L.qty": { "type": "number" }
+    },
+    "labels": {
+      "I.lot_no": "ロット番号", "L.lot_no": "ロット番号", "I.part_no": "品番", "P.part_no": "品番",
+      "I.machine_id": "設備番号", "M.machine_id": "設備番号", "I.inspection_id": "検査番号",
+      "ledger": "統合台帳",
+      "middle1": "中間1", "middle2": "中間2", "middle3": "中間3"
+    },
+    "jobs": [
+      {
+        "id": "replace-ledger", "name": "検査記録から統合台帳を作り直す", "kind": "update",
+        "inputs": [ { "table": "L" }, { "table": "I" }, { "table": "P" }, { "table": "M" } ],
+        "steps": [
+          { "operation": "join", "target1": "I", "target2": "L", "keys": ["I.lot_no", "L.lot_no"], "condition": "left", "output": "middle1" },
+          { "operation": "join", "target1": "middle1", "target2": "P", "keys": ["I.part_no", "P.part_no"], "condition": "left", "output": "middle2" },
+          { "operation": "join", "target1": "middle2", "target2": "M", "keys": ["I.machine_id", "M.machine_id"], "condition": "left", "output": "middle3" },
+          { "operation": "replace", "target1": "middle3", "target2": "ledger", "keys": ["I.inspection_id", "I.inspection_id"], "condition": "", "output": "ledger" }
+        ]
+      }
+    ],
+    "ledger": {
+      "identity": "I.inspection_id",
+      "search": { "columns": ["I.lot_no"], "match": "exact" },
+      "columns": {
+        "application": [ { "name": "workState", "onSourceChange": "reset" } ],
+        "source": [
+        "I.inspection_id", "I.lot_no", "I.part_no", "I.machine_id", "I.inspected_at", "I.inspector",
+        "I.measured", "I.lower", "I.upper", "I.result_code", "I.comment",
+        "L.produced_on", "L.shift", "L.operator", "L.qty", "L.line",
+        "P.part_name", "P.material", "P.drawing_no", "P.unit",
+        "M.machine_name", "M.location", "M.calibrated_on", "M.status"
+        ]
+      }
+    }
+  },
+
+  "screen": {
+    "card": { "width": 1240, "startSize": [720, 900], "gap": 8, "padding": 8, "font": "Yu Gothic UI" },
+    "judgments": {
+      "result": {
+        "source": { "field": "I.result_code" },
+        "rules": [
+          { "pattern": "^OK", "result": "ok" },
+          { "pattern": "^NG", "result": "ng" },
+          { "equals": ["RETEST"], "result": "retest" },
+          { "empty": true, "result": "none" }
+        ],
+        "results": {
+          "ok": { "text": "合格", "look": "ok", "icon": "check" },
+          "ng": { "text": "不合格", "look": "ng" },
+          "retest": { "text": "再検査", "look": "undefined" },
+          "none": { "text": "未検査", "look": "undefined" },
+          "undefined": { "text": "未定義", "look": "undefined" },
+          "error": { "text": "エラー", "look": "error" }
+        }
+      }
+    },
+
+    "workState": {
+      "store": { "column": "対応" },
+      "states": [
+        { "id": "open", "text": "未対応", "short": "未", "look": "neutral", "stored": "OPEN" },
+        { "id": "doing", "text": "対応中", "short": "中", "look": "outline", "stored": "DOING" },
+        { "id": "done", "text": "対応済", "short": "済", "look": "accent", "stored": "DONE" }
+      ],
+      "initial": "open",
+      "transitions": [
+        { "from": "open", "to": "doing", "done": "対応中として保存しました" },
+        { "from": "doing", "to": "done",
+          "confirm": "検査 {I.inspection_id} を対応済にします。よろしいですか?",
+          "done": "対応済として保存しました" }
+      ],
+      "button": { "text": "{state}", "tip": "次の状態へ進めます" }
+    },
+
+    "export": {
+      "defaultFields": ["I.inspection_id", "I.lot_no", "I.part_no", "I.machine_id", "$work"]
+    },
+
+    "sections": [
+      { "type": "keyPanel",
+        "figure": { "label": "ロット", "value": { "state": "searchKey" } },
+        "input": { "placeholder": "LT000000", "width": 160, "maxLength": 8 },
+        "buttons": [
+          { "action": "search", "text": "検索", "icon": "search", "primary": true, "tip": "ロット番号で検査記録を検索します" },
+          { "action": "workState" },
+          { "action": "clear", "text": "クリア", "tip": "入力と結果表示を消します" }
+        ] },
+
+      { "type": "fieldList", "title": "検査 ・ ロット ・ 製品 ・ 設備", "labelWidth": 150, "rowHeight": 34, "margin": [0, 8],
+        "rows": [
+          { "label": "検査ID", "value": { "field": "I.inspection_id" } },
+          { "label": "検査日時", "value": { "field": "I.inspected_at", "format": { "kind": "date", "from": "yyyyMMddHHmm", "to": "yyyy/MM/dd HH:mm" } } },
+          { "label": "検査員", "value": { "field": "I.inspector" } },
+          { "label": "測定値 (規格)", "value": { "fields": ["I.measured", "I.lower", "I.upper"], "joiner": " | " } },
+          { "label": "判定コード", "value": { "field": "I.result_code", "empty": "（なし）" } },
+          { "label": "ロット製造日", "value": { "field": "L.produced_on", "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy/MM/dd" } } },
+          { "label": "シフト ・ ライン", "value": { "fields": ["L.shift", "L.line"], "joiner": " ・ " } },
+          { "label": "作業者", "value": { "field": "L.operator" } },
+          { "label": "ロット数量", "value": { "field": "L.qty", "format": { "kind": "number", "group": true } } },
+          { "label": "品番 ・ 品名", "value": { "fields": ["I.part_no", "P.part_name"], "joiner": "  " } },
+          { "label": "材質 ・ 図番", "value": { "fields": ["P.material", "P.drawing_no"], "joiner": " / " } },
+          { "label": "設備", "value": { "fields": ["M.machine_name", "M.location"], "joiner": " @ ", "empty": "（設備マスタなし）" } }
+        ] },
+
+      { "type": "textBox", "title": "コメント", "lines": 1, "value": { "field": "I.comment", "empty": "（コメントなし）" } },
+
+      { "type": "statusBand", "label": "判定", "judgment": "result", "height": 64, "margin": [12, 8, 0],
+        "sub": [ { "field": "I.result_code", "empty": "（判定コードなし）" } ] },
+
+      { "type": "statusBar", "height": 40,
+        "segments": [
+          { "value": { "state": "appState" }, "bold": true, "dot": true },
+          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } }
+        ],
+        "buttons": [
+          { "action": "refreshLedger", "text": "台帳更新", "icon": "refresh", "tip": "CSV の変更を確認して台帳を更新します" },
+          { "action": "settings", "text": "設定", "icon": "gear", "tip": "監視対象や動作の設定を変更します" }
+        ] }
+    ],
+
+    "candidates": {
+      "title": "検査記録", "hint": "行をクリックすると表示します",
+      "width": 700, "maxHeight": 260, "rowHeight": 36, "headerHeight": 30,
+      "columns": [
+        { "header": "#", "width": 30, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
+        { "header": "検査ID", "width": 110, "value": { "field": "I.inspection_id" }, "bold": true },
+        { "header": "検査日時", "width": 140, "value": { "field": "I.inspected_at", "format": { "kind": "date", "from": "yyyyMMddHHmm", "to": "MM/dd HH:mm" } } },
+        { "header": "測定値", "width": 80, "align": "right", "value": { "field": "I.measured" } },
+        { "header": "判定", "value": { "field": "I.result_code", "empty": "-" }, "render": "tag",
+          "looks": { "OK": "accent", "RETEST": "outline", "*": "neutral" } },
+        { "header": "対応", "width": 56, "value": { "state": "workStateShort" }, "render": "tag" }
+      ]
+    }
+  }
+}

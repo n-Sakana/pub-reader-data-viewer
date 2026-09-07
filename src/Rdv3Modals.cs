@@ -103,7 +103,7 @@ public static class Rdv3LedgerUpdateForm
 
 public static class Rdv3UnmatchedForm
 {
-    public static void Tell(Rdv3Form owner, List<Rdv3UnmatchedChange> values)
+    public static bool Tell(Rdv3Form owner, List<Rdv3UnmatchedChange> values)
     {
         List<Rdv3UnmatchedChange> rows = values ?? new List<Rdv3UnmatchedChange>();
         StringBuilder sb = new StringBuilder();
@@ -119,10 +119,12 @@ public static class Rdv3UnmatchedForm
             sb.Append("[").Append(Rdv3WebJson.Q((i + 1).ToString(CultureInfo.InvariantCulture)));
             sb.Append(',').Append(Rdv3WebJson.Q(rows[i].Identity));
             sb.Append(',').Append(Rdv3WebJson.Q(rows[i].Reason == "missing"
-                ? Rdv3Text.UnmatchedMissing : Rdv3Text.UnmatchedChanged)).Append(']');
+                ? Rdv3Text.UnmatchedMissing : (rows[i].Reason == "state-conflict" ? Rdv3Text.StateConflict
+                    : (rows[i].Reason == "legacy" ? Rdv3Text.LegacyPending : Rdv3Text.UnmatchedChanged)))).Append(']');
         }
-        sb.Append("]}");
-        owner.ShowModal("unmatched", sb.ToString());
+        sb.Append("],\"discardText\":").Append(Rdv3WebJson.Q(Rdv3Text.DiscardPendingButton)).Append('}');
+        Rdv3Json result = owner.ShowModal("unmatched", sb.ToString());
+        return Rdv3Form.Flag(result, "discard", false);
     }
 }
 
@@ -402,6 +404,7 @@ public sealed class Rdv3ExportFilter
 public sealed class Rdv3ExportRequest
 {
     public string Path = "";
+    public bool ExcelSafe = true;
     public List<string> Fields = new List<string>();
     public List<Rdv3ExportFilter> Filters = new List<Rdv3ExportFilter>();
 
@@ -435,9 +438,12 @@ public static class Rdv3ExportForm
         content.Append(",\"defaults\":").Append(Rdv3WebJson.S(screen.ExportDefaultFields));
         content.Append(",\"fields\":[");
         bool comma = false;
-        for (int i = 0; i < data.LabelOrder.Count; i++)
+        List<string> exportOrder = new List<string>(data.LabelOrder);
+        for (int i = 0; i < data.Columns.Count; i++)
+        { if (!exportOrder.Contains(data.Columns[i].Ref)) { exportOrder.Add(data.Columns[i].Ref); } }
+        for (int i = 0; i < exportOrder.Count; i++)
         {
-            string reference = data.LabelOrder[i];
+            string reference = exportOrder[i];
             int column = data.IndexOf(reference);
             if (column < 0) { continue; }
             if (comma) { content.Append(','); }
@@ -446,7 +452,7 @@ public static class Rdv3ExportForm
             Rdv3ColumnTypeDef type = data.TypeOf(reference);
             content.Append("{\"ref\":").Append(Rdv3WebJson.Q(reference));
             content.Append(",\"label\":").Append(Rdv3WebJson.Q(
-                data.LabelOf(reference) + " (" + reference + ")"));
+                data.LabelOf(reference).Length == 0 ? reference : data.LabelOf(reference) + " (" + reference + ")"));
             content.Append(",\"kind\":").Append(Rdv3WebJson.Q(type == null ? "text" : type.Type));
             content.Append(",\"format\":").Append(Rdv3WebJson.Q(type == null ? "" : type.Format)).Append('}');
         }
@@ -456,7 +462,7 @@ public static class Rdv3ExportForm
         content.Append("{\"ref\":\"$work\",\"label\":").Append(Rdv3WebJson.Q(
             state == null ? screen.Work.Column : state.Text));
         content.Append(",\"kind\":\"text\",\"format\":\"\"}");
-        content.Append("]}");
+        content.Append("],\"excelSafeText\":").Append(Rdv3WebJson.Q(Rdv3Text.ExcelSafe)).Append('}');
 
         Rdv3Json result;
         owner.SetExportFilterData(data);
@@ -465,6 +471,7 @@ public static class Rdv3ExportForm
         if (!Rdv3Form.Flag(result, "ok", false)) { return null; }
         Rdv3ExportRequest request = new Rdv3ExportRequest();
         request.Path = Rdv3Form.Text(result, "path").Trim();
+        request.ExcelSafe = Rdv3Form.Flag(result, "excelSafe", true);
         Rdv3Json selected = result.Member("fields");
         if (selected != null && selected.Kind == Rdv3Json.TArray)
         {
@@ -473,7 +480,7 @@ public static class Rdv3ExportForm
                 Rdv3Json item = selected.At(i);
                 if (item != null && item.Kind == Rdv3Json.TString && refs.Contains(item.Str))
                 {
-                    request.Fields.Add(item.Str);
+                    if (!request.Fields.Contains(item.Str)) { request.Fields.Add(item.Str); }
                 }
             }
         }

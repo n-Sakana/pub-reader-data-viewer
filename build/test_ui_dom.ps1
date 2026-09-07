@@ -21,7 +21,7 @@ if ($null -eq (Get-Command node.exe -ErrorAction SilentlyContinue)) {
 }
 
 $facts = @{}
-$expectedPath = Join-Path $Root 'data-1k\expected.txt'
+$expectedPath = Join-Path $Root 'data\expected.txt'
 if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
     throw "sample evidence is missing: $expectedPath"
 }
@@ -36,7 +36,7 @@ foreach ($name in 'unmatchedA.firstkey', 'unmatchedA.firstidentity', 'cand5.firs
 }
 
 $scratch = New-RdvTestDirectory -Root $Root -Name 'ui-dom'
-foreach ($file in 'ReaderDataViewer.ps1', 'settings.json') {
+foreach ($file in 'settings.json') {
     Copy-Item -LiteralPath (Join-Path $Root $file) -Destination $scratch
 }
 foreach ($directory in 'src', 'lib', 'web', 'data') {
@@ -72,7 +72,7 @@ $merge = [Rdv3Ledger]::BuildFromCsv($cfg.Data, $dataDirectory)
 $states = [Rdv3Ledger]::FreshStates(
     $merge.Lines.Length,
     $cfg.Screen.Work.InitialStored)
-$ledgerPath = Join-Path $scratch 'ReaderDataViewer-Ledger.xlsx'
+$ledgerPath = Join-Path $scratch $cfg.Ledger
 [Rdv3Xlsx]::Write(
     $ledgerPath,
     $merge.Head,
@@ -92,7 +92,7 @@ try {
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = 'powershell.exe'
     $start.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "' +
-        (Join-Path $scratch 'ReaderDataViewer.ps1') + '"'
+        (Join-Path $scratch 'src\ReaderDataViewer.ps1') + '"'
     $start.WorkingDirectory = $scratch
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
@@ -124,19 +124,76 @@ finally {
         Write-Output ("closing test-owned app process {0}" -f $process.Id)
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
-    Write-Output ("scratch: {0}" -f $scratch)
+    Remove-RdvTestDirectory -Path $scratch -Passed ($result -eq 0)
 }
 
 $variantScript = Join-Path $Root 'build\test_ui_layout_variant.ps1'
-$parityRoot = Join-Path $Root 'work\phase18-parity-20260904-fukushima'
+
+# The two layout extremes are derived from the shipped settings.json, into a
+# directory this run owns. They used to be kept by hand under work\, which is
+# scratch: one cleanup of that directory took the check with it. A screen that
+# is built from a definition can always be re-derived from that definition.
+#
+#   emphasis-max  the three emphasis sizes at their ceiling (6..36 in
+#                 Rdv3Screen), in a window wide enough to hold them
+#   gap-zero      gap and padding at their floor (0), shipped window
+#
+# The expected pixels live in build\test_ui_layout_variant.js; if the shipped
+# card definition drifts away from them, these checks fail, which is the point.
+$fixtureRoot = New-RdvTestDirectory -Root $Root -Name 'ui-dom-layout-fixtures'
+$settingsText = [IO.File]::ReadAllText(
+    (Join-Path $Root 'settings.json'), [Text.Encoding]::UTF8)
+$cardPattern = '(?m)^(\s*)("card":\s*\{[^\r\n]*\},)\s*$'
+$cardMatches = [regex]::Matches($settingsText, $cardPattern)
+if ($cardMatches.Count -ne 1) {
+    throw 'settings.json must hold exactly one single-line screen.card definition'
+}
+$cardLine = $cardMatches[0].Groups[2].Value
+
+function Set-RdvCardValues {
+    param([string] $Card, [hashtable] $Values)
+
+    foreach ($key in $Values.Keys) {
+        $pattern = '("' + [regex]::Escape($key) + '":\s*)(\[[^\]]*\]|[^,}]+)'
+        if ([regex]::Matches($Card, $pattern).Count -ne 1) {
+            throw ("screen.card has no single {0} to set" -f $key)
+        }
+        $Card = [regex]::Replace($Card, $pattern, ('${1}' + $Values[$key]))
+    }
+    return $Card
+}
+
+function New-RdvLayoutFixture {
+    param([string] $Name, [hashtable] $Values)
+
+    $directory = Join-Path $fixtureRoot $Name
+    New-Item -ItemType Directory -Path $directory | Out-Null
+    $path = Join-Path $directory 'settings.json'
+    $card = Set-RdvCardValues -Card $cardLine -Values $Values
+    [IO.File]::WriteAllText(
+        $path,
+        [regex]::Replace($settingsText, $cardPattern, ('${1}' + $card)),
+        (New-Object Text.UTF8Encoding($false)))
+    return $path
+}
+
 $variantCases = @(
     @{
         Name = 'emphasis-max'
-        Settings = Join-Path $parityRoot '04-emphasis-max\settings.json'
+        Settings = New-RdvLayoutFixture -Name 'emphasis-max' -Values @{
+            'width' = '1000'
+            'startSize' = '[1000, 760]'
+            'keyValueFontSize' = '36'
+            'judgmentFontSize' = '36'
+            'unsearchedFontSize' = '36'
+        }
     },
     @{
         Name = 'gap-zero'
-        Settings = Join-Path $parityRoot '02-gap-zero\settings.json'
+        Settings = New-RdvLayoutFixture -Name 'gap-zero' -Values @{
+            'gap' = '0'
+            'padding' = '[0]'
+        }
     }
 )
 foreach ($variant in $variantCases) {
@@ -153,6 +210,7 @@ foreach ($variant in $variantCases) {
 }
 
 Write-Output ''
+Remove-RdvTestDirectory -Path $fixtureRoot -Passed ($result -eq 0)
 if ($result -eq 0) {
     Write-Output '86 passed, 0 failed (70 default + 8 emphasis-max + 8 gap-zero)'
     Write-Output 'RESULT: PASS (full screen matrix)'

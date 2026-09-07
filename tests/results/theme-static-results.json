@@ -1,0 +1,273 @@
+{
+  "scope": "Source fingerprints, configuration, sampled contrast and JS syntax. Not native execution or a full accessibility audit.",
+  "utc": "2026-09-07T23:00:40.528669+00:00",
+  "details": {
+    "apple-sampled-text-contrast": {
+      "body": 16.83,
+      "muted": 5.743,
+      "primary": 5.567,
+      "selected-label": 4.974
+    },
+    "material-sampled-text-contrast": {
+      "body": 16.483,
+      "muted": 8.357,
+      "primary": 6.386,
+      "selected-label": 4.919
+    },
+    "fluent-sampled-text-contrast": {
+      "body": 15.523,
+      "muted": 6.923,
+      "primary": 6.308,
+      "selected-label": 5.529
+    },
+    "carbon-sampled-text-contrast": {
+      "body": 18.096,
+      "muted": 7.104,
+      "primary": 5.002,
+      "selected-label": 6.452
+    },
+    "spectrum-sampled-text-contrast": {
+      "body": 15.91,
+      "muted": 6.711,
+      "primary": 5.388,
+      "selected-label": 4.68
+    }
+  },
+  "tests": [
+    {
+      "name": "preserved:LICENSE",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:ReaderDataViewer.cmd",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:ReaderDataViewer.vbs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:THIRD-PARTY-NOTICES.md",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:data/ReaderDataViewer.log",
+      "status": "FAIL",
+      "detail": "Uploaded baseline differs"
+    },
+    {
+      "name": "preserved:data/delete.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:data/tableA.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:data/tableB.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:data/tableC.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:lib/LICENSE-Microsoft.Web.WebView2.txt",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:lib/Microsoft.Web.WebView2.Core.dll",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:lib/Microsoft.Web.WebView2.Wpf.dll",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:lib/NOTICE-Microsoft.Web.WebView2.txt",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:lib/WebView2Loader.dll",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:settings.json",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/01_App.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3App.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Config.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Core.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Csv.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Data.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Files.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Index.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Jobs.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Json.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Ledger.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Modals.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Process.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Screen.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Settings.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Shared.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Text.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Ui.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Uia.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Values.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Watch.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Xlsx.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/ReaderDataViewer.ps1",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/RegressionTests.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/fixtures/data/delete.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/fixtures/data/tableA.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/fixtures/data/tableB.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/fixtures/data/tableC.csv",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/fixtures/settings.json",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/test_static.py",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/test_web.py",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:web/app.css",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:web/app.js",
+      "status": "PASS"
+    },
+    {
+      "name": "six-theme-catalog",
+      "status": "PASS"
+    },
+    {
+      "name": "classic-default-theme-markers",
+      "status": "PASS"
+    },
+    {
+      "name": "apple:sampled-text-contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "material:sampled-text-contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "fluent:sampled-text-contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "carbon:sampled-text-contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "spectrum:sampled-text-contrast",
+      "status": "PASS"
+    },
+    {
+      "name": "presentation-script-syntax-and-boundaries",
+      "status": "PASS"
+    },
+    {
+      "name": "no-new-network-assets",
+      "status": "PASS"
+    },
+    {
+      "name": "windows-script-encodings",
+      "status": "PASS"
+    }
+  ],
+  "passed": 57,
+  "failed": 1
+}

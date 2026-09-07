@@ -16,6 +16,52 @@
   var activeCalendar = null;
   var mainFocusDone = false;
 
+  var dialogMode = window.location.hash === '#dialog';
+  if (dialogMode) { document.documentElement.classList.add('dialogmode'); }
+
+  // The dialog window opens off screen at a generous size; report what the
+  // dialog measured so the host can fit the window to it and centre it.
+  // A dialog can be replaced in place (設定 -> 画面から選ぶ) or grow when a
+  // message appears, so watch the size instead of reporting once on open.
+  function reportDialogSize() {
+    var veil = document.querySelector('.veil.show');
+    var dialog = veil ? veil.querySelector('.dlg') : null;
+    if (!dialog) { return; }
+    var box = dialog.getBoundingClientRect();
+    var width = Math.ceil(box.width);
+    var height = Math.ceil(box.height);
+    if (width < 1 || height < 1) { return; }
+    // Say nothing while the window already fits. Not a de-duplicate on the
+    // reported value -- a dialog can be swapped back and forth in place -- but
+    // on whether the window still needs changing, which also stops the report
+    // and the resize chasing each other.
+    if (Math.abs(width - window.innerWidth) <= 1 &&
+        Math.abs(height - window.innerHeight) <= 1) { return; }
+    var title = dialog.querySelector('.tb .ttl');
+    post({
+      type: 'dialogSize',
+      width: width,
+      height: height,
+      title: title ? title.textContent : ''
+    });
+  }
+
+  function watchDialogSize() {
+    if (!dialogMode) { return; }
+    var stage = document.querySelector('.stage');
+    if (stage && window.ResizeObserver) {
+      new window.ResizeObserver(function () { reportDialogSize(); }).observe(stage);
+    }
+    // If the window ends up a size the dialog did not ask for -- a late report
+    // from a dialog that has already been replaced -- say so again. The dialog
+    // is a fixed width, so this settles after one correction.
+    window.addEventListener('resize', function () {
+      window.clearTimeout(reportDialogSize.pending);
+      reportDialogSize.pending = window.setTimeout(reportDialogSize, 60);
+    });
+  }
+  if (dialogMode) { document.addEventListener('DOMContentLoaded', watchDialogSize); watchDialogSize(); }
+
   function post(message) {
     if (window.chrome && window.chrome.webview) {
       window.chrome.webview.postMessage(message);
@@ -62,6 +108,8 @@
     });
   }
 
+  var actionCounts = {};
+
   function button(definition, extraClass) {
     var action = definition.action || '';
     var node = element('div', (action === 'workState' ? 'tog' : 'btn') +
@@ -70,7 +118,9 @@
     node.setAttribute('role', 'button');
     node.setAttribute('data-action', action);
     node.setAttribute('data-job', definition.job || '');
-    node.id = actionId(action);
+    var count = (actionCounts[action] || 0) + 1;
+    actionCounts[action] = count;
+    node.id = actionId(action) + (count > 1 ? '-' + count : '');
     if (definition.tip) { node.title = definition.tip; node.setAttribute('aria-label', definition.tip); }
     setMnemonic(node, definition.text || action);
     activate(node, function () {
@@ -125,7 +175,14 @@
     input.style.width = px(definition.inputWidth);
     input.style.flex = 'none';
     if (definition.placeholder) { input.setAttribute('data-placeholder', definition.placeholder); }
-    input.addEventListener('input', onKeyInput);
+    input.addEventListener('input', function (event) { if (!event.isComposing) { onKeyInput(); } });
+    input.addEventListener('compositionend', onKeyInput);
+    input.addEventListener('paste', function (event) {
+      event.preventDefault();
+      var text = (event.clipboardData || window.clipboardData).getData('text/plain').replace(/[\r\n\t]/g, '');
+      document.execCommand('insertText', false, text);
+      onKeyInput();
+    });
     input.addEventListener('keydown', function (event) {
       if (event.key === 'Enter') {
         event.preventDefault();
@@ -144,12 +201,14 @@
 
   function onKeyInput() {
     var max = Number(input.getAttribute('data-max-length')) || 64;
-    var value = input.textContent.replace(/[\r\n]/g, '');
-    if (value.length > max) { value = value.slice(0, max); input.textContent = value; placeCaretEnd(input); }
+    var value = input.textContent.replace(/[\r\n\t]/g, '');
+    if (value.length > max) { value = value.slice(0, max); }
+    // Keep the submitted value and the visible DOM identical, even after paste.
+    if (input.textContent !== value || input.children.length) { input.textContent = value; placeCaretEnd(input); }
     post({ type: 'key', value: value });
   }
 
-  function keyValue() { return input ? input.textContent.trim() : ''; }
+  function keyValue() { return input ? input.textContent.replace(/[\r\n\t]/g, '').trim() : ''; }
 
   function placeCaretEnd(node) {
     var range = document.createRange();
@@ -300,6 +359,7 @@
 
   function renderScreen(definition) {
     screen = definition;
+    actionCounts = {};
     stage.classList.add('runtime');
     var card = definition.card;
     stage.style.setProperty('--card-width', px(card.width));
@@ -334,7 +394,7 @@
       if (entry.type === 'titleBar') { titleDefinition = entry; }
       if (entry.type === 'statusBar') { statusDefinition = entry; }
     });
-    windowNode.appendChild(renderTitle(titleDefinition));
+    if (titleDefinition) { windowNode.appendChild(renderTitle(titleDefinition)); }
     var client = element('div', 'client');
     var stack = element('div', 'stack');
     var commandsPlaced = false;
@@ -479,6 +539,9 @@
     body.textContent = '';
     veil.classList.add('show');
     currentModal = veil;
+    if (dialogMode) {
+      requestAnimationFrame(function () { requestAnimationFrame(reportDialogSize); });
+    }
     return { veil: veil, dialog: dialog, body: body };
   }
 
@@ -640,7 +703,9 @@
       { header: '理由' }
     ], content.rows, { readOnly: true }));
     var foot = element('div', 'foot');
-    foot.appendChild(modalButton('OK', true, function () { finishModal({ ok: true }); }));
+    foot.appendChild(modalButton(content.discardText || '一覧の未送信変更を破棄', false,
+      function () { finishModal({ ok: true, discard: true }); }));
+    foot.appendChild(modalButton('OK', true, function () { finishModal({ ok: true, discard: false }); }));
     shell.body.appendChild(foot);
   }
 
@@ -988,6 +1053,7 @@
     display.setAttribute('aria-label', '日付を選ぶ');
     display.setAttribute('data-field', field || '');
     var chosen = new Date();
+    chosen.setHours(0, 0, 0, 0);
     var shownMonth = new Date(chosen.getFullYear(), chosen.getMonth(), 1);
     var popup = element('div', 'calendar-popup');
     popup.setAttribute('role', 'dialog');
@@ -1099,14 +1165,16 @@
     picker.style.gap = 'var(--card-gap)';
     picker.style.alignItems = 'stretch';
     var left = element('div'); left.style.flex = '1 1 0'; left.style.minWidth = '0';
-    left.appendChild(element('div', 'lab', '出力できる項目'));
+    var leftHead = element('div', 'listhead');
+    leftHead.appendChild(element('span', 'lab', '出力できる項目'));
+    left.appendChild(leftHead);
     var leftList = element('div', 'lb'); leftList.style.height = '180px';
     leftList.setAttribute('role', 'listbox'); leftList.setAttribute('aria-label', '出力できる項目');
     left.appendChild(leftList);
     var mover = element('div'); mover.style.display = 'flex'; mover.style.flexDirection = 'column';
     mover.style.justifyContent = 'center'; mover.style.gap = 'var(--card-gap)';
     var right = element('div'); right.style.flex = '1 1 0'; right.style.minWidth = '0';
-    var rightHead = element('div'); rightHead.style.display = 'flex'; rightHead.style.alignItems = 'center';
+    var rightHead = element('div', 'listhead');
     var rightTitle = element('span', 'lab'); rightTitle.style.flex = '1'; rightHead.appendChild(rightTitle);
     var reset = modalButton('既定に戻す', false, function () {
       selected = content.defaults.filter(function (reference) { return !!byRef[reference]; });
@@ -1301,6 +1369,11 @@
     updateOperators();
     var pathRow = element('div', 'kv export-path'); pathRow.style.marginTop = '9px';
     pathRow.appendChild(element('label', '', '出力先'));
+    var safeRow = element('label', 'export-safe');
+    var excelSafe = element('input'); excelSafe.type = 'checkbox'; excelSafe.checked = true;
+    excelSafe.id = 'export-excel-safe'; safeRow.appendChild(excelSafe);
+    safeRow.appendChild(document.createTextNode(content.excelSafeText || 'Excel向けに数式を無効化'));
+    shell.body.appendChild(safeRow);
     var destination = editable(content.destination, 'exportPath'); pathRow.appendChild(destination);
     pathRow.appendChild(browseButton('exportPath', 'export', destination)); shell.body.appendChild(pathRow);
     var error = element('div', 'setting-error'); error.hidden = true; error.setAttribute('role', 'alert'); shell.body.appendChild(error);
@@ -1309,7 +1382,11 @@
       if (!selected.length) {
         error.textContent = '出力する項目を 1 つ以上選んでください。'; error.hidden = false; return;
       }
-      finishModal({ ok: true, path: destination.textContent.trim(), fields: selected, filters: filters });
+      var path = destination.textContent.trim();
+      if (!/\.csv$/i.test(path)) {
+        error.textContent = '出力先には .csv ファイルを指定してください。'; error.hidden = false; return;
+      }
+      finishModal({ ok: true, path: path, fields: selected, filters: filters, excelSafe: excelSafe.checked });
     }));
     foot.appendChild(modalButton('キャンセル', false, function () { finishModal({ ok: false }); }));
     shell.body.appendChild(foot);
@@ -1392,6 +1469,10 @@
   }
 
   document.addEventListener('keydown', function (event) {
+    if (event.isComposing || event.keyCode === 229) { event.stopImmediatePropagation(); }
+  }, true);
+
+  document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && activeCalendar) {
       event.preventDefault(); closeCalendar(true); return;
     }
@@ -1407,7 +1488,7 @@
       }
     }
     if (event.key === 'Tab' && currentModal) {
-      var items = Array.prototype.filter.call(currentModal.querySelectorAll('[contenteditable=true],[tabindex="0"],select'), function (node) {
+      var items = Array.prototype.filter.call(currentModal.querySelectorAll('[contenteditable=true],[tabindex="0"],select,input:not([disabled])'), function (node) {
         return node.offsetParent !== null && node.getAttribute('aria-disabled') !== 'true';
       });
       if (!items.length) { return; }

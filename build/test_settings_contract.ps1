@@ -949,5 +949,6 @@ Ok 'releasing removes only the exact lock file' (-not (Test-Path -LiteralPath ($
 Write-Output ''
 Write-Output ("{0} passed, {1} failed" -f $script:pass, $script:fail)
 Write-Output ''
+Remove-RdvTestDirectory -Path $work -Passed ($script:fail -eq 0)
 if ($script:fail -gt 0) { Write-Output 'RESULT: FAIL'; exit 1 }
 Write-Output 'RESULT: PASS'

@@ -1,0 +1,924 @@
+--- a/build.bat
++++ b/build.bat
+@@ -1,14 +1,12 @@
+ @echo off
+-setlocal
+-set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
+-if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+-if /i "%~1"=="test" goto test
+-if not "%~1"=="" if /i not "%~1"=="compile" goto usage
+-"%PS%" -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0src\ReaderDataViewer.ps1" -CompileOnly
+-exit /b %errorlevel%
+-:test
+-"%PS%" -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0src\ReaderDataViewer.ps1" -TestCore
+-exit /b %errorlevel%
+-:usage
+-echo Usage: build.bat [compile^|test]
+-exit /b 2
++setlocal EnableExtensions
++set "RDV_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
++if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "RDV_PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
++if not exist "%RDV_PS%" (
++  echo Windows PowerShell 5.1 is required.
++  exit /b 3
++)
++"%RDV_PS%" -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0tools\Build.ps1" %*
++set "RDV_EXIT=%ERRORLEVEL%"
++if "%~1"=="" pause
++endlocal & exit /b %RDV_EXIT%
+--- a/src/02_MainWindow.cs
++++ b/src/02_MainWindow.cs
+@@ -29,13 +29,8 @@
+         private const int CaptionColour = 35;
+         private const int TextColour = 36;
+ 
+-        // COLORREF is 0x00BBGGRR, so the colours are written back to front.
+-        // A step darker than #0a246a, where the 98 title bar gradient started.
+-        // DWM only takes a flat colour, so the bar is that navy with white
+-        // lettering.  #081b50
+-        private const int Face = 0x00501B08;
+-        private const int Ink = 0x00FFFFFF;
+-        private const int Edge = 0x00808080;
++        // Native caption colours follow the packaged web theme. Classic keeps
++        // the original values. On older Windows, unsupported attributes are ignored.
+ 
+         [DllImport("dwmapi.dll")]
+         private static extern int DwmSetWindowAttribute(
+@@ -45,9 +40,11 @@
+         {
+             IntPtr handle = new WindowInteropHelper(window).Handle;
+             if (handle == IntPtr.Zero) { return; }
+-            int face = Face;
+-            int ink = Ink;
+-            int edge = Edge;
++            RdvTheme theme = RdvTheme.Current;
++            if (theme.Modern && SystemParameters.HighContrast) { return; }
++            int face = theme.Caption;
++            int ink = theme.CaptionText;
++            int edge = theme.Border;
+             try
+             {
+                 // Older Windows simply reports the attribute as unsupported.
+@@ -97,14 +94,17 @@
+             WindowStyle = WindowStyle.SingleBorderWindow;
+             ResizeMode = ResizeMode.CanResize;
+             WindowStartupLocation = WindowStartupLocation.CenterScreen;
+-            Background = new SolidColorBrush(Color.FromRgb(212, 208, 200));
++            Background = new SolidColorBrush(Color.FromRgb(
++                RdvTheme.Current.Background.R,
++                RdvTheme.Current.Background.G,
++                RdvTheme.Current.Background.B));
+             UseLayoutRounding = true;
+             SnapsToDevicePixels = true;
+ 
+             Grid root = new Grid();
+             webView = new WebView2();
+             webView.DefaultBackgroundColor =
+-                System.Drawing.Color.FromArgb(212, 208, 200);
++                RdvTheme.Current.Background;
+             webView.SetValue(UIElement.OpacityProperty, 0.0);
+             root.Children.Add(webView);
+             Content = root;
+@@ -556,7 +556,10 @@
+             ShowInTaskbar = false;
+             UseLayoutRounding = true;
+             SnapsToDevicePixels = true;
+-            Background = new SolidColorBrush(Color.FromRgb(212, 208, 200));
++            Background = new SolidColorBrush(Color.FromRgb(
++                RdvTheme.Current.Background.R,
++                RdvTheme.Current.Background.G,
++                RdvTheme.Current.Background.B));
+ 
+             // Lay the page out at a generous size off screen, then fit the
+             // window to what the dialog actually measured before showing it
+@@ -569,7 +572,7 @@
+ 
+             Grid root = new Grid();
+             webView.DefaultBackgroundColor =
+-                System.Drawing.Color.FromArgb(212, 208, 200);
++                RdvTheme.Current.Background;
+             webView.SetValue(UIElement.OpacityProperty, 0.0);
+             root.Children.Add(webView);
+             Content = root;
+@@ -637,9 +640,16 @@
+             Height = clientHeight + frameHeight;
+             Left = Owner.Left + (Owner.ActualWidth - Width) / 2;
+             Top = Owner.Top + (Owner.ActualHeight - Height) / 2;
++            bool firstPresentation = !sized;
+             sized = true;
+             webView.SetValue(UIElement.OpacityProperty, 1.0);
+             Activate();
++            // Presentation-only notification: sizing and operation never wait
++            // for animation. Repeated size reports must not restart the fade.
++            if (firstPresentation && RdvTheme.Current.Modern && RdvTheme.Current.Motion == "auto")
++            {
++                PostJson("{\"type\":\"surfaceShown\"}");
++            }
+         }
+ 
+         public void CloseSurface()
+--- /dev/null
++++ b/src/03_Theme.cs
+@@ -0,0 +1,72 @@
++// Presentation metadata only. The business settings schema is not extended.
++// C# 5 / .NET Framework. Theme is fixed for the lifetime of the process.
++using System;
++using System.Globalization;
++using System.IO;
++using System.Text;
++
++namespace ReaderDataViewer
++{
++    internal sealed class RdvTheme
++    {
++        private static RdvTheme current;
++        public string Id;
++        public string Motion;
++        public System.Drawing.Color Background;
++        public int Caption;
++        public int CaptionText;
++        public int Border;
++        public bool Modern { get { return Id != "win98"; } }
++
++        public static RdvTheme Current
++        {
++            get
++            {
++                if (current == null) { current = Load(App.BaseDirectory); }
++                return current;
++            }
++        }
++
++        private static System.Drawing.Color ParseColour(string text)
++        {
++            int rgb;
++            if (text == null || text.Length != 7 || text[0] != '#' ||
++                !int.TryParse(text.Substring(1), NumberStyles.HexNumber,
++                    CultureInfo.InvariantCulture, out rgb))
++            {
++                throw new InvalidDataException("Theme colour must be #RRGGBB.");
++            }
++            return System.Drawing.Color.FromArgb((rgb >> 16) & 255, (rgb >> 8) & 255, rgb & 255);
++        }
++
++        private static int ColourRef(System.Drawing.Color colour)
++        {
++            return colour.R | (colour.G << 8) | (colour.B << 16);
++        }
++
++        internal static RdvTheme Load(string directory)
++        {
++            RdvTheme theme = new RdvTheme();
++            theme.Id = "win98";
++            theme.Motion = "off";
++            theme.Background = ParseColour("#d4d0c8");
++            theme.Caption = ColourRef(ParseColour("#081b50"));
++            theme.CaptionText = ColourRef(ParseColour("#ffffff"));
++            theme.Border = ColourRef(ParseColour("#808080"));
++            if (string.IsNullOrEmpty(directory)) { return theme; }
++            string path = Path.Combine(directory, "web", "theme.json");
++            if (!File.Exists(path)) { return theme; }
++            Rdv3Json json = Rdv3Json.Parse(File.ReadAllText(path, Encoding.UTF8));
++            json.Only("schema", "id", "motion", "background", "caption", "captionText", "border");
++            if (json.Int("schema", 1, 1) != 1) { throw new InvalidDataException("Unsupported theme schema."); }
++            theme.Id = json.Word("id", "win98", "win98", "apple", "material", "fluent", "carbon", "spectrum");
++            theme.Motion = json.Word("motion", "off", "auto", "off");
++            if (!theme.Modern) { theme.Motion = "off"; }
++            theme.Background = ParseColour(json.Need("background"));
++            theme.Caption = ColourRef(ParseColour(json.Need("caption")));
++            theme.CaptionText = ColourRef(ParseColour(json.Need("captionText")));
++            theme.Border = ColourRef(ParseColour(json.Need("border")));
++            return theme;
++        }
++    }
++}
+--- a/web/index.html
++++ b/web/index.html
+@@ -1,4 +1,4 @@
+-<!doctype html><html><head><meta charset="utf-8"><style>html{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style><style>html,body{margin:0}
++<!doctype html><html data-rdv-theme="win98" data-rdv-modern="false" data-rdv-motion="off"><head><meta charset="utf-8"><style>html{color-scheme:light}body{margin:0;font:14px system-ui}img{max-width:100%}[hidden]{display:none!important}</style><style>html,body{margin:0}
+ main{padding:0;margin:0;background:#8a8f99;}
+ .page{width:100%;max-width:806px;padding:10px 13px 12px;background:#8a8f99;font:12px/1.35 var(--ff);color:#000;}
+ .page,.page *{box-sizing:border-box;}
+@@ -143,7 +143,7 @@
+ html,body,main,.page{width:100%;height:100%;overflow:hidden}
+ main,.page{max-width:none;padding:0;background:#d4d0c8}
+ .stage{height:100%}
+-</style></head><body><main><div class='page'><div class='stage'><div class='win'><div class='tb'><div class='ic'>R</div><div class='ttl'>Reader Data Viewer</div><div class='bx'>_</div><div class='bx'>□</div><div class='bx cl'>✕</div></div><div class='client'><div class='stack'><fieldset class='gb'><legend>検索</legend><div style='display:flex;align-items:flex-end;gap:10px;'><div style='flex:1;min-width:0;'><div class='lab'>現在の番号（番号1）:</div><div class='fld' id='bigno' style='height:34px;line-height:32px;font-size:26px;font-weight:bold;max-width:230px;'></div></div><div style='display:flex;align-items:center;gap:6px;padding-bottom:2px;'><label>番号1(<u>N</u>):</label><div class='fld inp' id='input' style='width:150px;flex:none;'></div><div class='btn def' id='b-search'>検索(<u>S</u>)</div><div class='btn' id='b-clear'>クリア(<u>C</u>)</div><div class='tog' id='b-work'>未処理(<u>W</u>)</div></div></div></fieldset><div style='display:flex;gap:8px;align-items:stretch;'><fieldset class='gb' style='flex:1 1 0;min-width:0;'><legend>番号</legend><div class='row'><label style='width:64px;'>番号1</label><div class='fld r v' data-v='00016168'></div></div><div class='row'><label style='width:64px;'>番号2</label><div class='fld r v' data-v='00023415'></div></div><div class='row'><label style='width:64px;'>行番号</label><div class='fld r v' data-v='001'></div></div></fieldset><fieldset class='gb' style='flex:1 1 0;min-width:0;'><legend>表A の項目</legend><div class='row'><label style='width:78px;'>名称</label><div class='fld r v' data-v='SAMPLE-A-0016168'></div></div><div class='row'><label style='width:78px;'>コード</label><div class='fld r v' data-v='A52903'></div></div><div class='row'><label style='width:78px;'>区分</label><div class='fld r v' data-v='B2'></div></div><div class='row'><label style='width:78px;'>部門</label><div class='fld r v' data-v='D568'></div></div><div class='row'><label style='width:78px;'>日付</label><div class='fld r v' data-v='20240814'></div></div><div class='row'><label style='width:78px;'>金額</label><div class='fld r v' data-v='3,969,262'></div></div><div class='row'><label style='width:78px;'>率 ・ フラグ</label><div class='fld r v' data-v='0.1596 ・ N'></div></div></fieldset></div><fieldset class='gb'><legend>メモ（表B: b_memo）</legend><div class='fld v txt' data-v='MEMO-85655' style='height:64px;line-height:20px;white-space:pre;'></div></fieldset><fieldset class='gb'><legend>備考（表C: c_remark）</legend><div class='fld v txt' data-v='RMK-449812' style='height:36px;line-height:20px;white-space:pre;'></div></fieldset><div class='band'><span style='flex:1;text-align:center;'><span class='ok' id='judge'></span><span id='jsub'></span></span></div><div style='display:flex;justify-content:flex-end;gap:6px;'><div class='btn' id='b-out'>テーブル出力(<u>T</u>)...</div><div class='btn' id='b-upd'>レコード更新(<u>R</u>)...</div><div class='btn' id='b-del'>レコード削除(<u>D</u>)...</div><div class='btn' id='b-set'>設定(<u>S</u>)...</div></div><div class='sep'></div><div class='sendbar'><div class='sendn' id='sn'>未送信 <b id='sendn'>0</b> 件</div><div class='btn def' id='b-send'>送信(<u>U</u>)</div></div></div></div><div class='sb'><div class='sp' style='width:82px;flex:none;'>監視中</div><div class='sp' style='width:200px;flex:none;'>メモ帳 接続中（無題 - メモ帳）</div><div class='sp' style='flex:1;min-width:0;'>台帳 ReaderDataViewer-Ledger.xlsx / 100,000 件</div><div class='sp' style='width:64px;flex:none;'>12:17:52</div><div class='grip'></div></div></div><div class='veil' id='v-cand'><div class='dlg' style='width:744px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>候補一覧</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>行をクリックするとレコード詳細を表示します。&nbsp; 該当 5 件</div><div class='lv'><table><thead><tr><th class='r' style='width:26px;'>#</th><th style='width:84px;'>番号2</th><th class='r' style='width:54px;'>行番号</th><th style='width:96px;'>参照番号</th><th style='width:76px;'>日付</th><th class='r' style='width:50px;'>数量</th><th style='width:64px;'>状態</th><th style='width:72px;'>コード</th><th style='width:94px;'>名称</th><th>処理済</th></tr></thead><tbody><tr class='sel'><td class='r'>1</td><td>00023415</td><td class='r'>001</td><td>REF-0083120</td><td>20240814</td><td class='r'>12</td><td>DONE</td><td>C10233</td><td>SAMPLE-C-0233</td><td>済</td></tr><tr><td class='r'>2</td><td>00023416</td><td class='r'>002</td><td>REF-0083121</td><td>20240814</td><td class='r'>4</td><td>OPEN</td><td>C10234</td><td>SAMPLE-C-0234</td><td>未</td></tr><tr><td class='r'>3</td><td>00023417</td><td class='r'>003</td><td>REF-0083122</td><td>20240815</td><td class='r'>30</td><td>HOLD</td><td>C10235</td><td>SAMPLE-C-0235</td><td>未</td></tr><tr><td class='r'>4</td><td>00023418</td><td class='r'>004</td><td>REF-0083123</td><td>20240815</td><td class='r'>7</td><td>VOID</td><td>C10236</td><td>SAMPLE-C-0236</td><td>未</td></tr><tr><td class='r'>5</td><td>00023419</td><td class='r'>005</td><td>REF-0083124</td><td>20240816</td><td class='r'>18</td><td>DONE</td><td>C10237</td><td>SAMPLE-C-0237</td><td>済</td></tr></tbody></table></div><div class='foot'><div class='btn def x'>OK</div><div class='btn x'>キャンセル</div></div></div></div></div>
++</style><link rel="stylesheet" href="themes.css"></head><body><main><div class='page'><div class='stage'><div class='win'><div class='tb'><div class='ic'>R</div><div class='ttl'>Reader Data Viewer</div><div class='bx'>_</div><div class='bx'>□</div><div class='bx cl'>✕</div></div><div class='client'><div class='stack'><fieldset class='gb'><legend>検索</legend><div style='display:flex;align-items:flex-end;gap:10px;'><div style='flex:1;min-width:0;'><div class='lab'>現在の番号（番号1）:</div><div class='fld' id='bigno' style='height:34px;line-height:32px;font-size:26px;font-weight:bold;max-width:230px;'></div></div><div style='display:flex;align-items:center;gap:6px;padding-bottom:2px;'><label>番号1(<u>N</u>):</label><div class='fld inp' id='input' style='width:150px;flex:none;'></div><div class='btn def' id='b-search'>検索(<u>S</u>)</div><div class='btn' id='b-clear'>クリア(<u>C</u>)</div><div class='tog' id='b-work'>未処理(<u>W</u>)</div></div></div></fieldset><div style='display:flex;gap:8px;align-items:stretch;'><fieldset class='gb' style='flex:1 1 0;min-width:0;'><legend>番号</legend><div class='row'><label style='width:64px;'>番号1</label><div class='fld r v' data-v='00016168'></div></div><div class='row'><label style='width:64px;'>番号2</label><div class='fld r v' data-v='00023415'></div></div><div class='row'><label style='width:64px;'>行番号</label><div class='fld r v' data-v='001'></div></div></fieldset><fieldset class='gb' style='flex:1 1 0;min-width:0;'><legend>表A の項目</legend><div class='row'><label style='width:78px;'>名称</label><div class='fld r v' data-v='SAMPLE-A-0016168'></div></div><div class='row'><label style='width:78px;'>コード</label><div class='fld r v' data-v='A52903'></div></div><div class='row'><label style='width:78px;'>区分</label><div class='fld r v' data-v='B2'></div></div><div class='row'><label style='width:78px;'>部門</label><div class='fld r v' data-v='D568'></div></div><div class='row'><label style='width:78px;'>日付</label><div class='fld r v' data-v='20240814'></div></div><div class='row'><label style='width:78px;'>金額</label><div class='fld r v' data-v='3,969,262'></div></div><div class='row'><label style='width:78px;'>率 ・ フラグ</label><div class='fld r v' data-v='0.1596 ・ N'></div></div></fieldset></div><fieldset class='gb'><legend>メモ（表B: b_memo）</legend><div class='fld v txt' data-v='MEMO-85655' style='height:64px;line-height:20px;white-space:pre;'></div></fieldset><fieldset class='gb'><legend>備考（表C: c_remark）</legend><div class='fld v txt' data-v='RMK-449812' style='height:36px;line-height:20px;white-space:pre;'></div></fieldset><div class='band'><span style='flex:1;text-align:center;'><span class='ok' id='judge'></span><span id='jsub'></span></span></div><div style='display:flex;justify-content:flex-end;gap:6px;'><div class='btn' id='b-out'>テーブル出力(<u>T</u>)...</div><div class='btn' id='b-upd'>レコード更新(<u>R</u>)...</div><div class='btn' id='b-del'>レコード削除(<u>D</u>)...</div><div class='btn' id='b-set'>設定(<u>S</u>)...</div></div><div class='sep'></div><div class='sendbar'><div class='sendn' id='sn'>未送信 <b id='sendn'>0</b> 件</div><div class='btn def' id='b-send'>送信(<u>U</u>)</div></div></div></div><div class='sb'><div class='sp' style='width:82px;flex:none;'>監視中</div><div class='sp' style='width:200px;flex:none;'>メモ帳 接続中（無題 - メモ帳）</div><div class='sp' style='flex:1;min-width:0;'>台帳 ReaderDataViewer-Ledger.xlsx / 100,000 件</div><div class='sp' style='width:64px;flex:none;'>12:17:52</div><div class='grip'></div></div></div><div class='veil' id='v-cand'><div class='dlg' style='width:744px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>候補一覧</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>行をクリックするとレコード詳細を表示します。&nbsp; 該当 5 件</div><div class='lv'><table><thead><tr><th class='r' style='width:26px;'>#</th><th style='width:84px;'>番号2</th><th class='r' style='width:54px;'>行番号</th><th style='width:96px;'>参照番号</th><th style='width:76px;'>日付</th><th class='r' style='width:50px;'>数量</th><th style='width:64px;'>状態</th><th style='width:72px;'>コード</th><th style='width:94px;'>名称</th><th>処理済</th></tr></thead><tbody><tr class='sel'><td class='r'>1</td><td>00023415</td><td class='r'>001</td><td>REF-0083120</td><td>20240814</td><td class='r'>12</td><td>DONE</td><td>C10233</td><td>SAMPLE-C-0233</td><td>済</td></tr><tr><td class='r'>2</td><td>00023416</td><td class='r'>002</td><td>REF-0083121</td><td>20240814</td><td class='r'>4</td><td>OPEN</td><td>C10234</td><td>SAMPLE-C-0234</td><td>未</td></tr><tr><td class='r'>3</td><td>00023417</td><td class='r'>003</td><td>REF-0083122</td><td>20240815</td><td class='r'>30</td><td>HOLD</td><td>C10235</td><td>SAMPLE-C-0235</td><td>未</td></tr><tr><td class='r'>4</td><td>00023418</td><td class='r'>004</td><td>REF-0083123</td><td>20240815</td><td class='r'>7</td><td>VOID</td><td>C10236</td><td>SAMPLE-C-0236</td><td>未</td></tr><tr><td class='r'>5</td><td>00023419</td><td class='r'>005</td><td>REF-0083124</td><td>20240816</td><td class='r'>18</td><td>DONE</td><td>C10237</td><td>SAMPLE-C-0237</td><td>済</td></tr></tbody></table></div><div class='foot'><div class='btn def x'>OK</div><div class='btn x'>キャンセル</div></div></div></div></div>
+ <div class='veil' id='v-upd'><div class='dlg' style='width:700px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>レコード更新</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>定義されたファイルだけを読み、JSON の手順で統合台帳を更新します。</div><fieldset class='gb'><legend>取り込むデータ（data＼）</legend><div class='lv i3 ro'><table><thead><tr><th style='width:40px;'>表</th><th style='width:150px;'>ファイル</th><th style='width:62px;'>キー</th><th class='r' style='width:74px;'>行数</th><th>検証</th></tr></thead><tbody id='updin'><tr><td>A</td><td>tableA.csv</td><td>key1</td><td class='r'>100,000</td><td class='okc'>列一致</td></tr><tr><td>B</td><td>tableB.csv</td><td>key2</td><td class='r'>100,000</td><td class='okc'>列一致</td></tr><tr><td>C</td><td>tableC.csv</td><td>key2</td><td class='r'>100,000</td><td class='okc'>列一致</td></tr></tbody></table></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>処理内容</legend><div class='lv fix ro'><table><thead><tr><th class='r' style='width:26px;'>#</th><th style='width:46px;'>操作</th><th style='width:64px;'>対象1</th><th style='width:76px;'>対象2</th><th style='width:120px;'>キー</th><th style='width:240px;'>条件</th><th>出力</th></tr></thead><tbody><tr><td class='r'>1</td><td>結合</td><td>表B</td><td>表A</td><td>番号1 = 番号1</td><td>左外部</td><td>中間1</td></tr><tr><td class='r'>2</td><td>結合</td><td>中間1</td><td>表C</td><td>番号2 = 番号2</td><td>左外部</td><td>中間2</td></tr><tr><td class='r'>3</td><td>マージ</td><td>中間2</td><td>統合台帳</td><td>番号2 = 番号2</td><td>元のみ:追加 / 両方:更新 / 先のみ:保持</td><td>統合台帳</td></tr></tbody></table></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>書き出し先</legend><div class='kv'><label>パス</label><div class='fld' style='flex:1;'>C:＼ReaderDataViewer＼</div></div><div class='kv'><label>ファイル名</label><div class='fld' style='flex:1;'>ReaderDataViewer-Ledger.xlsx</div></div><div class='kv' style='margin-bottom:0;'><label>最終更新</label><div class='fld' style='flex:1;'>2026-09-03 11:42</div></div></fieldset><div class='foot'><div class='btn def x' id='updExec'>実行</div><div class='btn x'>キャンセル</div></div></div></div></div>
+ <div class='veil' id='v-del'><div class='dlg' style='width:700px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>レコード削除</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>定義されたファイルだけを読み、条件に一致する行を統合台帳から取り除きます。</div><fieldset class='gb'><legend>取り込むデータ（data＼）</legend><div class='lv i3 ro'><table><thead><tr><th style='width:40px;'>指定</th><th style='width:150px;'>ファイル</th><th style='width:62px;'>キー</th><th class='r' style='width:74px;'>行数</th><th>検証</th></tr></thead><tbody><tr><td>D1</td><td>delete.csv</td><td>key2</td><td class='r'>342</td><td class='okc'>列一致</td></tr><tr><td>D2</td><td>delete.csv</td><td>b_ref</td><td class='r'>342</td><td class='okc'>列一致</td></tr></tbody></table></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>処理内容</legend><div class='lv fix ro'><table><thead><tr><th class='r' style='width:26px;'>#</th><th style='width:46px;'>操作</th><th style='width:64px;'>対象1</th><th style='width:76px;'>対象2</th><th style='width:120px;'>キー</th><th style='width:240px;'>条件</th><th>出力</th></tr></thead><tbody id='delsteps'><tr><td class='r'>1</td><td>抽出</td><td>統合台帳</td><td>D1</td><td>番号2 = 番号2</td><td>一致</td><td>対象1</td></tr><tr><td class='r'>2</td><td>抽出</td><td>統合台帳</td><td>D2</td><td>参照番号 = 参照番号</td><td>一致</td><td>対象2</td></tr><tr><td class='r'>3</td><td>抽出</td><td>対象1</td><td>対象2</td><td></td><td>両方</td><td>対象</td></tr><tr><td class='r'>4</td><td>削除</td><td>統合台帳</td><td>対象</td><td></td><td></td><td>統合台帳</td></tr></tbody></table></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>書き出し先</legend><div class='kv'><label>パス</label><div class='fld' style='flex:1;'>C:＼ReaderDataViewer＼</div></div><div class='kv'><label>ファイル名</label><div class='fld' style='flex:1;'>ReaderDataViewer-Ledger.xlsx</div></div><div class='kv' style='margin-bottom:0;'><label>最終更新</label><div class='fld' style='flex:1;'>2026-09-03 11:42</div></div></fieldset><div class='foot'><div class='btn def x'>削除する</div><div class='btn x'>キャンセル</div></div></div></div></div><div class='veil' id='v-out'><div class='dlg' style='width:600px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>テーブル出力</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>統合台帳から、選んだ項目だけを CSV に書き出します。</div><div style='display:flex;gap:8px;align-items:stretch;'><div style='flex:1 1 0;min-width:0;'><div class='lab'>出力できる項目</div><div class='lb' id='lbFrom' style='height:180px;'></div></div><div style='display:flex;flex-direction:column;justify-content:center;gap:6px;padding-top:16px;'><div class='btn sm' id='mvR' style='width:34px;'>▶</div><div class='btn sm' id='mvL' style='width:34px;'>◀</div></div><div style='flex:1 1 0;min-width:0;'><div style='margin-bottom:4px;display:flex;align-items:center;gap:6px;'><span class='lab' style='flex:1;margin:0;'>出力する項目（<span id='outN'>0</span>）</span><div class='btn sm' id='outDef'>既定に戻す</div></div><div class='lb' id='lbTo' style='height:180px;'></div></div></div><div style='height:10px;'></div><fieldset class='gb'><legend>絞り込み条件（すべてに一致）</legend><div class='fgrid'><div class='fh'>項目</div><div class='fh'>条件</div><div class='fh' style='grid-column:3 / span 3;'>値</div><div></div><div class='cmb' id='fFld'></div><div class='cmb' id='fOp'></div><div id='fH1'><div class='fld inp' id='fV1'>&nbsp;</div></div><div class='tilde' id='fMark'>～</div><div id='fH2'><div class='fld inp' id='fV2'>&nbsp;</div></div><div class='btn sm' id='fAdd' style='width:84px;'>追加</div><div class='row3'><div class='lv f3'><table><thead><tr><th style='width:180px;'>項目</th><th style='width:110px;'>条件</th><th>値</th></tr></thead><tbody id='fList'></tbody></table></div></div><div class='btn sm row3b' id='fDel' style='width:84px;'>削除</div></div></fieldset><div class='kv' style='margin-top:9px;'><label>出力先</label><div class='fld inp' style='flex:1;'>C:＼ReaderDataViewer＼output＼export-20260904-145112.csv</div><div class='btn sm'>参照...</div></div><div class='foot'><div class='btn def x'>OK</div><div class='btn x'>キャンセル</div></div></div></div></div>
+ <div class='veil' id='v-set'><div class='dlg' style='width:540px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>設定</div><div class='bx cl x'>✕</div></div><div class='body'><div class='hint'>書き戻すのは <span>paths</span> / <span>search</span> / <span>watch</span> の 3 つだけです。</div><fieldset class='gb'><legend>場所</legend><div class='kv'><label>データ</label><div class='fld inp' style='flex:1;'>data</div><div class='btn sm'>参照...</div></div><div class='kv'><label>統合台帳</label><div class='fld inp' style='flex:1;'>ReaderDataViewer-Ledger.xlsx</div><div class='btn sm'>参照...</div></div><div class='kv' style='margin-bottom:0;'><label>ログ</label><div class='fld inp' style='flex:1;'>ReaderDataViewer.log</div><div class='btn sm'>参照...</div></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>検索</legend><div class='kv'><label>番号の形式</label><div class='fld inp' style='flex:1;'>^[0-9]{8}$</div></div><div class='kv' style='margin-bottom:0;'><label>候補の表示件数</label><div class='fld inp r' style='width:70px;flex:none;'>100</div></div></fieldset><div style='height:10px;'></div><fieldset class='gb'><legend>監視対象</legend><div class='kv'><label>対象</label><div class='fld' style='flex:1;'>メモ帳（className = Notepad）</div><div class='btn sm' id='b-pick'>画面から選ぶ</div></div><div class='kv' style='margin-bottom:0;'><label>読み取り</label><div class='fld' style='flex:1;'>ValuePattern / 40ms 間隔</div></div></fieldset><div class='foot'><div class='btn def x'>OK</div><div class='btn x'>キャンセル</div></div></div></div></div>
+@@ -183,4 +183,4 @@
+ function val(h){var e=$(h).querySelector('.fld');return e?e.textContent.trim():'';}
+ $('#fAdd').addEventListener('click',function(){var v=val('#fH1');if(!v){return;}if(fOp.value==='範囲'){v=v+' ～ '+val('#fH2');}var tr=document.createElement('tr');tr.innerHTML="<td>"+FIELDS[fFld.selectedIndex][0]+"</td><td>"+fOp.value+"</td><td>"+v+"</td>";tr.addEventListener('click',function(){[].slice.call(tr.parentNode.children).forEach(function(x){x.classList.remove('sel');});tr.classList.add('sel');});[].slice.call($('#fList').children).forEach(function(x){x.classList.remove('sel');});tr.classList.add('sel');$('#fList').appendChild(tr);lvsync($('#fList').parentNode);});
+ $('#fDel').addEventListener('click',function(){var list=$('#fList');var sel=list.querySelector('.sel')||(list.children.length===1?list.children[0]:null);if(sel){list.removeChild(sel);}});
+-editor();resetPicker();paint();})();</script><script src='app.js'></script></body></html>
++editor();resetPicker();paint();})();</script><script src="theme-motion.js"></script><script src='app.js'></script></body></html>
+--- /dev/null
++++ b/web/themes.css
+@@ -0,0 +1,306 @@
++/* RDV presentation layer. app.css and app.js remain byte-for-byte unchanged.
++   Locally implemented interpretations, NOT vendor component libraries.
++   Every visual override is opt-in. Classic keeps its original computed styles. */
++html[data-rdv-modern="true"] {
++  color-scheme:light;
++  --ui-bg:#f3f3f3; --ui-surface:#fff; --ui-subtle:#fafafa;
++  --ui-ink:#242424; --ui-muted:#575757; --ui-line:#d1d1d1; --ui-input-line:#8a8a8a;
++  --ui-accent:#005fb8; --ui-accent-text:var(--ui-accent); --ui-accent-hover:#004c94; --ui-on-accent:#fff;
++  --ui-tint:#e8f1fb; --ui-hover:#f0f0f0; --ui-pressed:#e4e4e4;
++  --ui-success:#166534; --ui-error:#b42318; --ui-warning:#854d0e;
++  --ui-radius:6px; --ui-card-radius:8px; --ui-button-radius:4px;
++  --ui-shadow:0 1px 2px rgba(0,0,0,.04);
++  --ui-pop-shadow:0 8px 28px rgba(0,0,0,.16);
++  --ui-fast:100ms; --ui-enter:140ms; --ui-ease:cubic-bezier(.16,1,.3,1);
++  background:var(--ui-bg); color:var(--ui-ink);
++}
++html[data-rdv-theme="apple"] {
++  --ui-bg:#f5f5f7; --ui-surface:#fff; --ui-subtle:#f5f5f7;
++  --ui-ink:#1d1d1f; --ui-muted:#606065; --ui-line:#d2d2d7; --ui-input-line:#929298;
++  --ui-accent:#0066cc; --ui-accent-hover:#0053a6; --ui-tint:#eaf3ff;
++  --ui-hover:#f0f0f4; --ui-pressed:#e4e4eb; --ui-radius:6px; --ui-card-radius:10px;
++  --ui-button-radius:6px; --ui-shadow:0 1px 3px rgba(0,0,0,.05);
++  --ui-ease:cubic-bezier(.2,.8,.2,1);
++}
++html[data-rdv-theme="material"] {
++  --ui-bg:#f7f9fc; --ui-surface:#fff; --ui-subtle:#edf2fa;
++  --ui-ink:#1f1f1f; --ui-muted:#444746; --ui-line:#c4c7c5; --ui-input-line:#747775;
++  --ui-accent:#0b57d0; --ui-accent-hover:#0842a0; --ui-tint:#d3e3fd;
++  --ui-hover:#e9eef6; --ui-pressed:#dce5f5; --ui-radius:8px; --ui-card-radius:16px;
++  --ui-button-radius:20px; --ui-shadow:none; --ui-fast:120ms; --ui-enter:160ms;
++  --ui-ease:cubic-bezier(.2,0,0,1);
++}
++html[data-rdv-theme="carbon"] {
++  --ui-bg:#f4f4f4; --ui-surface:#fff; --ui-subtle:#f4f4f4;
++  --ui-ink:#161616; --ui-muted:#525252; --ui-line:#c6c6c6; --ui-input-line:#8d8d8d;
++  --ui-accent:#0f62fe; --ui-accent-text:#0043ce; --ui-accent-hover:#0043ce; --ui-tint:#e0eaff;
++  --ui-hover:#e8e8e8; --ui-pressed:#d1d1d1; --ui-radius:0px; --ui-card-radius:0px;
++  --ui-button-radius:0px; --ui-shadow:none; --ui-fast:90ms; --ui-enter:120ms;
++  --ui-ease:cubic-bezier(.2,0,.38,.9);
++}
++html[data-rdv-theme="spectrum"] {
++  --ui-bg:#f5f5f5; --ui-surface:#fff; --ui-subtle:#fafafa;
++  --ui-ink:#222; --ui-muted:#595959; --ui-line:#d3d3d3; --ui-input-line:#909090;
++  --ui-accent:#0265dc; --ui-accent-hover:#0054b6; --ui-tint:#e5f0ff;
++  --ui-hover:#ededed; --ui-pressed:#dadada; --ui-radius:4px; --ui-card-radius:6px;
++  --ui-button-radius:18px; --ui-shadow:none; --ui-fast:100ms; --ui-enter:150ms;
++  --ui-ease:cubic-bezier(.25,.1,.25,1);
++}
++/* Density is deliberately compact. Configured larger fonts still increase controls.
++   The original row heights, display order, input widths and content stay intact. */
++html[data-rdv-modern="true"] .runtime {
++  --control-height:max(28px, calc(var(--body-font) + 12px)) !important;
++  --control-button-width:var(--control-height) !important;
++  --calendar-cell:max(28px, calc(var(--body-font) + 12px)) !important;
++}
++html[data-rdv-modern="true"] body,
++html[data-rdv-modern="true"] main,
++html[data-rdv-modern="true"] .page,
++html[data-rdv-modern="true"] .runtime .win,
++html[data-rdv-modern="true"] .runtime .client {background:var(--ui-bg);color:var(--ui-ink);}
++html[data-rdv-modern="true"] .runtime .win,
++html[data-rdv-modern="true"] .runtime .dlg,
++html[data-rdv-modern="true"] .runtime .btn,
++html[data-rdv-modern="true"] .runtime .tog,
++html[data-rdv-modern="true"] .runtime .fld,
++html[data-rdv-modern="true"] .runtime .lab,
++html[data-rdv-modern="true"] .runtime .row label,
++html[data-rdv-modern="true"] .runtime .kv label,
++html[data-rdv-modern="true"] .runtime .lv td,
++html[data-rdv-modern="true"] .runtime .sb .sp,
++html[data-rdv-modern="true"] .runtime .hint,
++html[data-rdv-modern="true"] .runtime .how,
++html[data-rdv-modern="true"] .runtime .esc {font-weight:400;}
++html[data-rdv-modern="true"] .runtime .client {padding:max(8px,var(--card-pad-t)) max(10px,var(--card-pad-r)) max(8px,var(--card-pad-b)) max(10px,var(--card-pad-l));}
++html[data-rdv-modern="true"] .runtime .gb {
++  border:1px solid var(--ui-line);border-radius:var(--ui-card-radius);
++  background:var(--ui-surface);box-shadow:var(--ui-shadow);padding:8px 10px;
++}
++html[data-rdv-modern="true"] .runtime .gb>legend {
++  position:static;float:left;width:100%;padding:0;margin:0 0 5px;
++  background:transparent;color:var(--ui-muted);font-size:.9em;font-weight:600;line-height:1.4;
++}
++html[data-rdv-modern="true"] .runtime .gb>legend+* {clear:both;}
++html[data-rdv-modern="true"] .runtime .lab,
++html[data-rdv-modern="true"] .runtime .row label {color:var(--ui-muted);}
++html[data-rdv-modern="true"] .runtime .fld {
++  background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;
++  border:1px solid transparent;border-radius:var(--ui-radius);padding:0 6px;
++  font-variant-numeric:tabular-nums;min-height:20px;
++}
++html[data-rdv-modern="true"] .runtime .fld.inp,
++html[data-rdv-modern="true"] .runtime .cmbv {
++  border:1px solid var(--ui-input-line);background:var(--ui-surface);box-shadow:none;
++  border-radius:var(--ui-radius);color:var(--ui-ink);height:var(--control-height);
++  line-height:calc(var(--control-height) - 2px);
++}
++html[data-rdv-modern="true"] .runtime .keyline {align-items:center;flex-wrap:wrap;}
++html[data-rdv-modern="true"] .runtime .keyfigure {flex:1 1 120px;}
++html[data-rdv-modern="true"] .runtime .keyactions {flex-wrap:wrap;padding-bottom:0;}
++html[data-rdv-modern="true"] .runtime .keyvalue {
++  color:var(--ui-accent-text);background:var(--ui-tint);font-weight:600;
++  height:var(--key-height);line-height:calc(var(--key-height) - 2px);
++}
++html[data-rdv-modern="true"] .runtime .dynamic-row {min-height:var(--row-height);height:auto;}
++html[data-rdv-modern="true"] .runtime .dynamic-text {padding:3px 6px;line-height:1.5;}
++html[data-rdv-modern="true"] .runtime .btn,
++html[data-rdv-modern="true"] .runtime .tog {
++  display:inline-flex;align-items:center;justify-content:center;gap:0;
++  height:var(--control-height);min-height:var(--control-height);padding:0 11px;
++  line-height:1.2;border:1px solid var(--ui-input-line);border-radius:var(--ui-button-radius);
++  color:var(--ui-ink);background:var(--ui-surface);box-shadow:var(--ui-shadow);text-shadow:none;font-weight:600;
++}
++html[data-rdv-modern="true"] .runtime .btn.sm {min-width:0;padding:0 8px;}
++html[data-rdv-modern="true"] .runtime .btn.def {
++  color:var(--ui-on-accent);background:var(--ui-accent);border-color:var(--ui-accent);
++}
++html[data-rdv-modern="true"] .runtime .btn.def:before {content:none;}
++html[data-rdv-modern="true"] .runtime .btn:not(.dis):hover,
++html[data-rdv-modern="true"] .runtime .tog:not(.dis):hover {background:var(--ui-hover);}
++html[data-rdv-modern="true"] .runtime .btn.def:not(.dis):hover {background:var(--ui-accent-hover);border-color:var(--ui-accent-hover);}
++html[data-rdv-modern="true"] .runtime .btn:not(.dis):active,
++html[data-rdv-modern="true"] .runtime .tog:not(.dis):active {
++  padding-top:0;box-shadow:none;background:var(--ui-pressed);transform:translateY(1px);
++}
++html[data-rdv-modern="true"] .runtime .btn.def:not(.dis):active {background:var(--ui-accent-hover);}
++html[data-rdv-modern="true"] .runtime .tog.on {
++  background:var(--ui-tint);color:var(--ui-accent-text);border-color:var(--ui-accent);padding-top:0;box-shadow:inset 3px 0 var(--ui-accent);
++}
++html[data-rdv-modern="true"] .runtime .tog.on:not(.dis):hover {background:var(--ui-tint);}
++html[data-rdv-modern="true"] .runtime .btn.dis,
++html[data-rdv-modern="true"] .runtime .tog.dis,
++html[data-rdv-modern="true"] .runtime .btn.dis:active,
++html[data-rdv-modern="true"] .runtime .tog.dis:active,
++html[data-rdv-modern="true"] .runtime .fld.dis,
++html[data-rdv-modern="true"] .runtime .fld.off {
++  color:var(--ui-muted);background:var(--ui-subtle);border-color:var(--ui-line);
++  box-shadow:none;text-shadow:none;transform:none;cursor:default;
++}
++html[data-rdv-modern="true"] .runtime [contenteditable=true]:focus,
++html[data-rdv-modern="true"] .runtime .btn:focus,
++html[data-rdv-modern="true"] .runtime .tog:focus,
++html[data-rdv-modern="true"] .runtime .bx:focus,
++html[data-rdv-modern="true"] .runtime .lb div:focus,
++html[data-rdv-modern="true"] .runtime tbody tr:focus,
++html[data-rdv-modern="true"] .runtime .cmb:focus,
++html[data-rdv-modern="true"] .runtime .date-value:focus,
++html[data-rdv-modern="true"] .runtime .calendar-day:focus,
++html[data-rdv-modern="true"] .runtime select:focus {
++  outline:2px solid var(--ui-accent);outline-offset:2px;
++}
++html[data-rdv-modern="true"] .runtime .lv tbody tr:focus {outline-offset:-2px;}
++html[data-rdv-modern="true"] .runtime .band {
++  border:1px solid var(--ui-line);border-left:3px solid var(--ui-accent);
++  background:var(--ui-surface);border-radius:var(--ui-radius);box-shadow:none;
++}
++html[data-rdv-modern="true"] .runtime .band .ok {color:var(--ui-success);letter-spacing:.2px;}
++html[data-rdv-modern="true"] .runtime .band .ok.unsearched,
++html[data-rdv-modern="true"] .runtime .band .ok.undefined,
++html[data-rdv-modern="true"] .runtime .fld.tone-muted,
++html[data-rdv-modern="true"] .runtime .tag.faded {color:var(--ui-muted);}
++html[data-rdv-modern="true"] .runtime .band .ok.ng,
++html[data-rdv-modern="true"] .runtime .band .ok.error,
++html[data-rdv-modern="true"] .runtime .bad,
++html[data-rdv-modern="true"] .runtime .fld.tone-error,
++html[data-rdv-modern="true"] .runtime .setting-error,
++html[data-rdv-modern="true"] .runtime .modal-symbol.warn,
++html[data-rdv-modern="true"] .runtime .mar {color:var(--ui-error);}
++html[data-rdv-modern="true"] .runtime .hint {color:var(--ui-muted);}
++html[data-rdv-modern="true"] .runtime .sendbar {height:auto;min-height:max(var(--send-height),var(--control-height));flex-wrap:wrap;}
++html[data-rdv-modern="true"] .runtime .sendbar .sendn {font-weight:600;}
++html[data-rdv-modern="true"] .runtime .sendbar .sendn.warn,
++html[data-rdv-modern="true"] .runtime .sendbar .sendn.warn b {color:var(--ui-warning);}
++html[data-rdv-modern="true"] .runtime .sep {height:1px;border:0;background:var(--ui-line);margin:0;}
++html[data-rdv-modern="true"] .runtime .sb {
++  border-top:1px solid var(--ui-line);background:var(--ui-surface);padding:3px 6px;
++  height:max(26px,var(--status-height));min-height:max(26px,var(--status-height));gap:4px;
++}
++html[data-rdv-modern="true"] .runtime .sb .sp {background:transparent;box-shadow:none;color:var(--ui-muted);line-height:18px;}
++html[data-rdv-modern="true"] .runtime .sb .sp+.sp {border-left:1px solid var(--ui-line);}
++html[data-rdv-modern="true"] .runtime .sb .sp.notice,
++html[data-rdv-modern="true"] .runtime .okc {color:var(--ui-success);}
++html[data-rdv-modern="true"] .runtime .sb .sp.notice.error,
++html[data-rdv-modern="true"] .runtime .sb .sp.warn {color:var(--ui-error);}
++html[data-rdv-modern="true"] .runtime .sb .grip {background:none;}
++/* Dialogs, lists, export editor, settings controls, date and number pickers. */
++html[data-rdv-modern="true"] .runtime .veil {background:rgba(20,25,35,.16);}
++html[data-rdv-modern="true"] .runtime .dlg {background:var(--ui-surface);border:1px solid var(--ui-line);border-radius:var(--ui-card-radius);box-shadow:var(--ui-pop-shadow);padding:0;overflow:visible;}
++html[data-rdv-modern="true"] .runtime .dlg>.body {padding:12px;}
++html[data-rdv-modern="true"] .runtime .dlg .foot {gap:8px;margin-top:12px;flex-wrap:wrap;}
++html[data-rdv-modern="true"] .runtime .tb {background:var(--ui-subtle);height:30px;padding:0 8px;border-bottom:1px solid var(--ui-line);border-radius:var(--ui-card-radius) var(--ui-card-radius) 0 0;}
++html[data-rdv-modern="true"] .runtime .tb .ttl {color:var(--ui-ink);font-size:12px;}
++html[data-rdv-modern="true"] .runtime .tb .ic {color:var(--ui-accent);background:transparent;box-shadow:none;}
++html[data-rdv-modern="true"] .runtime .tb .bx {background:transparent;box-shadow:none;color:var(--ui-muted);width:24px;height:22px;line-height:22px;border-radius:4px;}
++html[data-rdv-modern="true"] .runtime .tb .bx:hover {background:var(--ui-hover);}
++html[data-rdv-modern="true"] .runtime .tb .bx.cl:hover {background:var(--ui-error);color:#fff;}
++html[data-rdv-modern="true"] .runtime .tb-tag {background:var(--ui-tint);color:var(--ui-accent-text);box-shadow:none;border-radius:3px;}
++html[data-rdv-modern="true"] .runtime .lv,
++html[data-rdv-modern="true"] .runtime .lb {border:1px solid var(--ui-line);border-radius:var(--ui-radius);padding:0;background:var(--ui-surface);box-shadow:none;}
++html[data-rdv-modern="true"] .runtime .lv th {background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;border-bottom:1px solid var(--ui-line);font-weight:600;padding:3px 6px;}
++html[data-rdv-modern="true"] .runtime .lv td {padding:2px 6px;border-right:0;border-bottom:1px solid var(--ui-line);height:24px;font-variant-numeric:tabular-nums;}
++/* The business renderer marks muted cells with an inline legacy grey. */
++html[data-rdv-modern="true"] .runtime .lv td[style*="color"] {color:var(--ui-muted)!important;}
++html[data-rdv-modern="true"] .runtime .lv:not(.ro) tbody tr:not([aria-selected=true]):hover td,
++html[data-rdv-modern="true"] .runtime .lb div:not([aria-selected=true]):hover {background:var(--ui-hover);}
++html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td,
++html[data-rdv-modern="true"] .runtime .lv tr.sel td,
++html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true],
++html[data-rdv-modern="true"] .runtime .lb div.sel,
++html[data-rdv-modern="true"] .runtime .cmbp div.sel {background:var(--ui-tint);color:var(--ui-ink) !important;border-color:var(--ui-line);}
++html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td:first-child,
++html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true] {box-shadow:inset 3px 0 var(--ui-accent);}
++html[data-rdv-modern="true"] .runtime .lb div,
++html[data-rdv-modern="true"] .runtime .cmbp div {height:24px;line-height:24px;padding:0 6px;}
++html[data-rdv-modern="true"] .runtime .tag {background:var(--ui-subtle);border:1px solid var(--ui-line);border-radius:3px;font-size:.92em;}
++html[data-rdv-modern="true"] .runtime .tag.accent {background:var(--ui-tint);color:var(--ui-accent-text);border-color:var(--ui-accent);}
++html[data-rdv-modern="true"] .runtime .tag.outline,
++html[data-rdv-modern="true"] .runtime .tag.error {color:var(--ui-error);border-color:var(--ui-error);}
++html[data-rdv-modern="true"] .runtime .cmbp,
++html[data-rdv-modern="true"] .runtime .calendar-popup {background:var(--ui-surface);color:var(--ui-ink);border:1px solid var(--ui-line);border-radius:var(--ui-radius);box-shadow:var(--ui-pop-shadow);}
++html[data-rdv-modern="true"] .runtime .cmbp {top:100%;}
++html[data-rdv-modern="true"] .runtime .cmb:after,
++html[data-rdv-modern="true"] .runtime .dt:after,
++html[data-rdv-modern="true"] .runtime .number-step {background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;border:1px solid var(--ui-line);}
++html[data-rdv-modern="true"] .runtime .number-step:hover {background:var(--ui-hover);}
++html[data-rdv-modern="true"] .runtime .filter-value-host.off {background:var(--ui-subtle);border:1px solid var(--ui-line);box-shadow:none;border-radius:var(--ui-radius);}
++html[data-rdv-modern="true"] .runtime select.fld {font-weight:400;padding-right:24px !important;color:var(--ui-ink);background-color:var(--ui-surface);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23444746' stroke-width='1.5'/%3E%3C/svg%3E");}
++html[data-rdv-modern="true"] .runtime select.fld option {color:var(--ui-ink);background:var(--ui-surface);}
++html[data-rdv-modern="true"] .runtime .calendar-day {background:var(--ui-surface);border:1px solid transparent;border-radius:var(--ui-radius);color:var(--ui-ink);}
++html[data-rdv-modern="true"] .runtime .calendar-week,
++html[data-rdv-modern="true"] .runtime .calendar-day.outside {color:var(--ui-muted);}
++html[data-rdv-modern="true"] .runtime .calendar-day:hover {background:var(--ui-hover);}
++html[data-rdv-modern="true"] .runtime .calendar-day.selected {background:var(--ui-accent);color:var(--ui-on-accent);}
++html[data-rdv-modern="true"] .runtime input[type=checkbox] {accent-color:var(--ui-accent);}
++html[data-rdv-modern="true"] .runtime .tbl td {border-color:var(--ui-line);}
++html[data-rdv-modern="true"] .runtime .modal-symbol {color:var(--ui-accent);}
++html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar {width:12px;height:12px;}
++html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-track {background:var(--ui-subtle);}
++html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-thumb {background:var(--ui-input-line);border:3px solid var(--ui-subtle);border-radius:8px;box-shadow:none;}
++html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-button {display:none;}
++html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-corner {background:var(--ui-subtle);}
++/* Do not add margins, transforms or frame thickness to the native dialog surface.
++   Its untransformed border box is the WPF auto-size contract. */
++html.dialogmode[data-rdv-modern="true"] .stage {height:auto;}
++html.dialogmode[data-rdv-modern="true"] .runtime .veil {background:transparent;}
++html.dialogmode[data-rdv-modern="true"] .runtime .dlg {border:0;border-radius:0;box-shadow:none;}
++html.dialogmode[data-rdv-modern="true"] .runtime .dlg>.body {padding:12px;}
++html.dialogmode[data-rdv-modern="true"] .runtime .dlg>.tb {display:none;}
++/* Distinct component treatments, not merely different accent colours. */
++html[data-rdv-theme="material"] .runtime .gb {border-color:transparent;background:var(--ui-subtle);}
++html[data-rdv-theme="material"] .runtime .fld:not(.inp):not(.keyvalue) {background:var(--ui-surface);}
++html[data-rdv-theme="material"] .runtime .btn:not(.def):not(.dis) {color:var(--ui-accent);border-color:var(--ui-line);background:transparent;}
++html[data-rdv-theme="material"] .runtime .btn:not(.def):not(.dis):hover {background:var(--ui-tint);}
++html[data-rdv-theme="carbon"] .runtime .gb {border:0;border-top:2px solid var(--ui-ink);}
++html[data-rdv-theme="carbon"] .runtime .gb>legend {color:var(--ui-ink);font-weight:700;}
++html[data-rdv-theme="carbon"] .runtime .fld.inp {border:0;border-bottom:1px solid var(--ui-input-line);background:var(--ui-subtle);}
++html[data-rdv-theme="carbon"] .runtime .btn:not(.def):not(.dis) {border-color:var(--ui-accent);color:var(--ui-accent);}
++html[data-rdv-theme="carbon"] .runtime .lv th {background:#e0e0e0;}
++html[data-rdv-theme="carbon"] .runtime .tb {background:#161616;}
++html[data-rdv-theme="carbon"] .runtime .tb .ttl,
++html[data-rdv-theme="carbon"] .runtime .tb .bx,
++html[data-rdv-theme="carbon"] .runtime .tb .ic {color:#fff;}
++html[data-rdv-theme="spectrum"] .runtime .btn:not(.def):not(.dis) {border-width:2px;box-shadow:none;}
++html[data-rdv-theme="spectrum"] .runtime .gb>legend {color:var(--ui-ink);}
++html[data-rdv-theme="spectrum"] .runtime .fld:not(.inp):not(.keyvalue) {background:transparent;border-bottom-color:var(--ui-line);border-radius:0;}
++html[data-rdv-theme="fluent"] .runtime .fld.inp {border-bottom-width:2px;}
++html[data-rdv-theme="fluent"] .runtime .fld.inp:focus {border-bottom-color:var(--ui-accent);}
++html[data-rdv-theme="apple"] .runtime .btn:not(.def):not(.dis) {border-color:#c6c6cc;box-shadow:0 1px 2px rgba(0,0,0,.08);}
++/* Business motion: no delay, no loops, no page movement, no ripple/blur/spring.
++   All action handlers execute immediately, regardless of transition progress. */
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .btn,
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .tog,
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .fld.inp,
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .calendar-day,
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .number-step {
++  transition:background-color var(--ui-fast) var(--ui-ease),border-color var(--ui-fast) var(--ui-ease),box-shadow var(--ui-fast) var(--ui-ease),transform 80ms var(--ui-ease);
++}
++html[data-rdv-modern="true"][data-rdv-motion="auto"]:not(.dialogmode) .runtime .veil.show>.dlg>.body,
++html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .date-editor.open .calendar-popup {animation:rdv-appear var(--ui-enter) var(--ui-ease);}
++@keyframes rdv-appear {from{opacity:.86;}to{opacity:1;}}
++/* Native dialogs use theme-motion.js only after WPF has fitted/shown the surface. */
++html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *,
++html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *::before,
++html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
++html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime .btn:active,
++html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime .tog:active {transform:none;}
++@media(prefers-reduced-motion:reduce){
++  html[data-rdv-modern="true"] .runtime *,html[data-rdv-modern="true"] .runtime *::before,html[data-rdv-modern="true"] .runtime *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
++  html[data-rdv-modern="true"] .runtime .btn:active,html[data-rdv-modern="true"] .runtime .tog:active {transform:none;}
++}
++@media(forced-colors:active){
++  html[data-rdv-modern="true"] {--ui-bg:Canvas;--ui-surface:Canvas;--ui-subtle:Canvas;--ui-ink:CanvasText;--ui-muted:CanvasText;--ui-line:CanvasText;--ui-input-line:ButtonText;--ui-accent:Highlight;--ui-accent-text:Highlight;--ui-accent-hover:Highlight;--ui-on-accent:HighlightText;--ui-tint:Canvas;--ui-error:CanvasText;--ui-success:CanvasText;--ui-warning:CanvasText;}
++  html[data-rdv-modern="true"] .runtime .btn.def,html[data-rdv-modern="true"] .runtime .calendar-day.selected {forced-color-adjust:none;background:Highlight;color:HighlightText;}
++  html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td,html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true] {forced-color-adjust:none;background:Highlight;color:HighlightText!important;}
++  html[data-rdv-modern="true"] .runtime .btn,html[data-rdv-modern="true"] .runtime .tog,html[data-rdv-modern="true"] .runtime .fld.inp,html[data-rdv-modern="true"] .runtime .gb {border:1px solid ButtonText;}
++  html[data-rdv-modern="true"] .runtime .tog.on {outline:2px solid Highlight;outline-offset:-3px;}
++  html[data-rdv-modern="true"] .runtime .btn.dis,html[data-rdv-modern="true"] .runtime .tog.dis {color:GrayText;border-color:GrayText;}
++  html[data-rdv-modern="true"] .runtime select.fld {appearance:auto;background-image:none;}
++  html[data-rdv-modern="true"] .runtime * {animation:none!important;transition:none!important;box-shadow:none!important;}
++}
++@media(max-width:620px){
++  html[data-rdv-modern="true"] .runtime .keyfigure {flex-basis:100%;}
++  html[data-rdv-modern="true"] .runtime .keyactions {gap:6px;}
++  html[data-rdv-modern="true"] .runtime .cols {flex-direction:column;}
++  html[data-rdv-modern="true"] .runtime .band {align-items:flex-start;padding-top:5px;padding-bottom:5px;height:auto;}
++  html[data-rdv-modern="true"] .runtime .band .band-label {position:static;margin-right:8px;}
++}
+--- /dev/null
++++ b/web/theme-motion.js
+@@ -0,0 +1,32 @@
++/* Presentation-only WebView hook. No business messages, timers or mutation observers.
++   The native host sends surfaceShown AFTER its size/position is stable. */
++(function () {
++  'use strict';
++  var root = document.documentElement;
++  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)');
++  var contrast = window.matchMedia('(forced-colors: active)');
++  var active = null;
++  function cancel() { if (active) { active.cancel(); active = null; } }
++  function allowed() {
++    return root.getAttribute('data-rdv-modern') === 'true' &&
++      root.getAttribute('data-rdv-motion') === 'auto' && !reduced.matches && !contrast.matches;
++  }
++  function present(event) {
++    if (!event.data || event.data.type !== 'surfaceShown' || !allowed()) { return; }
++    var body = document.querySelector('.veil.show>.dlg>.body');
++    if (!body || !body.animate) { return; }
++    cancel();
++    var style = window.getComputedStyle(root);
++    var duration = Math.min(160, Math.max(80, parseFloat(style.getPropertyValue('--ui-enter')) || 140));
++    active = body.animate([{opacity:0.86}, {opacity:1}], {
++      duration:duration, easing:style.getPropertyValue('--ui-ease').trim() || 'ease-out', iterations:1
++    });
++    active.onfinish = function () { active = null; };
++  }
++  function preferenceChanged() { if (!allowed()) { cancel(); } }
++  [reduced, contrast].forEach(function (query) {
++    if (query.addEventListener) { query.addEventListener('change', preferenceChanged); }
++    else if (query.addListener) { query.addListener(preferenceChanged); }
++  });
++  if (window.chrome && window.chrome.webview) { window.chrome.webview.addEventListener('message', present); }
++})();
+--- /dev/null
++++ b/web/theme.json
+@@ -0,0 +1,9 @@
++{
++  "schema": 1,
++  "id": "win98",
++  "motion": "off",
++  "background": "#d4d0c8",
++  "caption": "#081b50",
++  "captionText": "#ffffff",
++  "border": "#808080"
++}
+--- /dev/null
++++ b/design/themes.json
+@@ -0,0 +1,11 @@
++{
++  "schema": 1,
++  "themes": [
++    {"id":"win98","name":"Windows 98 Classic","description":"Original raised borders; no animation.","modern":false,"background":"#d4d0c8","caption":"#081b50","captionText":"#ffffff","border":"#808080"},
++    {"id":"apple","name":"Apple HIG / macOS inspired","description":"Quiet neutral surfaces, soft corners, precise feedback.","modern":true,"background":"#f5f5f7","caption":"#ededf0","captionText":"#1d1d1f","border":"#c6c6cc"},
++    {"id":"material","name":"Google Material Design 3 inspired","description":"Tonal surfaces, rounded controls, restrained state layers.","modern":true,"background":"#f7f9fc","caption":"#eaf1fb","captionText":"#1f1f1f","border":"#c4c7c5"},
++    {"id":"fluent","name":"Microsoft Fluent / Windows 10-11 inspired","description":"Windows-style controls, subtle depth, clear focus.","modern":true,"background":"#f3f3f3","caption":"#f3f3f3","captionText":"#242424","border":"#d1d1d1"},
++    {"id":"carbon","name":"IBM Carbon inspired","description":"Square geometry, structured data, productive motion.","modern":true,"background":"#f4f4f4","caption":"#161616","captionText":"#ffffff","border":"#8d8d8d"},
++    {"id":"spectrum","name":"Adobe Spectrum inspired","description":"Compact neutral workspace, strong outlines, pill actions.","modern":true,"background":"#f5f5f5","caption":"#e8e8e8","captionText":"#222222","border":"#b1b1b1"}
++  ]
++}
+--- /dev/null
++++ b/tools/Build.ps1
+@@ -0,0 +1,334 @@
++﻿# Windows PowerShell 5.1 compatible; no npm, SDK, downloaded UI kit or admin needed.
++[CmdletBinding()]
++param(
++    [Parameter(Position = 0)]
++    [ValidateSet('menu', 'compile', 'test', 'package', 'list', 'help')]
++    [string]$Command = 'menu',
++    [Alias('Themes')][string]$Theme = '',
++    [switch]$All,
++    [ValidateSet('auto', 'off')][string]$Motion = 'auto',
++    [ValidateSet('both', 'folder', 'zip')][string]$Format = 'both',
++    [ValidateSet('sample', 'none')][string]$Data = 'sample',
++    [string]$OutputRoot = '',
++    [switch]$RunTests,
++    [switch]$SkipValidation
++)
++Set-StrictMode -Version 2
++$ErrorActionPreference = 'Stop'
++$script:Root = Split-Path -Parent $PSScriptRoot
++$script:Utf8 = New-Object System.Text.UTF8Encoding($false)
++
++function Write-Utf8([string]$Path, [string]$Text) {
++    [IO.File]::WriteAllText($Path, $Text, $script:Utf8)
++}
++function Write-Json([string]$Path, $Object) {
++    Write-Utf8 $Path (($Object | ConvertTo-Json -Depth 10) + [Environment]::NewLine)
++}
++function Show-Usage {
++    @'
++Reader Data Viewer - design build console
++
++  build.bat                         Interactive multi-select TUI
++  build.bat compile                 Original C# compile-only check
++  build.bat test                    Original isolated C# regression tests
++  build.bat list                    List the six designs
++  build.bat package -All            Validate and package all six designs
++  build.bat package -Theme apple,fluent -Motion off
++  build.bat package -Theme win98 -Format zip -RunTests
++  build.bat package -All -Data none -OutputRoot "C:\RDV releases"
++
++Options:
++  -Theme ID[,ID...]  win98 / apple / material / fluent / carbon / spectrum
++  -All              Select all six (do not combine with -Theme)
++  -Motion auto|off  Short non-blocking feedback; classic is always off
++  -Format both|folder|zip   Output format (default: both)
++  -Data sample|none  Bundled test CSVs only, NEVER live ledger/log/pending data
++  -RunTests         Run isolated core regression tests before packaging
++  -SkipValidation   Explicitly skip Windows compile verification (recorded)
++                    Cannot be combined with -RunTests; not a production pass.
++
++Each build creates a NEW timestamped folder under releases (or -OutputRoot).
++Existing packages and input files are never overwritten.
++This is the original source-at-startup application, not a standalone .exe.
++See docs/design-build.md for Japanese instructions and deployment precautions.
++'@ | Write-Host
++}
++function Invoke-NativeCheck([string]$Mode) {
++    if ($env:OS -ne 'Windows_NT') {
++        throw 'Windows C#/WPF verification requires Windows PowerShell 5.1 on Windows. For packaging tests ONLY, use -SkipValidation.'
++    }
++    $exe = Join-Path $env:SystemRoot 'System32/WindowsPowerShell/v1.0/powershell.exe'
++    if (Test-Path -LiteralPath (Join-Path $env:SystemRoot 'Sysnative/WindowsPowerShell/v1.0/powershell.exe')) {
++        $exe = Join-Path $env:SystemRoot 'Sysnative/WindowsPowerShell/v1.0/powershell.exe'
++    }
++    $flag = '-CompileOnly'
++    if ($Mode -eq 'test') { $flag = '-TestCore' }
++    & $exe -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File (Join-Path $script:Root 'src/ReaderDataViewer.ps1') $flag
++    if ($LASTEXITCODE -ne 0) { throw ('Native ' + $Mode + ' failed; exit code ' + $LASTEXITCODE + '. No package was published.') }
++}
++function Read-ThemeIds([string]$Text, $Catalog) {
++    $known = @($Catalog | ForEach-Object { $_.id })
++    $ids = @($Text.ToLowerInvariant().Split(',') | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Select-Object -Unique)
++    if ($ids.Count -eq 0) { throw 'Select at least one theme with -Theme or -All.' }
++    foreach ($id in $ids) { if ($known -notcontains $id) { throw ('Unknown theme: ' + $id) } }
++    return $ids
++}
++function Read-LineMenu($Catalog, [string]$Initial) {
++    Write-Host 'Line-input mode. Choose one or more theme numbers (comma separated).'
++    for ($i = 0; $i -lt $Catalog.Count; $i++) { Write-Host ('  {0}. {1}' -f ($i + 1), $Catalog[$i].name) }
++    while ($true) {
++        $text = Read-Host ('Numbers / A=all / Q=cancel [default: ' + $Initial + ']')
++        if ($text -match '^[qQ]$') { return $null }
++        if ([string]::IsNullOrWhiteSpace($text)) { return @($Initial.Split(',')) }
++        if ($text -match '^[aA]$') { return @($Catalog | ForEach-Object { $_.id }) }
++        $ids = @(); $valid = $true
++        foreach ($part in $text.Split(',')) {
++            $index = 0
++            if (-not [int]::TryParse($part.Trim(), [ref]$index) -or $index -lt 1 -or $index -gt $Catalog.Count) { $valid = $false; break }
++            $ids += $Catalog[$index - 1].id
++        }
++        if ($valid -and $ids.Count -gt 0) { return @($ids | Select-Object -Unique) }
++        Write-Host 'Enter numbers 1-6 separated by commas.' -ForegroundColor Yellow
++    }
++}
++function Show-BuildMenu($Catalog, [string[]]$Initial) {
++    if ([Console]::IsInputRedirected -or [Console]::IsOutputRedirected) {
++        throw 'Interactive input requires a console. Use: build.bat package -All (or -Theme ID,ID).'
++    }
++    $chosen = @{}
++    foreach ($id in $Initial) { $chosen[$id] = $true }
++    $cursor = 0; $message = ''
++    $options = [ordered]@{ Ids = @(); Motion = $Motion; Format = $Format; Data = $Data; Tests = [bool]$RunTests }
++    $oldColour = [Console]::ForegroundColor
++    $oldCursor = [Console]::CursorVisible
++    try {
++        # Remote hosts without raw-key/clear support get a non-animated line menu.
++        if ([Console]::WindowWidth -lt 64 -or [Console]::WindowHeight -lt 22) {
++            $ids = Read-LineMenu $Catalog ($Initial -join ',')
++            if ($null -eq $ids) { return $null }
++            $options.Ids = @($ids); return [pscustomobject]$options
++        }
++        [Console]::CursorVisible = $false
++        while ($true) {
++            try { [Console]::Clear() } catch {
++                [Console]::CursorVisible = $oldCursor
++                $ids = Read-LineMenu $Catalog ($Initial -join ',')
++                if ($null -eq $ids) { return $null }
++                $options.Ids = @($ids); return [pscustomobject]$options
++            }
++            Write-Host ' READER DATA VIEWER  /  DESIGN BUILD' -ForegroundColor Cyan
++            Write-Host ' --------------------------------------------------------------'
++            Write-Host ' Up/Down: move  Space/1-6: select  A: all/clear  Enter: build'
++            Write-Host ''
++            for ($i = 0; $i -lt $Catalog.Count; $i++) {
++                $mark = ' '; if ($chosen.ContainsKey($Catalog[$i].id)) { $mark = 'x' }
++                $pointer = ' '; if ($i -eq $cursor) { $pointer = '>' }
++                $colour = 'Gray'; if ($i -eq $cursor) { $colour = 'Cyan' }
++                Write-Host (' {0} [{1}] {2}. {3}' -f $pointer, $mark, ($i + 1), $Catalog[$i].name) -ForegroundColor $colour
++            }
++            Write-Host ''
++            Write-Host (' ' + $Catalog[$cursor].description)
++            Write-Host (' M: Motion = {0}  (Win98 always OFF)' -f $options.Motion)
++            Write-Host (' F: Format = {0}   D: Data = {1}' -f $options.Format, $options.Data)
++            Write-Host (' T: Core tests = {0}  | C# compile check: required' -f $options.Tests)
++            if ($SkipValidation) { Write-Host ' WARNING: -SkipValidation was supplied; compile is NOT checked.' -ForegroundColor Yellow }
++            Write-Host ' Esc / Q: cancel without writing files'
++            Write-Host ' Output: a NEW build folder. No ledger/log/pending files copied.'
++            if ($message) { Write-Host (' ' + $message) -ForegroundColor Yellow }
++            $key = [Console]::ReadKey($true)
++            $toggle = -1
++            switch ($key.Key.ToString()) {
++                'UpArrow' { $cursor = ($cursor + $Catalog.Count - 1) % $Catalog.Count }
++                'DownArrow' { $cursor = ($cursor + 1) % $Catalog.Count }
++                'Spacebar' { $toggle = $cursor }
++                'A' {
++                    if ($chosen.Count -eq $Catalog.Count) { $chosen.Clear() }
++                    else { foreach ($item in $Catalog) { $chosen[$item.id] = $true } }
++                }
++                'M' { if ($options.Motion -eq 'auto') { $options.Motion = 'off' } else { $options.Motion = 'auto' } }
++                'F' { $formats = @('both','folder','zip'); $options.Format = $formats[([Array]::IndexOf($formats, $options.Format) + 1) % 3] }
++                'D' { if ($options.Data -eq 'sample') { $options.Data = 'none' } else { $options.Data = 'sample' } }
++                'T' { $options.Tests = -not $options.Tests }
++                'Escape' { return $null }
++                'Q' { return $null }
++                'Enter' {
++                    if ($chosen.Count -eq 0) { $message = 'Select at least one theme.' }
++                    elseif ($SkipValidation -and $options.Tests) { $message = 'Core tests cannot be combined with -SkipValidation.' }
++                    else {
++                        $options.Ids = @($Catalog | Where-Object { $chosen.ContainsKey($_.id) } | ForEach-Object { $_.id })
++                        return [pscustomobject]$options
++                    }
++                }
++            }
++            if ([string]$key.KeyChar -match '^[1-6]$') { $toggle = [int]::Parse([string]$key.KeyChar) - 1 }
++            if ($toggle -ge 0 -and $toggle -lt $Catalog.Count) {
++                $id = $Catalog[$toggle].id
++                if ($chosen.ContainsKey($id)) { $chosen.Remove($id) } else { $chosen[$id] = $true }
++                $cursor = $toggle; $message = ''
++            }
++        }
++    }
++    finally { [Console]::ForegroundColor = $oldColour; [Console]::CursorVisible = $oldCursor }
++}
++function Copy-SafeTree([string]$Source, [string]$Destination) {
++    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw ('Missing directory: ' + $Source) }
++    $items = @(Get-Item -LiteralPath $Source) + @(Get-ChildItem -LiteralPath $Source -Force -Recurse)
++    foreach ($item in $items) {
++        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Refusing linked/reparse-point input: ' + $item.FullName) }
++    }
++    [IO.Directory]::CreateDirectory($Destination) | Out-Null
++    foreach ($item in (Get-ChildItem -LiteralPath $Source -Force)) {
++        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
++    }
++}
++function Copy-SafeFile([string]$Source, [string]$Destination) {
++    $file = Get-Item -LiteralPath $Source -ErrorAction Stop
++    if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Invalid source file: ' + $Source) }
++    Copy-Item -LiteralPath $Source -Destination $Destination
++}
++function Get-PackageHashes([string]$Directory) {
++    $entries = @()
++    foreach ($file in (Get-ChildItem -LiteralPath $Directory -Recurse -File | Sort-Object FullName)) {
++        $relative = $file.FullName.Substring($Directory.Length + 1).Replace('\','/')
++        $entries += [ordered]@{path = $relative; sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()}
++    }
++    return $entries
++}
++function New-DesignPackages($Catalog, $Options) {
++    $compileStatus = 'not_run_explicit_skip'; $testStatus = 'not_requested'
++    if ($SkipValidation -and $Options.Tests) { throw '-SkipValidation and -RunTests are mutually exclusive.' }
++    if (-not $SkipValidation) {
++        Invoke-NativeCheck 'compile'; $compileStatus = 'passed'
++        if ($Options.Tests) { Invoke-NativeCheck 'test'; $testStatus = 'passed' }
++    } else { Write-Host 'WARNING: Native Windows verification SKIPPED. These packages are NOT runtime-verified.' -ForegroundColor Yellow }
++    $destination = $OutputRoot
++    if ([string]::IsNullOrWhiteSpace($destination)) { $destination = Join-Path $script:Root 'releases' }
++    $destination = [IO.Path]::GetFullPath($destination)
++    $volumeRoot = [IO.Path]::GetPathRoot($destination)
++    if ($destination.Length -gt $volumeRoot.Length) {
++        $destination = $destination.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
++    }
++    # Never write generated output into an input tree. No existing build is removed.
++    foreach ($name in @('', 'src', 'web', 'lib', 'data', 'tests', 'tools', 'design', 'docs')) {
++        $protected = $script:Root
++        if ($name) { $protected = Join-Path $protected $name }
++        if ($destination.Equals($protected, [StringComparison]::OrdinalIgnoreCase) -or
++            ($name -and $destination.StartsWith($protected + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase))) {
++            throw ('OutputRoot must not be an application input directory: ' + $destination)
++        }
++    }
++    [IO.Directory]::CreateDirectory($destination) | Out-Null
++    $key = [Guid]::NewGuid().ToString('N')
++    $stage = Join-Path $destination ('.rdv-stage-' + $key)
++    $published = Join-Path $destination ('build-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $key.Substring(0,8))
++    [IO.Directory]::CreateDirectory($stage) | Out-Null
++    try {
++        $summary = @()
++        foreach ($id in $Options.Ids) {
++            $definition = @($Catalog | Where-Object { $_.id -eq $id })[0]
++            $packageName = 'ReaderDataViewer-' + $id
++            $package = Join-Path $stage $packageName
++            [IO.Directory]::CreateDirectory($package) | Out-Null
++            foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'settings.json', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
++                Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
++            }
++            foreach ($dir in @('src','web','lib')) { Copy-SafeTree (Join-Path $script:Root $dir) (Join-Path $package $dir) }
++            [IO.Directory]::CreateDirectory((Join-Path $package 'data')) | Out-Null
++            [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
++            if ($Options.Data -eq 'sample') {
++                # Deliberate allow-list: NEVER copy the active data/ directory.
++                foreach ($csv in @('tableA.csv','tableB.csv','tableC.csv','delete.csv')) {
++                    Copy-SafeFile (Join-Path $script:Root ('tests/fixtures/data/' + $csv)) (Join-Path $package ('data/' + $csv))
++                }
++            }
++            $effectiveMotion = 'off'; if ($definition.modern) { $effectiveMotion = $Options.Motion }
++            $config = [ordered]@{schema = 1; id = $id; motion = $effectiveMotion; background = $definition.background; caption = $definition.caption; captionText = $definition.captionText; border = $definition.border}
++            Write-Json (Join-Path $package 'web/theme.json') $config
++            $htmlPath = Join-Path $package 'web/index.html'
++            $html = [IO.File]::ReadAllText($htmlPath, [Text.Encoding]::UTF8)
++            $attributes = [ordered]@{'data-rdv-theme' = $id; 'data-rdv-modern' = ([string][bool]$definition.modern).ToLowerInvariant(); 'data-rdv-motion' = $effectiveMotion}
++            foreach ($attribute in $attributes.Keys) {
++                $pattern = '\b' + $attribute + '="[^"]*"'
++                if ([regex]::Matches($html, $pattern).Count -ne 1) { throw ('Expected exactly one theme marker: ' + $attribute) }
++                $html = [regex]::Replace($html, $pattern, ($attribute + '="' + $attributes[$attribute] + '"'))
++            }
++            Write-Utf8 $htmlPath $html
++            [IO.Directory]::CreateDirectory((Join-Path $package 'docs')) | Out-Null
++            foreach ($doc in @('design-build.md','theme-validation.md','settings.md','shared-ledger.md')) {
++                Copy-SafeFile (Join-Path $script:Root ('docs/' + $doc)) (Join-Path $package ('docs/' + $doc))
++            }
++            $readme = "Reader Data Viewer - $($definition.name)`r`n`r`n" +
++                "Start: ReaderDataViewer.vbs (or .cmd for console diagnostics).`r`n" +
++                "Extract the entire ZIP first. Requires 64-bit Windows, Windows PowerShell 5.1, WPF and WebView2 Runtime.`r`n" +
++                "Theme: $id / motion: $effectiveMotion / input data: $($Options.Data)`r`n" +
++                "Native compile: $compileStatus / core tests: $testStatus`r`n" +
++                "This is a source-at-startup distribution, NOT a standalone EXE.`r`n" +
++                "The original business settings are copied unchanged. Sample data is not your live data.`r`n" +
++                "No live ledger, log, output or local pending changes were copied.`r`n" +
++                "Review paths in settings.json BEFORE running a production copy.`r`n" +
++                "Use one deployed theme per working folder. Close the app and back up data before switching themes.`r`n" +
++                "Japanese instructions: docs/design-build.md (source build tools are in the developer ZIP).`r`n" +
++                "Vendor names describe design inspiration, not certification or vendor component binaries.`r`n"
++            Write-Utf8 (Join-Path $package 'PACKAGE-README.txt') $readme
++            $manifest = [ordered]@{
++                schema = 1; application = 'ReaderDataViewer'; theme = $id; motion = $effectiveMotion
++                createdUtc = [DateTime]::UtcNow.ToString('o'); data = $Options.Data
++                validation = [ordered]@{ nativeCompile = $compileStatus; coreTests = $testStatus; windowsUI = 'not_run_by_packager'; sharedLedger = 'not_run_by_packager' }
++                files = @(Get-PackageHashes $package)
++            }
++            Write-Json (Join-Path $package 'package-manifest.json') $manifest
++            if ($Options.Format -ne 'folder') {
++                Add-Type -AssemblyName System.IO.Compression.FileSystem
++                [IO.Compression.ZipFile]::CreateFromDirectory($package, (Join-Path $stage ($packageName + '.zip')), [IO.Compression.CompressionLevel]::Optimal, $true)
++            }
++            if ($Options.Format -eq 'zip') { Remove-Item -LiteralPath $package -Recurse -Force }
++            $summary += [ordered]@{theme=$id; name=$definition.name; motion=$effectiveMotion; package=$packageName; format=$Options.Format}
++            Write-Host ('  Prepared: ' + $definition.name) -ForegroundColor Green
++        }
++        Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
++        [IO.Directory]::Move($stage, $published)
++        Write-Host ''
++        Write-Host ('Published: ' + $published) -ForegroundColor Cyan
++        if ($compileStatus -ne 'passed') { Write-Host 'Windows verification was NOT performed. See package-manifest.json.' -ForegroundColor Yellow }
++    }
++    finally {
++        # This path is an owned GUID staging directory, never a supplied destination.
++        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
++    }
++}
++try {
++    if ($Command -eq 'help') { Show-Usage; exit 0 }
++    if ($Command -eq 'compile' -or $Command -eq 'test') {
++        if ($Theme -or $All -or $SkipValidation -or $RunTests -or $OutputRoot -or
++            $PSBoundParameters.ContainsKey('Motion') -or $PSBoundParameters.ContainsKey('Format') -or $PSBoundParameters.ContainsKey('Data')) {
++            throw 'compile/test do not accept packaging options.'
++        }
++        Invoke-NativeCheck $Command; exit 0
++    }
++    $document = [IO.File]::ReadAllText((Join-Path $script:Root 'design/themes.json'), [Text.Encoding]::UTF8) | ConvertFrom-Json
++    $catalog = @($document.themes)
++    if ($document.schema -ne 1 -or $catalog.Count -ne 6 -or @($catalog.id | Select-Object -Unique).Count -ne 6) { throw 'Invalid theme catalog.' }
++    $expectedIds = @('win98','apple','material','fluent','carbon','spectrum')
++    foreach ($entry in $catalog) {
++        if ($expectedIds -notcontains $entry.id) { throw 'Invalid theme id.' }
++        if ($entry.modern -isnot [bool] -or $entry.modern -ne ($entry.id -ne 'win98')) { throw 'Invalid theme mode.' }
++        foreach ($colour in @($entry.background,$entry.caption,$entry.captionText,$entry.border)) { if ($colour -notmatch '^#[a-fA-F0-9]{6}$') { throw 'Invalid theme colour.' } }
++    }
++    if ($Command -eq 'list') { $catalog | Format-Table id, name, modern -AutoSize; exit 0 }
++    if ($All -and $Theme) { throw '-All and -Theme are mutually exclusive.' }
++    $ids = @('win98')
++    if ($All) { $ids = @($catalog | ForEach-Object { $_.id }) }
++    elseif ($Theme) { $ids = @(Read-ThemeIds $Theme $catalog) }
++    elseif ($Command -eq 'package') { throw 'package requires -All or -Theme ID[,ID...].' }
++    $options = [pscustomobject]@{Ids = $ids; Motion = $Motion; Format = $Format; Data = $Data; Tests = [bool]$RunTests}
++    if ($Command -eq 'menu') {
++        $options = Show-BuildMenu $catalog $ids
++        if ($null -eq $options) { Write-Host 'Cancelled. No files were written.'; exit 0 }
++    }
++    New-DesignPackages $catalog $options
++    exit 0
++}
++catch {
++    [Console]::Error.WriteLine('BUILD FAILED: ' + $_.Exception.Message)
++    exit 1
++}

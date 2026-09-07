@@ -1,37 +1,60 @@
-# 生成物 (すべてスクリプトで作り直せる)
-*.xlsm
+# 追跡しないもの。作るのは build\ のスクリプトだけで、置き場は 2 か所しかない。
+#
+#   data/       入力表 3 枚と delete.csv と expected.txt (build\gen_data2.ps1)。
+#               アプリが読む唯一の実体。台帳・ロック・版・動作ログもここへ書かれる。
+#   build/out/  それ以外の生成物すべて
+#                 build/out/ReaderDataViewer/  配布物 (build\build_dist.ps1)
+#                 build/out/samples/           サンプル (build\gen_samples.ps1)
+#                 build/out/work/              検査の一時領域 (成功したら消える)
+#                 build/out/data-100k/         -OutDir を付けたときの生成先
+data/
+build/out/
+
+# 退役した WinForms 版が残している配布物
+dist/
+
+# 2026-09-07 より前の配置。別端末のディスクにはまだ残っているので、
+# 無視規則を外すと向こうの自動コミットが拾って戻してくる。消さないこと。
+/data-1k/
+/data-100k/
+/data-tiny/
+/samples/
+/work/
+/showcase/
+/build/fixtures/
+/build/dist/
+/build/work/
+
+# アプリが自分の隣へ書く実行時の産物
+*.log
+*.pid
 *.xlsx
+*.xlsx.lock
+*.xlsx.version
+
+# 退役した Excel / VBA 系のビルド生成物 (archive/vba, archive/comparisons)
+*.xlsm
+*.xll
 *.exe
+*.pdb
 *.dll
 !lib/Microsoft.Web.WebView2.Core.dll
 !lib/Microsoft.Web.WebView2.Wpf.dll
 !lib/WebView2Loader.dll
-*.xll
-*.pdb
-*.log
-*.pid
-*.xlsx.lock
-*.xlsx.version
-prebuilt/
-engine/
-dist/
-
-# ビルド時に生成される
-archive/benchmarks/excel-background-bench/vba/modZipEmit.bas
-
-# nuget から取得する第三者成果物 (xll/fetch_exceldna.ps1)
-xll/nuget/
-
-# 取得・生成するデータ (日本郵便のデータ、100万件の入力・出力・辞書)
-data/
-data-1k/
-data-100k/
-data-tiny/
-/samples/
-work/
 
 # Excel の一時ファイル
 ~$*
 
 # MCP ツールの一時出力
 .playwright-mcp/
+
+# --- 画面の撮影物 (2026-09-07) -----------------------------------------------
+# 実機を撮った証跡は机がそのまま写るので追跡しない。
+# 置き場の /work/ は上で既に外してあるが、それは 2026-09-07 の整理で入った
+# 規則で、それ以前は追跡されていた (未 push の履歴に PNG 398 枚が残っている)。
+# 別の名前で同じことが起きないよう、撮影物そのものを名指しで外す。
+# build/*.ps1 と archive/*/build/*.ps1 の撮影は $scratch と work\ へ出る。
+**/shots/
+**/screenshots/
+*-shots/
+*visual-evidence*/

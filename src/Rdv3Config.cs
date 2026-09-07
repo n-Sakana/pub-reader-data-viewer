@@ -288,6 +288,7 @@ public sealed class Rdv3Config
     public Rdv3Screen Screen;
 
     public string SourcePath = "";
+    private string sourceDigest = "";
 
     // where the three members the dialog owns sit in the file's text
     private Rdv3Json pathsNode, searchNode, watchNode;
@@ -301,7 +302,7 @@ public sealed class Rdv3Config
             throw new Rdv3LoadError("the file does not exist: " + path, 0);
         }
         string text;
-        try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
+        try { text = File.ReadAllText(path, new UTF8Encoding(false, true)); }
         catch (Exception ex) { throw new Rdv3LoadError("the file cannot be read: " + ex.Message, 0); }
         Rdv3Config c = Parse(text);
         c.SourcePath = path;
@@ -368,6 +369,7 @@ public sealed class Rdv3Config
         c.Screen = Rdv3Screen.Read(root.Obj("screen", true));
         // the screen names ledger columns; they have to be the data's
         c.Screen.Check(c.Data);
+        c.sourceDigest = Rdv3PendingStore.DigestOf(text);
         return c;
     }
 
@@ -376,9 +378,10 @@ public sealed class Rdv3Config
     {
         get
         {
-            if (keyRule == null || keyRule.ToString() != KeyPattern)
+            string whole = "\\A(?:" + KeyPattern + ")\\z";
+            if (keyRule == null || keyRule.ToString() != whole)
             {
-                keyRule = new Regex(KeyPattern, RegexOptions.CultureInvariant);
+                keyRule = new Regex(whole, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
             }
             return keyRule;
         }
@@ -386,14 +389,20 @@ public sealed class Rdv3Config
 
     public bool IsKey(string s)
     {
-        return s != null && s.Length > 0 && KeyRule.IsMatch(s);
+        if (string.IsNullOrEmpty(s) || s.Length > 4096) { return false; }
+        try
+        {
+            Match m = KeyRule.Match(s);
+            return m.Success && m.Index == 0 && m.Length == s.Length;
+        }
+        catch (RegexMatchTimeoutException) { return false; }
     }
 
     // null when the pattern compiles, otherwise the reason it does not
     public static string PatternError(string pattern)
     {
         if (pattern == null || pattern.Trim().Length == 0) { return "empty"; }
-        try { new Regex(pattern, RegexOptions.CultureInvariant); return null; }
+        try { new Regex("\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); return null; }
         catch (Exception ex) { return ex.Message; }
     }
 
@@ -407,7 +416,15 @@ public sealed class Rdv3Config
     {
         try
         {
-            string text = File.ReadAllText(path, new UTF8Encoding(false));
+            // A cooperating writer holds this handle while checking/replacing.
+            // The baseline check also catches edits made by a text editor.
+            using (FileStream editLease = new FileStream(path + ".edit.lock", FileMode.OpenOrCreate,
+                FileAccess.ReadWrite, FileShare.None))
+            {
+            string text = File.ReadAllText(path, new UTF8Encoding(false, true));
+            if (sourceDigest.Length == 0 || !string.Equals(sourceDigest,
+                Rdv3PendingStore.DigestOf(text), StringComparison.Ordinal))
+            { throw new IOException(Rdv3Text.SettingsChangedExternally); }
             Rdv3Config now = Parse(text);
             string nl = (text.IndexOf("\r\n", StringComparison.Ordinal) >= 0) ? "\r\n" : "\n";
             // latest offset first, so the earlier spans stay where they are
@@ -432,12 +449,13 @@ public sealed class Rdv3Config
             }
             // the result has to load too, or it is not written
             Parse(text);
-            string tmp = path + ".tmp-" + DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
-            File.WriteAllText(tmp, text, new UTF8Encoding(false));
-            if (File.Exists(path)) { File.Replace(tmp, path, null); }
-            else { File.Move(tmp, path); }
+            // Validate path collisions before committing, not on the next launch.
+            Rdv3Files.ValidateLayout(Parse(text), System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path)), path);
+            Rdv3PendingStore.AtomicWrite(path, text);
             SourcePath = path;
+            sourceDigest = Rdv3PendingStore.DigestOf(text);
             return null;
+            }
         }
         catch (Exception ex) { return ex.Message; }
     }
@@ -565,6 +583,7 @@ public sealed class Rdv3Config
         DataDir = o.DataDir;
         Ledger = o.Ledger;
         Log = o.Log;
+        sourceDigest = o.sourceDigest;
     }
 
     // deep enough for the dialog to edit without touching the running settings
@@ -581,6 +600,7 @@ public sealed class Rdv3Config
         c.SaveTimeoutMs = SaveTimeoutMs; c.MarkOverdueMs = MarkOverdueMs; c.PumpMs = PumpMs;
         c.LockRetryMs = LockRetryMs; c.LockStaleMs = LockStaleMs; c.MarkerPollMs = MarkerPollMs;
         c.SourcePath = SourcePath;
+        c.sourceDigest = sourceDigest;
         c.Data = Data; c.Screen = Screen;
         c.Targets = new List<Rdv3Target>();
         for (int i = 0; i < Targets.Count; i++) { c.Targets.Add(Targets[i].Clone()); }

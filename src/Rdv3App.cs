@@ -117,6 +117,7 @@ public sealed class Rdv3App
     private readonly string appDir;
     private readonly string dataDir;
     private readonly string ledgerPath;
+    private readonly string storageContract;
     private readonly int pid;
 
     private int state = StBoot;
@@ -140,6 +141,7 @@ public sealed class Rdv3App
     private int procSeq;
     private string activeRunId = "";
     private string activeSearchId = "";
+    private string activeSearchKey = "";
 
     private int shownRow = -1;
     private string shownKey = "";
@@ -158,8 +160,11 @@ public sealed class Rdv3App
     private Rdv3SharedMarker seenMarker;
     private Rdv3SharedMarker deferredMarker;
     private long lastMarkerPoll;
+    private bool markerPollQueued;
+    private string ledgerObservedStamp;
     private bool sharedReloading;
     private bool markerReadFailed;
+    private DateTime reloadRetryAfter = DateTime.MinValue;
     private volatile bool closing;
 
     // app construction instant, for the boot->operable startup figure
@@ -177,6 +182,7 @@ public sealed class Rdv3App
         screen = settings.Screen;
         work = screen.Work;
         dataDef = settings.Data;
+        storageContract = Rdv3Files.StorageContract(dataDef, work);
         appDir = appBaseDir;
         dataDir = data;
         ledgerPath = ledger;
@@ -185,6 +191,7 @@ public sealed class Rdv3App
         pending = pendingChanges;
         shared = sharedFiles;
         seenMarker = initialMarker;
+        try { ledgerObservedStamp = Rdv3Files.Stamp(ledgerPath); } catch (Exception) { ledgerObservedStamp = null; }
         log.OnFail = delegate(string msg) { form.Error(Rdv3Text.ErrLogWrite + msg); };
         // the ledger columns the screen binds to, fixed by the definition
         form.SetFields(new Rdv3Fields(dataDef.ColumnRefs));
@@ -192,6 +199,10 @@ public sealed class Rdv3App
         worker.OnError = JobFailed;
 
         form.OnSearch = ManualSearch;
+        form.OnKeyChanged = delegate(string value)
+        {
+            if (!string.Equals((value ?? "").Trim(), activeSearchKey, StringComparison.Ordinal)) { ClearShown(); }
+        };
         form.OnClear = DoClear;
         form.OnWorkState = DoWorkState;
         form.OnRefreshLedger = RefreshLedger;
@@ -259,6 +270,7 @@ public sealed class Rdv3App
 
     private void StartCheck(Rdv3ProcessJobDef process)
     {
+        ClearShown();
         state = StChecking;
         runSeq++;
         string rid = "R" + runSeq.ToString(CultureInfo.InvariantCulture);
@@ -319,7 +331,7 @@ public sealed class Rdv3App
         string[] oldLines = null;
         string[] oldStates = null;
         string loadError = null;
-        bool exists = File.Exists(ledgerPath);
+        bool exists = Rdv3Files.Exists(ledgerPath);
         if (exists)
         {
             try
@@ -349,7 +361,8 @@ public sealed class Rdv3App
                     mr.Lines, dataDef.IdentityCol, work.InitialStored)
                 : Rdv3Process.Execute(mr.Prepared, oldLines, oldStates, work.InitialStored, false).Update;
             int firstDiff;
-            same = Rdv3Ledger.SameContent(oldLines, preview.Lines, out firstDiff);
+            Rdv3Ledger.SameContent(oldLines, preview.Lines, out firstDiff);
+            same = Rdv3Ledger.SameLedger(oldLines, oldStates, preview.Lines, preview.States);
             log.Write(rid, "compare", "rows_old=" + oldLines.Length.ToString(CultureInfo.InvariantCulture)
                 + " rows_source=" + mr.Lines.Length.ToString(CultureInfo.InvariantCulture)
                 + " rows_result=" + preview.Lines.Length.ToString(CultureInfo.InvariantCulture)
@@ -390,6 +403,14 @@ public sealed class Rdv3App
 
         if (oldLines == null)
         {
+            if (ledgerExists)
+            {
+                // A read error is not permission to destroy the unreadable file.
+                form.Error(Rdv3Text.ErrLedgerRead + (loadError ?? ""));
+                if (ledLines != null) { ContinueWithActive(rid, "ledger-read-failed"); }
+                else { EnterBlocked(); }
+                return;
+            }
             // missing or unreadable: never silently rebuild -- ask, with the
             // reason on the screen
             string body = ledgerExists
@@ -409,8 +430,8 @@ public sealed class Rdv3App
         if (same)
         {
             log.Write(rid, "decision", "no difference");
-            if (ledLines != null && runSeq > 1) { ContinueWithActive(rid, Rdv3Text.NoteNoDiff); form.Notice(Rdv3Text.NoteNoDiff); }
-            else { AdoptLedger(rid, oldLines, oldStates, mr.Head, Rdv3Text.NoteNoDiff); }
+            // No source-content change does NOT mean the shared states are old.
+            AdoptLedger(rid, oldLines, oldStates, mr.Head, Rdv3Text.NoteNoDiff);
             return;
         }
 
@@ -447,9 +468,14 @@ public sealed class Rdv3App
     private void ReadLedger(string[] head, out string[] lines, out string[] states)
     {
         string warning;
-        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states, out warning);
+        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states, out warning, storageContract);
         Rdv3Ledger.CheckIdentities(lines, dataDef.IdentityCol, System.IO.Path.GetFileName(ledgerPath),
             LabelOrRef(dataDef.Columns[dataDef.IdentityCol].Ref));
+        for (int i = 0; i < states.Length; i++)
+        {
+            if (work.ByStored(states[i]) == null)
+            { throw new InvalidDataException(Rdv3Text.LedgerStateInvalid + (i + 2).ToString(CultureInfo.InvariantCulture)); }
+        }
         if (warning.Length > 0)
         {
             log.Write("-", "warning", warning);
@@ -502,12 +528,16 @@ public sealed class Rdv3App
             string[] effective = pending.Overlay(lines, states, dataDef.IdentityCol);
             log.Write(rid, "index", "table=LEDGER rows=" + lines.Length.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
-            ledLines = lines;
-            sharedStates = states;
-            ledStates = effective;
-            ledHead = head;
-            ledIndex = ix;
-            form.RunOnUi(delegate { EnterReady(rid, note); });
+            form.RunOnUi(delegate
+            {
+                if (closing || !string.Equals(rid, activeRunId, StringComparison.Ordinal)) { return; }
+                ledLines = lines;
+                sharedStates = states;
+                ledStates = effective;
+                ledHead = head;
+                ledIndex = ix;
+                EnterReady(rid, note);
+            });
         };
         worker.Post(job);
     }
@@ -524,7 +554,7 @@ public sealed class Rdv3App
         Rdv3MergeResult mr = mergeResult;
         Rdv3ProcessJobDef process = mr.Job;
         string initial = work.InitialStored;
-        bool mayReplaceUnreadable = (savedLines == null);
+        string[] checkedLines = savedLines;
         string[] beforeLines = ledLines;
         string[] beforeStates = ledStates;
 
@@ -544,21 +574,17 @@ public sealed class Rdv3App
                 long t = Rdv3Clock.Now();
                 string[] latestLines = null;
                 string[] latestStates = null;
-                if (File.Exists(ledgerPath))
+                if (Rdv3Files.Exists(ledgerPath))
                 {
-                    try
-                    {
-                        ReadLedger(mr.Head, out latestLines, out latestStates);
-                        log.Write(rid, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
-                            + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
-                    }
-                    catch (Exception ex)
-                    {
-                        if (!mayReplaceUnreadable) { throw; }
-                        log.Write(rid, "load", "under_lock unreadable; approved replacement: " + ex.Message);
-                    }
+                    ReadLedger(mr.Head, out latestLines, out latestStates);
+                    log.Write(rid, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
+                        + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
                 }
 
+                int firstChanged;
+                if ((checkedLines == null) != (latestLines == null)
+                    || (checkedLines != null && !Rdv3Ledger.SameContent(checkedLines, latestLines, out firstChanged)))
+                { throw new IOException(Rdv3Text.UpdateChangedDuringCheck); }
                 t = Rdv3Clock.Now();
                 update = (mr.Prepared == null)
                     ? Rdv3Ledger.ApplyUpdate(process, latestLines, latestStates,
@@ -583,7 +609,7 @@ public sealed class Rdv3App
                 {
                     t = Rdv3Clock.Now();
                     Rdv3Xlsx.Write(ledgerPath, mr.Head, work.Column, update.Lines, update.States,
-                        pid.ToString(CultureInfo.InvariantCulture) + "-" + rid);
+                        pid.ToString(CultureInfo.InvariantCulture) + "-" + rid, storageContract);
                     ledgerWritten = true;
                     log.Write(rid, "persist", "target=xlsx rows=" + update.Lines.Length.ToString(CultureInfo.InvariantCulture)
                         + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
@@ -666,7 +692,7 @@ public sealed class Rdv3App
     {
         try
         {
-            if (System.IO.File.Exists(ledgerPath))
+            if (Rdv3Files.Exists(ledgerPath))
             {
                 return System.IO.File.GetLastWriteTime(ledgerPath)
                     .ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
@@ -736,9 +762,9 @@ public sealed class Rdv3App
 
     private void ClearShown()
     {
-        string typed = form.KeyText;
-        form.ClearResult();
-        form.SetKeyText(typed);
+        activeSearchId = "";
+        activeSearchKey = "";
+        form.ClearResult(true);
         shownRow = -1;
         shownKey = "";
         shownCands = null;
@@ -784,27 +810,33 @@ public sealed class Rdv3App
     // watch thread. "target" is the name of the watched screen the number came
     // off: with several watched at once, a reading in the log is only traceable
     // back to the work it belongs to if it says which one delivered it.
-    private void Detected(string key, double detectMs, int polls, long t0, string target)
+    private bool Detected(string key, double detectMs, int polls, long t0, string target)
     {
-        log.Write("-", "detect", "key=" + key + " target=" + target
-            + " latency_ms=" + Rdv3Log.F(detectMs)
-            + " polls=" + polls.ToString(CultureInfo.InvariantCulture));
-        if (state != StReady)
+        bool accepted = false;
+        form.RunOnUi(delegate
         {
-            log.Write("-", "search", "ignored key=" + key + " target=" + target
-                + " reason=not-ready (detected)");
-            return;
+            if (closing || state != StReady || savingMark || form.IsModalOpen) { return; }
+            form.SetKeyText(key);
+            Search(key, "detect", target, detectMs, t0);
+            accepted = true;
+        });
+        if (accepted)
+        {
+            log.Write("-", "detect", "key=" + key + " target=" + target
+                + " latency_ms=" + Rdv3Log.F(detectMs) + " polls=" + polls.ToString(CultureInfo.InvariantCulture));
         }
-        form.SetKeyText(key);
-        Search(key, "detect", target, detectMs, t0);
+        return accepted;
     }
 
-    // any thread. t0 is the confirm instant: the search clock is already running.
+    // UI thread. t0 is the confirm instant: the search clock is already running.
     private void Search(string key, string source, string target, double detectMs, long t0)
     {
+        if (state != StReady || savingMark || form.IsModalOpen) { return; }
+        ClearShown();
         searchSeq++;
         string sid = "S" + searchSeq.ToString(CultureInfo.InvariantCulture);
         activeSearchId = sid;
+        activeSearchKey = key;
 
         Rdv3Job job = new Rdv3Job();
         job.RunId = sid;
@@ -842,6 +874,8 @@ public sealed class Rdv3App
         }
         form.RunOnUi(delegate
         {
+            if (closing || state != StReady || !string.Equals(sid, activeSearchId, StringComparison.Ordinal)
+                || !object.ReferenceEquals(lines, ledLines)) { return; }
             form.ShowCandidates(key, rows, n);
             shownKey = key;
             shownCands = candRows;
@@ -866,9 +900,12 @@ public sealed class Rdv3App
             // never part of the search time -- and never the worker's wait
             form.PostOnUi(delegate
             {
-                if (!string.Equals(sid, activeSearchId, StringComparison.Ordinal)) { return; }
+                if (closing || state != StReady || savingMark || form.IsModalOpen
+                    || !string.Equals(sid, activeSearchId, StringComparison.Ordinal)
+                    || !object.ReferenceEquals(lines, ledLines)) { return; }
                 int picked = form.PickFromList();
-                if (picked >= 0)
+                if (picked >= 0 && state == StReady && string.Equals(sid, activeSearchId, StringComparison.Ordinal)
+                    && object.ReferenceEquals(lines, ledLines))
                 {
                     PickCandidate(picked);
                     if (source == "detect") { AutoCompleteDetected(); }
@@ -1059,6 +1096,7 @@ public sealed class Rdv3App
 
     private void DoClear()
     {
+        activeSearchId = "";
         form.ClearResult();
         shownRow = -1;
         shownKey = "";
@@ -1119,19 +1157,20 @@ public sealed class Rdv3App
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
 
             apply = pending.PrepareSend(latestLines, latestStates, dataDef.IdentityCol, work.InitialStored);
-            if (apply.Resolved.Count > 0)
+            if (apply.FromInitial + apply.ToInitial > 0)
             {
                 t = Rdv3Clock.Now();
                 Rdv3Xlsx.Write(ledgerPath, ledHead, work.Column, latestLines, apply.States,
-                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag);
+                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag, storageContract);
                 ledgerWritten = true;
                 log.Write(tag, "persist", "target=xlsx rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
                     + " changes=" + apply.Resolved.Count.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
                 marker = shared.WriteMarker("send", latestLines.Length, apply.FromInitial, apply.ToInitial);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=send");
-                pending.Remove(apply.Resolved);
             }
+            // Includes idempotent retries after a previously committed send.
+            pending.Remove(apply.Resolved);
             ledgerLock.Release();
             ledgerLock = null;
 
@@ -1147,7 +1186,7 @@ public sealed class Rdv3App
                 {
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
                 }
-                if (keepApply.Unmatched.Count > 0) { form.TellUnmatched(keepApply.Unmatched); }
+                if (keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
             });
         }
         catch (Exception ex)
@@ -1163,13 +1202,47 @@ public sealed class Rdv3App
                 EndWriteGuard(tag, false);
                 ReadyAfterShared(tag, "send-failed");
                 form.Error(Rdv3Text.ErrSend + ex.Message);
-                if (keepApply != null && keepApply.Unmatched.Count > 0) { form.TellUnmatched(keepApply.Unmatched); }
+                if (keepApply != null && keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
             });
         }
         finally
         {
             if (ledgerLock != null) { ledgerLock.Dispose(); }
         }
+    }
+
+    private void HandleUnmatched(List<Rdv3UnmatchedChange> rows)
+    {
+        if (!form.TellUnmatched(rows) || !form.Ask(Rdv3Text.UnmatchedTitle, Rdv3Text.DiscardPendingConfirm)) { return; }
+        List<string> ids = new List<string>();
+        for (int i = 0; i < rows.Count; i++) { ids.Add(rows[i].Identity); }
+        savingMark = true;
+        form.EnableOps(false);
+        Rdv3Job job = new Rdv3Job();
+        job.RunId = "P" + (++procSeq).ToString(CultureInfo.InvariantCulture);
+        job.Kind = "state";
+        job.TimeoutMs = cfg.SaveTimeoutMs;
+        job.Work = delegate
+        {
+            try
+            {
+                string backup = pending.Path + ".discard-" + Guid.NewGuid().ToString("N") + ".bak";
+                File.Copy(pending.Path, backup, false);
+                pending.Remove(ids);
+                ledStates = pending.Overlay(ledLines, sharedStates, dataDef.IdentityCol);
+                form.RunOnUi(delegate
+                {
+                    EndWriteGuard(job.RunId, true);
+                    ReadyAfterShared(job.RunId, "discarded-conflicts");
+                    form.Notice(Rdv3Text.PendingBackup + backup);
+                });
+            }
+            catch (Exception ex)
+            {
+                form.RunOnUi(delegate { EndWriteGuard(job.RunId, false); ResumeReady(); form.Error(ex.Message); });
+            }
+        };
+        worker.Post(job);
     }
 
     private Rdv3LedgerLock WaitForSharedLock(string tag, string activeText)
@@ -1236,6 +1309,7 @@ public sealed class Rdv3App
 
     private void OpenUpdateJob(string jobId)
     {
+        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
         Rdv3ProcessJobDef process = dataDef.JobOf(jobId);
         if (process == null || process.Kind != "update") { return; }
@@ -1244,12 +1318,15 @@ public sealed class Rdv3App
 
     private void OpenDeleteJob(string jobId)
     {
+        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
         if (Rdv3ProcessForm.ShowJob(form, dataDef, jobId, dataDir, ledgerPath)) { StartDeleteJob(jobId); }
     }
 
     private void StartDeleteJob(string jobId)
     {
+        if (state != StReady || savingMark) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
+        ClearShown();
         Rdv3ProcessJobDef process = dataDef.JobOf(jobId);
         if (process == null || process.Kind != "delete") { return; }
         state = StApplying;
@@ -1302,7 +1379,7 @@ public sealed class Rdv3App
             {
                 t = Rdv3Clock.Now();
                 Rdv3Xlsx.Write(ledgerPath, ledHead, work.Column, result.Lines, result.States,
-                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag);
+                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag, storageContract);
                 ledgerWritten = true;
                 log.Write(tag, "persist", "target=xlsx rows=" + result.Lines.Length.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
@@ -1348,6 +1425,7 @@ public sealed class Rdv3App
 
     private void OpenTableExport()
     {
+        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
         string exportDir = System.IO.Path.GetDirectoryName(
             System.IO.Path.Combine(appDir, Rdv3Text.ExportDefaultPath));
@@ -1365,8 +1443,13 @@ public sealed class Rdv3App
         }
         Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, screen, appDir);
         if (request == null) { return; }
-        string[] lines = ledLines;
-        string[] states = ledStates;
+        try { request.Path = Rdv3Files.ExportPath(request.Path, appDir, dataDir, ledgerPath, log.Path, cfg.SourcePath, dataDef); }
+        catch (Exception ex) { form.Error(Rdv3Text.ErrExport + ex.Message); return; }
+        string[] lines = (string[])ledLines.Clone();
+        string[] states = (string[])ledStates.Clone();
+        savingMark = true;
+        closeAskedWhileSaving = false;
+        form.EnableOps(false);
         Rdv3Job job = new Rdv3Job();
         job.RunId = "E" + (++procSeq).ToString(CultureInfo.InvariantCulture);
         job.Kind = "export";
@@ -1377,6 +1460,7 @@ public sealed class Rdv3App
 
     private void ExportJob(string tag, Rdv3ExportRequest request, string[] lines, string[] states)
     {
+        bool exportedFile = false;
         try
         {
             List<int> columns = new List<int>();
@@ -1385,11 +1469,11 @@ public sealed class Rdv3App
                 columns.Add(request.Fields[i] == "$work" ? -2 : dataDef.IndexOf(request.Fields[i]));
             }
             StringBuilder output = new StringBuilder();
+            string[] headings = Rdv3Files.ExportHeaders(request.Fields, dataDef, work.Column);
             for (int i = 0; i < request.Fields.Count; i++)
             {
                 if (i > 0) { output.Append(','); }
-                string heading = request.Fields[i] == "$work" ? work.Column : dataDef.Columns[columns[i]].Column;
-                output.Append(CsvCell(heading));
+                output.Append(Rdv3Files.CsvCell(headings[i], request.ExcelSafe));
             }
             output.Append("\r\n");
             int exported = 0;
@@ -1401,14 +1485,14 @@ public sealed class Rdv3App
                 {
                     if (i > 0) { output.Append(','); }
                     string value = columns[i] == -2 ? states[row] : values[columns[i]];
-                    output.Append(CsvCell(value));
+                    output.Append(Rdv3Files.CsvCell(value, request.ExcelSafe));
                 }
                 output.Append("\r\n");
                 exported++;
             }
-            string dir = System.IO.Path.GetDirectoryName(request.Path);
-            if (dir != null && dir.Length > 0 && !Directory.Exists(dir)) { Directory.CreateDirectory(dir); }
-            File.WriteAllText(request.Path, output.ToString(), new UTF8Encoding(true));
+            Rdv3Files.ExportPath(request.Path, appDir, dataDir, ledgerPath, log.Path, cfg.SourcePath, dataDef);
+            Rdv3Files.WriteNewText(request.Path, output.ToString());
+            exportedFile = true;
             log.Write(tag, "export", "rows=" + exported.ToString(CultureInfo.InvariantCulture) + " source_rows="
                 + lines.Length.ToString(CultureInfo.InvariantCulture) + " filters="
                 + request.Filters.Count.ToString(CultureInfo.InvariantCulture) + " fields="
@@ -1419,6 +1503,10 @@ public sealed class Rdv3App
         {
             log.Write(tag, "error", "stage=export msg=" + ex.Message);
             form.RunOnUi(delegate { form.Error(Rdv3Text.ErrExport + ex.Message); });
+        }
+        finally
+        {
+            form.RunOnUi(delegate { EndWriteGuard(tag, exportedFile); ResumeReady(); });
         }
     }
 
@@ -1434,7 +1522,11 @@ public sealed class Rdv3App
     // and the running session adopts what it can without a restart.
     private void OpenSettings()
     {
-        Rdv3Config edited = Rdv3SettingsForm.Edit(form, cfg);
+        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
+        Rdv3Config latest;
+        try { latest = Rdv3Config.Load(cfg.SourcePath); }
+        catch (Exception ex) { form.Error(Rdv3Text.ErrSettingsSave + ex.Message); return; }
+        Rdv3Config edited = Rdv3SettingsForm.Edit(form, latest);
         if (edited == null) { return; }
         string err = edited.Save(cfg.SourcePath);
         if (err != null)
@@ -1445,6 +1537,7 @@ public sealed class Rdv3App
         }
         cfg.AdoptRuntimeFrom(edited);
         cfg.AdoptSavedFrom(edited);
+        watchdog.Interval = TimeSpan.FromMilliseconds(cfg.PumpMs);
         form.SetWatch(WatchName(), watchDetail);
         watch.Rebind();
         log.Write("-", "settings", "saved: " + cfg.Describe());
@@ -1471,30 +1564,56 @@ public sealed class Rdv3App
 
     private void PollSharedMarker()
     {
-        if (lastMarkerPoll != 0 && Rdv3Clock.MsSince(lastMarkerPoll) < cfg.MarkerPollMs) { return; }
+        if (closing || markerPollQueued || (lastMarkerPoll != 0 && Rdv3Clock.MsSince(lastMarkerPoll) < cfg.MarkerPollMs)) { return; }
         lastMarkerPoll = Rdv3Clock.Now();
-        Rdv3SharedMarker marker;
-        try
+        markerPollQueued = true;
+        Rdv3Job job = new Rdv3Job();
+        job.RunId = "marker";
+        job.Kind = "marker";
+        job.TimeoutMs = cfg.CheckTimeoutMs;
+        job.Work = delegate
         {
-            marker = shared.ReadMarker();
-            if (markerReadFailed)
+            Rdv3SharedMarker marker = null;
+            string stamp = null;
+            string error = null;
+            try { marker = shared.ReadMarker(); } catch (Exception ex) { error = ex.Message; }
+            // XLSX and marker are separate commits. Detect a changed workbook
+            // even when the writer could not update its notification marker.
+            try { stamp = Rdv3Files.Stamp(ledgerPath); } catch (Exception ex) { error = ex.Message; }
+            form.PostOnUi(delegate
             {
-                markerReadFailed = false;
-                log.Write("-", "marker", "read recovered");
-            }
-        }
-        catch (Exception ex)
-        {
-            if (!markerReadFailed)
-            {
-                markerReadFailed = true;
-                log.Write("-", "error", "stage=marker-read msg=" + ex.Message);
-                form.Error(Rdv3Text.ErrSharedMarker + ex.Message);
-            }
-            return;
-        }
-        if (marker == null) { return; }
-        if (seenMarker != null && marker.Version <= seenMarker.Version) { return; }
+                markerPollQueued = false;
+                if (closing) { return; }
+                if (error != null)
+                {
+                    if (!markerReadFailed) { form.Error(Rdv3Text.ErrSharedMarker + error); log.Write("-", "marker", error); }
+                    markerReadFailed = true;
+                }
+                else { markerReadFailed = false; }
+                bool fileChanged = stamp != null && ledgerObservedStamp != null && stamp != ledgerObservedStamp;
+                if (stamp != null) { ledgerObservedStamp = stamp; }
+                if (marker != null && !SameMarker(marker, seenMarker)) { ObserveMarker(marker); }
+                else if (fileChanged)
+                {
+                    Rdv3SharedMarker reload = new Rdv3SharedMarker();
+                    reload.Kind = "update";
+                    reload.WriterId = "workbook-change-without-marker";
+                    reload.WrittenUtcTicks = DateTime.UtcNow.Ticks;
+                    deferredMarker = reload;
+                }
+            });
+        };
+        worker.Post(job);
+    }
+
+    private static bool SameMarker(Rdv3SharedMarker a, Rdv3SharedMarker b)
+    {
+        return a != null && b != null && a.Version == b.Version
+            && a.WrittenUtcTicks == b.WrittenUtcTicks && a.WriterId == b.WriterId;
+    }
+
+    private void ObserveMarker(Rdv3SharedMarker marker)
+    {
         RememberMarker(marker);
         log.Write("-", "marker", "observed version=" + marker.Version.ToString(CultureInfo.InvariantCulture)
             + " kind=" + marker.Kind + " writer=" + marker.WriterId);
@@ -1527,12 +1646,15 @@ public sealed class Rdv3App
     {
         if (marker == null) { return; }
         seenMarker = marker;
-        if (deferredMarker != null && deferredMarker.Version <= marker.Version) { deferredMarker = null; }
+        if (marker.FileStamp != null) { ledgerObservedStamp = marker.FileStamp; }
+        if (SameMarker(deferredMarker, marker)) { deferredMarker = null; }
     }
 
     private void QueueDeferredReload()
     {
-        if (deferredMarker == null || sharedReloading || savingMark || (state != StReady && state != StBlocked)) { return; }
+        if (deferredMarker == null || sharedReloading || savingMark || form.IsModalOpen || DateTime.UtcNow < reloadRetryAfter
+            || (state != StReady && state != StBlocked)) { return; }
+        ClearShown();
         Rdv3SharedMarker marker = deferredMarker;
         deferredMarker = null;
         sharedReloading = true;
@@ -1582,6 +1704,7 @@ public sealed class Rdv3App
                 else
                 {
                     ResumeReady();
+                    form.Error(Rdv3Text.StaleLedger);
                     log.Write(tag, "reload", "switch declined version=" + marker.Version.ToString(CultureInfo.InvariantCulture));
                 }
             });
@@ -1592,8 +1715,9 @@ public sealed class Rdv3App
             form.RunOnUi(delegate
             {
                 sharedReloading = false;
-                if (deferredMarker == null || deferredMarker.Version < marker.Version) { deferredMarker = marker; }
-                ResumeReady();
+                if (deferredMarker == null) { deferredMarker = marker; }
+                reloadRetryAfter = DateTime.UtcNow.AddMilliseconds(cfg.MarkerPollMs);
+                if (ledLines != null) { ResumeReady(); } else { EnterBlocked(); }
                 form.Error(Rdv3Text.ErrSharedReload + ex.Message);
             });
         }
@@ -1708,10 +1832,16 @@ public sealed class Rdv3App
         Rdv3Job j = worker.TakeOverdue();
         if (j == null) { return; }
         log.Write(j.RunId, "timeout", "kind=" + j.Kind + " after_ms=" + Rdv3Log.F(Rdv3Clock.MsSince(j.StartedAt)));
+        if (string.Equals(j.Kind, "search", StringComparison.Ordinal))
+        {
+            if (j.RunId == activeSearchId) { ClearShown(); form.Error(Rdv3Text.ErrSearchTimeout); }
+            return;
+        }
         if (string.Equals(j.Kind, "state", StringComparison.Ordinal)
             || string.Equals(j.Kind, "send", StringComparison.Ordinal)
             || string.Equals(j.Kind, "apply", StringComparison.Ordinal)
-            || string.Equals(j.Kind, "delete", StringComparison.Ordinal))
+            || string.Equals(j.Kind, "delete", StringComparison.Ordinal)
+            || string.Equals(j.Kind, "export", StringComparison.Ordinal))
         {
             // a managed job cannot be aborted, and until the write returns
             // nobody knows whether the record reached the file. Report the
@@ -1753,6 +1883,7 @@ public sealed class Rdv3App
             // here would wait for itself
             form.PostOnUi(delegate
             {
+                if (savingMark) { EndWriteGuard(job.RunId, false); }
                 form.Fatal(Rdv3Text.FatalDataTitle, Rdv3Text.FatalData.Replace("{reason}", ex.Message));
             });
             return;
@@ -1762,7 +1893,8 @@ public sealed class Rdv3App
             form.Error(Rdv3Text.ErrCheckFailed + ex.Message);
             // a state job that threw anywhere is still a decided save (failed):
             // the guard must never outlive the job that armed it
-            if (string.Equals(job.Kind, "state", StringComparison.Ordinal)) { EndMarkSave(job.RunId, false); }
+            if (job.Kind == "state" || job.Kind == "apply" || job.Kind == "delete" || job.Kind == "send" || job.Kind == "export")
+            { EndWriteGuard(job.RunId, false); }
             if (!string.Equals(job.RunId, activeRunId, StringComparison.Ordinal)) { return; }
             activeRunId = "";
             if (ledLines != null) { ResumeReady(); }
@@ -1841,6 +1973,19 @@ public static class Rdv3Program
         string ledgerPath = Resolve((ledgerArg.Length > 0) ? ledgerArg : cfg.Ledger, baseDir);
         string logPath = Resolve((logArg.Length > 0) ? logArg : cfg.Log, baseDir);
 
+        try
+        {
+            Rdv3Config resolved = cfg.Clone();
+            resolved.DataDir = dataDir; resolved.Ledger = ledgerPath; resolved.Log = logPath;
+            Rdv3Files.ValidateLayout(resolved, baseDir, configPath);
+        }
+        catch (Exception ex)
+        {
+            ReaderDataViewer.App.ShowStartupMessage(Rdv3Text.FatalSettings.Replace("{file}", configPath)
+                .Replace("{reason}", ex.Message), null);
+            return 6;
+        }
+
         // ---- the data the definition names: the files exist and their headers
         // hold every column the definition uses
         try
@@ -1886,7 +2031,7 @@ public static class Rdv3Program
         }
         // Keep one local session per ledger. Network-wide serialization is done
         // separately by the lock file beside the shared ledger.
-        string mutexName = "RdvApp-" + ledgerPath.ToLowerInvariant().GetHashCode().ToString("x8", CultureInfo.InvariantCulture);
+        string mutexName = "RdvApp-" + Rdv3Files.SessionKey(ledgerPath);
         bool createdNew;
         using (Mutex mx = new Mutex(true, mutexName, out createdNew))
         {
@@ -1896,6 +2041,15 @@ public static class Rdv3Program
                 return 4;
             }
 
+            FileStream localSession;
+            try { localSession = Rdv3Files.AcquireLocalSession(Rdv3PendingStore.PathFor(ledgerPath)); }
+            catch (Exception ex)
+            {
+                ReaderDataViewer.App.ShowStartupMessage(Rdv3Text.ErrAlreadyRunning + "\r\n" + ex.Message, null);
+                return 4;
+            }
+            using (localSession)
+            {
             Rdv3PendingStore pending;
             try
             {
@@ -1918,7 +2072,10 @@ public static class Rdv3Program
                 string instance = Environment.MachineName + "-" + currentPid.ToString(CultureInfo.InvariantCulture)
                     + "-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
                 shared = new Rdv3SharedFiles(ledgerPath, Environment.MachineName, Environment.UserName, instance);
-                initialMarker = shared.ReadMarker();
+                initialMarker = null;
+                try { initialMarker = shared.ReadMarker(); }
+                catch (Exception markerError)
+                { new Rdv3Log(logPath).Write("-", "marker", "startup marker unavailable: " + markerError.Message); }
             }
             catch (Exception ex)
             {
@@ -1935,6 +2092,7 @@ public static class Rdv3Program
             app.LogBoot(compileMs);
             application.Run(window);
             return window.ExitCode;
+            }
         }
     }
 

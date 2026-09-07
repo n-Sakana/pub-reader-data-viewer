@@ -7,6 +7,7 @@ Dim fileSystem
 Dim baseDirectory
 Dim scriptPath
 Dim powerShellPath
+Dim nativePowerShellPath
 Dim command
 Dim exitCode
 Dim logDirectory
@@ -15,9 +16,14 @@ Set shell = CreateObject("WScript.Shell")
 Set fileSystem = CreateObject("Scripting.FileSystemObject")
 
 baseDirectory = fileSystem.GetParentFolderName(WScript.ScriptFullName)
-scriptPath = fileSystem.BuildPath(baseDirectory, "ReaderDataViewer.ps1")
+scriptPath = fileSystem.BuildPath(baseDirectory, "src\ReaderDataViewer.ps1")
 powerShellPath = shell.ExpandEnvironmentStrings("%SystemRoot%") & _
     "\System32\WindowsPowerShell\v1.0\powershell.exe"
+nativePowerShellPath = shell.ExpandEnvironmentStrings("%SystemRoot%") & _
+    "\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+If fileSystem.FileExists(nativePowerShellPath) Then
+    powerShellPath = nativePowerShellPath
+End If
 If Not fileSystem.FileExists(powerShellPath) Then
     powerShellPath = "powershell.exe"
 End If

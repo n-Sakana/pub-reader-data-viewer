@@ -1,0 +1,9 @@
+{
+  "status": "NOT_EXECUTED",
+  "native_cases_provided": 50,
+  "reason": "Audit environment is Linux. Windows PowerShell/.NET Framework/WPF/WebView2 and actual multi-PC SMB were unavailable.",
+  "compile_command": "build.bat compile",
+  "core_command": "build.bat test",
+  "fixtures": "tests/fixtures only; generated ledger/CSV/pending files use a new temporary directory",
+  "warning": "No native compilation, runtime, lock-contention, crash-recovery or real SMB success is claimed."
+}

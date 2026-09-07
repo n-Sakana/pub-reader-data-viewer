@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "id": "win98",
+  "motion": "off",
+  "background": "#d4d0c8",
+  "caption": "#081b50",
+  "captionText": "#ffffff",
+  "border": "#808080"
+}

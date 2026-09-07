@@ -1,0 +1,67 @@
+{
+  "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
+  "baseline_reproduction": false,
+  "utc": "2026-09-07T23:01:26.558518+00:00",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "tests": [
+    {
+      "name": "input-visible-value-normalization",
+      "status": "PASS"
+    },
+    {
+      "name": "ime-enter-does-not-search",
+      "status": "PASS"
+    },
+    {
+      "name": "duplicate-actions-unique-id-and-routing",
+      "status": "PASS"
+    },
+    {
+      "name": "enter-search-exactly-once",
+      "status": "PASS"
+    },
+    {
+      "name": "input-max-length",
+      "status": "PASS"
+    },
+    {
+      "name": "disabled-actions-blocked",
+      "status": "PASS"
+    },
+    {
+      "name": "ime-modal-does-not-commit",
+      "status": "PASS"
+    },
+    {
+      "name": "unmatched-default-keeps-and-escapes-html",
+      "status": "PASS"
+    },
+    {
+      "name": "unmatched-explicit-discard",
+      "status": "PASS"
+    },
+    {
+      "name": "escape-keeps-pending",
+      "status": "PASS"
+    },
+    {
+      "name": "export-excel-safe-default",
+      "status": "PASS"
+    },
+    {
+      "name": "export-raw-option",
+      "status": "PASS"
+    },
+    {
+      "name": "export-rejects-non-csv",
+      "status": "PASS"
+    },
+    {
+      "name": "rerender-resets-action-ids",
+      "status": "PASS"
+    }
+  ],
+  "browser": "145.0.7632.6",
+  "passed": 14,
+  "failed": 0
+}

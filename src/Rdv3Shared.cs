@@ -21,6 +21,8 @@ public sealed class Rdv3PendingEntry
     public string Identity = "";
     public string Stored = "";
     public string Digest = "";
+    public string BaselineStored = "";
+    public bool BaselineKnown;
 
     public Rdv3PendingEntry Copy()
     {
@@ -28,6 +30,8 @@ public sealed class Rdv3PendingEntry
         e.Identity = Identity;
         e.Stored = Stored;
         e.Digest = Digest;
+        e.BaselineStored = BaselineStored;
+        e.BaselineKnown = BaselineKnown;
         return e;
     }
 }
@@ -35,7 +39,7 @@ public sealed class Rdv3PendingEntry
 public sealed class Rdv3UnmatchedChange
 {
     public string Identity = "";
-    public string Reason = "";              // missing | changed
+    public string Reason = "";              // missing | changed | state-conflict | legacy
 }
 
 public sealed class Rdv3PendingApply
@@ -49,7 +53,8 @@ public sealed class Rdv3PendingApply
 
 public sealed class Rdv3PendingStore
 {
-    private const string Header = "RDV-PENDING-1";
+    private const string Header = "RDV-PENDING-2";
+    private const string LegacyHeader = "RDV-PENDING-1";
     private readonly string path;
     private Dictionary<string, Rdv3PendingEntry> entries =
         new Dictionary<string, Rdv3PendingEntry>(StringComparer.Ordinal);
@@ -110,6 +115,19 @@ public sealed class Rdv3PendingStore
             e.Identity = identity;
             e.Stored = (stored == null) ? "" : stored;
             e.Digest = DigestOf((line == null) ? "" : line);
+            Rdv3PendingEntry before;
+            // Editing a pending value must not silently rebase an old intent.
+            if (entries.TryGetValue(identity, out before))
+            {
+                e.Digest = before.Digest;
+                e.BaselineStored = before.BaselineStored;
+                e.BaselineKnown = before.BaselineKnown;
+            }
+            else
+            {
+                e.BaselineStored = sharedStored ?? "";
+                e.BaselineKnown = true;
+            }
             next[identity] = e;
         }
         Commit(next);
@@ -137,6 +155,9 @@ public sealed class Rdv3PendingStore
             int row;
             if (!rows.TryGetValue(pair.Key, out row)) { continue; }
             if (!string.Equals(DigestOf(lines[row]), pair.Value.Digest, StringComparison.Ordinal)) { continue; }
+            if (!string.Equals(sharedStates[row], pair.Value.Stored, StringComparison.Ordinal)
+                && (!pair.Value.BaselineKnown || !string.Equals(sharedStates[row], pair.Value.BaselineStored, StringComparison.Ordinal)))
+            { continue; }
             result[row] = pair.Value.Stored;
         }
         return result;
@@ -164,6 +185,23 @@ public sealed class Rdv3PendingStore
             if (!string.Equals(DigestOf(lines[row]), e.Digest, StringComparison.Ordinal))
             {
                 result.Unmatched.Add(Unmatched(e.Identity, "changed"));
+                continue;
+            }
+            // An interrupted send may already have committed the XLSX. Retry is
+            // idempotent; never rewrite or count a value that is already present.
+            if (string.Equals(sharedStates[row], e.Stored, StringComparison.Ordinal))
+            {
+                result.Resolved.Add(e.Identity);
+                continue;
+            }
+            if (!e.BaselineKnown)
+            {
+                result.Unmatched.Add(Unmatched(e.Identity, "legacy"));
+                continue;
+            }
+            if (!string.Equals(sharedStates[row], e.BaselineStored, StringComparison.Ordinal))
+            {
+                result.Unmatched.Add(Unmatched(e.Identity, "state-conflict"));
                 continue;
             }
             result.States[row] = e.Stored;
@@ -197,24 +235,32 @@ public sealed class Rdv3PendingStore
 
     private void Load()
     {
-        if (!File.Exists(path)) { return; }
-        string[] lines = File.ReadAllLines(path, new UTF8Encoding(false));
-        if (lines.Length == 0 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
+        if (!Rdv3Files.Exists(path)) { return; }
+        string[] lines = File.ReadAllLines(path, new UTF8Encoding(false, true));
+        if (lines.Length == 0 || (lines[0] != Header && lines[0] != LegacyHeader))
         {
             throw new InvalidDataException("pending file has an unknown format: " + path);
         }
+        bool legacy = lines[0] == LegacyHeader;
         Dictionary<string, Rdv3PendingEntry> loaded = new Dictionary<string, Rdv3PendingEntry>(StringComparer.Ordinal);
         for (int i = 1; i < lines.Length; i++)
         {
             if (lines[i].Length == 0) { continue; }
             string[] cells = lines[i].Split('\t');
-            if (cells.Length != 3) { throw new InvalidDataException("pending file row is invalid: " + (i + 1).ToString(CultureInfo.InvariantCulture)); }
+            if (cells.Length != (legacy ? 3 : 5)) { throw new InvalidDataException("pending file row is invalid: " + (i + 1).ToString(CultureInfo.InvariantCulture)); }
             Rdv3PendingEntry e = new Rdv3PendingEntry();
             try
             {
                 e.Identity = Decode(cells[0]);
                 e.Stored = Decode(cells[1]);
                 e.Digest = cells[2];
+                if (Convert.FromBase64String(e.Digest).Length != 32) { throw new FormatException("invalid digest"); }
+                if (!legacy)
+                {
+                    if (cells[3] != "0" && cells[3] != "1") { throw new FormatException("invalid baseline flag"); }
+                    e.BaselineKnown = cells[3] == "1";
+                    e.BaselineStored = Decode(cells[4]);
+                }
             }
             catch (Exception ex)
             {
@@ -242,7 +288,9 @@ public sealed class Rdv3PendingStore
         {
             text.Append(Encode(ordered[i].Identity)).Append('\t');
             text.Append(Encode(ordered[i].Stored)).Append('\t');
-            text.Append(ordered[i].Digest).Append("\r\n");
+            text.Append(ordered[i].Digest).Append('\t');
+            text.Append(ordered[i].BaselineKnown ? "1" : "0").Append('\t');
+            text.Append(Encode(ordered[i].BaselineStored)).Append("\r\n");
         }
         AtomicWrite(path, text.ToString());
         entries = next;
@@ -255,7 +303,7 @@ public sealed class Rdv3PendingStore
 
     private static string Decode(string value)
     {
-        return Encoding.UTF8.GetString(Convert.FromBase64String(value));
+        return new UTF8Encoding(false, true).GetString(Convert.FromBase64String(value));
     }
 
     internal static void AtomicWrite(string target, string text)
@@ -279,6 +327,7 @@ public sealed class Rdv3PendingStore
 
 public sealed class Rdv3SharedMarker
 {
+    public string FileStamp; // local only; captured by the writer under the ledger lock
     public long Version;
     public string Host = "";
     public string User = "";
@@ -462,6 +511,7 @@ public sealed class Rdv3SharedFiles
         line.Append('\t').Append(fromInitial.ToString(CultureInfo.InvariantCulture));
         line.Append('\t').Append(toInitial.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
         Rdv3PendingStore.AtomicWrite(markerPath, line.ToString());
+        m.FileStamp = Rdv3Files.Stamp(markerPath.Substring(0, markerPath.Length - ".version".Length));
         return m;
     }
 

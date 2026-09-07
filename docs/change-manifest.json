@@ -1,0 +1,498 @@
+{
+  "generated_utc": "2026-09-07T17:10:43.670345+00:00",
+  "source_zip": "ReaderDataViewer.zip",
+  "source_zip_sha256": "fcabd6022009117a9211cb6373ce8751307d606cffa1b1cf3f7a8dab59832d5a",
+  "scope": "All delivered regular files except this manifest itself. Paths are relative to ReaderDataViewer/.",
+  "original_file_count": 41,
+  "original_files_removed": 0,
+  "preserved_input_binary_license_files": [
+    "LICENSE",
+    "THIRD-PARTY-NOTICES.md",
+    "data/tableB.csv",
+    "data/ReaderDataViewer.log",
+    "data/tableC.csv",
+    "data/delete.csv",
+    "data/tableA.csv",
+    "lib/NOTICE-Microsoft.Web.WebView2.txt",
+    "lib/Microsoft.Web.WebView2.Core.dll",
+    "lib/LICENSE-Microsoft.Web.WebView2.txt",
+    "lib/WebView2Loader.dll",
+    "lib/Microsoft.Web.WebView2.Wpf.dll"
+  ],
+  "counts_excluding_manifest": {
+    "unchanged": 21,
+    "modified": 20,
+    "added": 21
+  },
+  "source_patch_paths": [
+    "README.md",
+    "ReaderDataViewer.cmd",
+    "ReaderDataViewer.vbs",
+    "build.bat",
+    "settings.json",
+    "src/02_MainWindow.cs",
+    "src/Rdv3App.cs",
+    "src/Rdv3Config.cs",
+    "src/Rdv3Core.cs",
+    "src/Rdv3Csv.cs",
+    "src/Rdv3Files.cs",
+    "src/Rdv3Index.cs",
+    "src/Rdv3Json.cs",
+    "src/Rdv3Modals.cs",
+    "src/Rdv3Process.cs",
+    "src/Rdv3Screen.cs",
+    "src/Rdv3Shared.cs",
+    "src/Rdv3Text.cs",
+    "src/Rdv3Ui.cs",
+    "src/Rdv3Watch.cs",
+    "src/Rdv3Xlsx.cs",
+    "src/ReaderDataViewer.ps1",
+    "tests/RegressionTests.cs",
+    "tests/test_static.py",
+    "tests/test_web.py",
+    "web/app.js"
+  ],
+  "verification": {
+    "browser_passed": 14,
+    "static_passed": 30,
+    "native_status": "NOT_EXECUTED",
+    "native_cases_provided": 50,
+    "real_multi_pc_smb": "NOT_EXECUTED"
+  },
+  "files": [
+    {
+      "path": "LICENSE",
+      "status": "unchanged",
+      "original_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "final_sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "final_bytes": 7048
+    },
+    {
+      "path": "README.md",
+      "status": "modified",
+      "original_sha256": "9fbe6f20d4dd23dc1c8a03e4d8758f72eae16f2b19785a2e9a8cde48147a326d",
+      "final_sha256": "d33581ff4fea8c3671c52541be36338a541418bde1ca3447e90f7a6413da51d9",
+      "final_bytes": 7225
+    },
+    {
+      "path": "ReaderDataViewer.cmd",
+      "status": "modified",
+      "original_sha256": "3469a8faf626ff11b9c939ce8889767571e3513066605c39a36c96f0896062e5",
+      "final_sha256": "91e06473ec77a2ee5b648f39cf3a7c54551f0038aa35430c994de8736857951a",
+      "final_bytes": 586
+    },
+    {
+      "path": "ReaderDataViewer.vbs",
+      "status": "modified",
+      "original_sha256": "555c89313ea5d62fbd009e528a7ebf7e2e696ad6a0ceac9c818ca8a545fabf25",
+      "final_sha256": "b9c1a415f1416b449e1c5ba85ca4297838af80ab3147e10d8a7fe99c7f746fcc",
+      "final_bytes": 1612
+    },
+    {
+      "path": "THIRD-PARTY-NOTICES.md",
+      "status": "unchanged",
+      "original_sha256": "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2",
+      "final_sha256": "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2",
+      "final_bytes": 466
+    },
+    {
+      "path": "data/ReaderDataViewer.log",
+      "status": "unchanged",
+      "original_sha256": "f6fa93b106382cc1a19db4da54f7ae461d3b52b7583b43c1f7d31b56a75c564b",
+      "final_sha256": "f6fa93b106382cc1a19db4da54f7ae461d3b52b7583b43c1f7d31b56a75c564b",
+      "final_bytes": 2460
+    },
+    {
+      "path": "data/delete.csv",
+      "status": "unchanged",
+      "original_sha256": "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520",
+      "final_sha256": "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520",
+      "final_bytes": 7878
+    },
+    {
+      "path": "data/tableA.csv",
+      "status": "unchanged",
+      "original_sha256": "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe",
+      "final_sha256": "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe",
+      "final_bytes": 79072
+    },
+    {
+      "path": "data/tableB.csv",
+      "status": "unchanged",
+      "original_sha256": "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383",
+      "final_sha256": "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383",
+      "final_bytes": 79988
+    },
+    {
+      "path": "data/tableC.csv",
+      "status": "unchanged",
+      "original_sha256": "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6",
+      "final_sha256": "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6",
+      "final_bytes": 84069
+    },
+    {
+      "path": "lib/LICENSE-Microsoft.Web.WebView2.txt",
+      "status": "unchanged",
+      "original_sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "final_sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "final_bytes": 1487
+    },
+    {
+      "path": "lib/Microsoft.Web.WebView2.Core.dll",
+      "status": "unchanged",
+      "original_sha256": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2",
+      "final_sha256": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2",
+      "final_bytes": 649800
+    },
+    {
+      "path": "lib/Microsoft.Web.WebView2.Wpf.dll",
+      "status": "unchanged",
+      "original_sha256": "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33",
+      "final_sha256": "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33",
+      "final_bytes": 82544
+    },
+    {
+      "path": "lib/NOTICE-Microsoft.Web.WebView2.txt",
+      "status": "unchanged",
+      "original_sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
+      "final_sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
+      "final_bytes": 3894
+    },
+    {
+      "path": "lib/WebView2Loader.dll",
+      "status": "unchanged",
+      "original_sha256": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7",
+      "final_sha256": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7",
+      "final_bytes": 161864
+    },
+    {
+      "path": "settings.json",
+      "status": "modified",
+      "original_sha256": "9c29fa3eb1ec1d6c674a6a207386aae745ced8990b0cd96820793739bac8d21b",
+      "final_sha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd",
+      "final_bytes": 21399
+    },
+    {
+      "path": "src/01_App.cs",
+      "status": "unchanged",
+      "original_sha256": "6988620e9a9a1f7d6284d173eb81d53bfbb14bbcc2b312648ca31d9f82914a3e",
+      "final_sha256": "6988620e9a9a1f7d6284d173eb81d53bfbb14bbcc2b312648ca31d9f82914a3e",
+      "final_bytes": 5695
+    },
+    {
+      "path": "src/02_MainWindow.cs",
+      "status": "modified",
+      "original_sha256": "7293b5950672b66bb75fba6fec5ef158434d9d86fa6f1a1f120d5be30cf4b0d9",
+      "final_sha256": "3debd69ec3ac788a9f0cbe60880361fcf7928fe683a56ab21bff51dfc9c4a2a5",
+      "final_bytes": 30149
+    },
+    {
+      "path": "src/Rdv3App.cs",
+      "status": "modified",
+      "original_sha256": "160c4c88c3cc6440e6271bcf73a87e63fdb1d076af4c1b0fcd752ad190688335",
+      "final_sha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df",
+      "final_bytes": 91842
+    },
+    {
+      "path": "src/Rdv3Config.cs",
+      "status": "modified",
+      "original_sha256": "ee8ed57caba9421c402e309eeecd77ecd4ca3dee9f52746114f7ad8de6f62dc5",
+      "final_sha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f",
+      "final_bytes": 28650
+    },
+    {
+      "path": "src/Rdv3Core.cs",
+      "status": "modified",
+      "original_sha256": "43fe8684cace7a2851e1c8b864f11f9dbafe8b577ca1aef0f7c66ec64dae005a",
+      "final_sha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e",
+      "final_bytes": 18475
+    },
+    {
+      "path": "src/Rdv3Data.cs",
+      "status": "unchanged",
+      "original_sha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542",
+      "final_sha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542",
+      "final_bytes": 48821
+    },
+    {
+      "path": "src/Rdv3Index.cs",
+      "status": "modified",
+      "original_sha256": "b4fc8c139a943f87ab32af495fe45654cf14f7d2ca40fd3152ce42c75737faad",
+      "final_sha256": "98a9a9c174ce1c4f6935c42b9be65c72397fe9a7f339527137225d917c8b9e3f",
+      "final_bytes": 6043
+    },
+    {
+      "path": "src/Rdv3Jobs.cs",
+      "status": "unchanged",
+      "original_sha256": "e2e05288b14abfb7af3a489723ac26989660670eebabb2f3636ec9d2c849ae53",
+      "final_sha256": "e2e05288b14abfb7af3a489723ac26989660670eebabb2f3636ec9d2c849ae53",
+      "final_bytes": 3860
+    },
+    {
+      "path": "src/Rdv3Json.cs",
+      "status": "modified",
+      "original_sha256": "6440cc696659d850556ebf3887e4ddb6f136d7c8a6f19bc63ca853ec8814eaf6",
+      "final_sha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8",
+      "final_bytes": 17960
+    },
+    {
+      "path": "src/Rdv3Ledger.cs",
+      "status": "unchanged",
+      "original_sha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465",
+      "final_sha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465",
+      "final_bytes": 22392
+    },
+    {
+      "path": "src/Rdv3Modals.cs",
+      "status": "modified",
+      "original_sha256": "84abdc5ff8cc8c64ffce0fc81ba3182cc4e593ff050eb0da8ccb299e4203c35b",
+      "final_sha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184",
+      "final_bytes": 24597
+    },
+    {
+      "path": "src/Rdv3Process.cs",
+      "status": "modified",
+      "original_sha256": "b1cae8e5a076296ba2ccf64821f7cbd30fc76d1c3f05bc97cd3ae05957273014",
+      "final_sha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720",
+      "final_bytes": 50260
+    },
+    {
+      "path": "src/Rdv3Screen.cs",
+      "status": "modified",
+      "original_sha256": "e8492c4e962e02f1e0fa4eb2136af5b3f2c58b2838d2a2898e6fec401765d707",
+      "final_sha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce",
+      "final_bytes": 37248
+    },
+    {
+      "path": "src/Rdv3Settings.cs",
+      "status": "unchanged",
+      "original_sha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f",
+      "final_sha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f",
+      "final_bytes": 12635
+    },
+    {
+      "path": "src/Rdv3Shared.cs",
+      "status": "modified",
+      "original_sha256": "dcfe43329ba291968b7aa359de1fb44971662c35687870f1ef342e50e4580d67",
+      "final_sha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99",
+      "final_bytes": 22076
+    },
+    {
+      "path": "src/Rdv3Text.cs",
+      "status": "modified",
+      "original_sha256": "8a5647f7578c8ce0c38761f0be5ad7b7cd7251da72a2236805efd2b37e79fcb1",
+      "final_sha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86",
+      "final_bytes": 32721
+    },
+    {
+      "path": "src/Rdv3Ui.cs",
+      "status": "modified",
+      "original_sha256": "0a3e1cec45434a8884a7ce3103364135721c556996b7329825db98cf44f4f605",
+      "final_sha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084",
+      "final_bytes": 39627
+    },
+    {
+      "path": "src/Rdv3Uia.cs",
+      "status": "unchanged",
+      "original_sha256": "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e",
+      "final_sha256": "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e",
+      "final_bytes": 11286
+    },
+    {
+      "path": "src/Rdv3Values.cs",
+      "status": "unchanged",
+      "original_sha256": "77de912564e5527f23fb9fc4689f8b7bcf8c06131ef6ce0d07d552ab9a971774",
+      "final_sha256": "77de912564e5527f23fb9fc4689f8b7bcf8c06131ef6ce0d07d552ab9a971774",
+      "final_bytes": 13155
+    },
+    {
+      "path": "src/Rdv3Watch.cs",
+      "status": "modified",
+      "original_sha256": "1d7384930330273c954b950f4a23f0ab2b7a027f30725507683c3c59c3fdc69f",
+      "final_sha256": "f87fdd10c93faf0677216c820410f2194ef95a3f7292e0935982de9f8a9977b6",
+      "final_bytes": 12449
+    },
+    {
+      "path": "src/Rdv3Xlsx.cs",
+      "status": "modified",
+      "original_sha256": "02a4166ee6cf3b52c664607811848edf19bb257d2f324baae77944bcba2c692d",
+      "final_sha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0",
+      "final_bytes": 30536
+    },
+    {
+      "path": "src/ReaderDataViewer.ps1",
+      "status": "modified",
+      "original_sha256": "5de39cc8893608f8c913ba949aee7af2dbf6589d64feb32e79987803941f772a",
+      "final_sha256": "d2bacb39efb7ddca7bff3f65e5bc9a97eacd5fd929a0dd7011e291f04a3283af",
+      "final_bytes": 5141
+    },
+    {
+      "path": "web/app.css",
+      "status": "unchanged",
+      "original_sha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d",
+      "final_sha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d",
+      "final_bytes": 11378
+    },
+    {
+      "path": "web/app.js",
+      "status": "modified",
+      "original_sha256": "097d3ecdd97855b231b0679d4b768a5abb37e309529b4ffb19b3738354ba6d3d",
+      "final_sha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50",
+      "final_bytes": 70195
+    },
+    {
+      "path": "web/index.html",
+      "status": "unchanged",
+      "original_sha256": "dca2a320db67f3dae9aefe8f1fbc584493bd7e3564b8a8a5bfe75b617989a925",
+      "final_sha256": "dca2a320db67f3dae9aefe8f1fbc584493bd7e3564b8a8a5bfe75b617989a925",
+      "final_bytes": 40051
+    },
+    {
+      "path": "AUDIT_REPORT.md",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "df9985d0865bd53de258eca7e7b8352ca02cbaf76faa39b933b140957e82a202",
+      "final_bytes": 31636
+    },
+    {
+      "path": "build.bat",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "a182e64810f29ffaa6c0c648f75a62aee4bb19de68ece17cc01eeff094e9f64e",
+      "final_bytes": 625
+    },
+    {
+      "path": "docs/README.original.md",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "c32e1a16b0e89559c2ed6e6db4c8c85bcb94321c66d3c43958ca6576e4b25003",
+      "final_bytes": 6656
+    },
+    {
+      "path": "docs/settings.md",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "5587ac446dee6df316ee59ffc29f771ec333119f8dfbda78cb9e1d9775a271a1",
+      "final_bytes": 11518
+    },
+    {
+      "path": "docs/shared-ledger.md",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "017b71e34379b9637017f34fdf2a1f9f0e5021e991273c4797c8fdec6b8036d7",
+      "final_bytes": 11604
+    },
+    {
+      "path": "docs/source-changes.patch",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "a1b7a6080ba5718e8ca93f6b12271100ef8349fb9c3729d6b66fd6c838d7b9e6",
+      "final_bytes": 178612
+    },
+    {
+      "path": "src/Rdv3Csv.cs",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df",
+      "final_bytes": 6304
+    },
+    {
+      "path": "src/Rdv3Files.cs",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf",
+      "final_bytes": 8964
+    },
+    {
+      "path": "tests/README.md",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "80a5d312dc63ab89df484a6727e72eeb22484a7be5edc9fe41a996f4fa07c2a7",
+      "final_bytes": 5714
+    },
+    {
+      "path": "tests/RegressionTests.cs",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30",
+      "final_bytes": 25016
+    },
+    {
+      "path": "tests/fixtures/data/delete.csv",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520",
+      "final_bytes": 7878
+    },
+    {
+      "path": "tests/fixtures/data/tableA.csv",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe",
+      "final_bytes": 79072
+    },
+    {
+      "path": "tests/fixtures/data/tableB.csv",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383",
+      "final_bytes": 79988
+    },
+    {
+      "path": "tests/fixtures/data/tableC.csv",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6",
+      "final_bytes": 84069
+    },
+    {
+      "path": "tests/fixtures/settings.json",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd",
+      "final_bytes": 21399
+    },
+    {
+      "path": "tests/results/native-status.json",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "f53bce9e3e09b8f72eeb6d64723c40db106c59aadd03bedfb8f9487c8ced628a",
+      "final_bytes": 487
+    },
+    {
+      "path": "tests/results/original-web-reproductions.json",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "38bf50e511f5a77073dbd5f135eaed28c7b68cb465a7a800b01560aafa42d1d0",
+      "final_bytes": 795
+    },
+    {
+      "path": "tests/results/static-results.json",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "1f7ab0a1a2c7c924d7d64785b6f36d2231fa9cfdc081d45cf2ba29dfe3993e2b",
+      "final_bytes": 3895
+    },
+    {
+      "path": "tests/results/web-results.json",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "2260a8bfaa229226bc6246d7b2ade4f91117340c0d627a5ee13517d60bb11baf",
+      "final_bytes": 1407
+    },
+    {
+      "path": "tests/test_static.py",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "7d195e7f1067dac94dac03774d049f4beabada66b3567db195f372b76be93c81",
+      "final_bytes": 9098
+    },
+    {
+      "path": "tests/test_web.py",
+      "status": "added",
+      "original_sha256": null,
+      "final_sha256": "889742a2c45e2274b386780c819a98f3f14f1f56f89de176089546532288e6c9",
+      "final_bytes": 10922
+    }
+  ]
+}

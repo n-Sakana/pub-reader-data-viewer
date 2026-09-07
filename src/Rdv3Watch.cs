@@ -63,7 +63,7 @@ public sealed class Rdv3Watch
     // name of the target it came from: several targets are watched at once, so a
     // number recorded without its source cannot be traced back to the screen it
     // was read off
-    public Action<string, double, int, long, string> OnConfirmed;
+    public Func<string, double, int, long, string, bool> OnConfirmed;
     public Action<string, string> OnState;      // state, detail
     public Action<string> OnLabel;              // which target the status line names
 
@@ -273,16 +273,18 @@ public sealed class Rdv3Watch
                 double held = Rdv3Clock.MsSince(s.PendingSince);
                 if (held >= Cfg.StableMs && Cfg.IsKey(cand) && (cand != s.LastFired || s.SawEmpty))
                 {
-                    s.LastFired = cand;
-                    s.SawEmpty = false;
                     activeName = s.T.Name;
                     activeDetail = Detail(s);
                     Announce();
                     long confirmAt = Rdv3Clock.Now();
                     if (OnConfirmed != null)
                     {
-                        OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls,
-                            confirmAt, s.T.Name);
+                        if (OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls,
+                            confirmAt, s.T.Name))
+                        {
+                            s.LastFired = cand;
+                            s.SawEmpty = false;
+                        }
                     }
                     break;                     // one reading per tick
                 }

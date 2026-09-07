@@ -17,8 +17,21 @@
   --calendar-cell:24px;
 }
 
-.stage.runtime{max-width:var(--card-width);}
+/* 窓を広げたぶんは画面がそのまま受け取る（引いている間も追従する）。
+   縦は card の自然な高さのまま（fieldset を伸ばしても内側の箱は追従しない）。 */
+.stage.runtime{max-width:none;}
 .runtime .win{height:100%;display:flex;flex-direction:column;font-family:var(--ff);font-size:var(--body-font);}
+/* Windows が枠と題を描くので、ページ側の外枠は要らない。中身だけを描く。 */
+.runtime .win{padding:0;box-shadow:none;}
+
+/* 98 の枠のまま、現代の書体を太字で使って視認性を確保する。全部太字に揃える。
+   .btn / .tog は font: の短縮形で太さを潰し、legend / th / fld には
+   font-weight が直接書いてある。直接指定は継承に勝つので名指しで上書きする。 */
+.runtime .win,.runtime .dlg,.runtime .btn,.runtime .tog,
+.runtime .gb>legend,.runtime .lv th,.runtime .lv td,
+.runtime .fld,.runtime .lab,.runtime .row label,.runtime .kv label,
+.runtime .fgrid .fh,.runtime .sb .sp,.runtime .sendbar .sendn,
+.runtime .hint,.runtime .how,.runtime .esc{font-weight:700;}
 .runtime .client{padding:var(--card-pad-t) var(--card-pad-r) var(--card-pad-b) var(--card-pad-l);flex:1;min-height:0;overflow:auto;}
 .runtime .stack{display:flex;flex-direction:column;gap:var(--card-gap);min-height:100%;}
 .runtime .stack>*+*{margin-top:0;}
@@ -105,3 +118,40 @@
 @media (prefers-reduced-motion:reduce){
   .runtime *{scroll-behavior:auto!important;transition:none!important;animation:none!important;}
 }
+
+/* 素の <select> は書体を継承せず、Chromium の今の見た目で出る。
+   appearance:none で皮を外し、他の欄と同じ書体と 98 の凹みに揃える。
+   開いた一覧そのものは OS が描くので、そこだけは Windows の見た目になる。 */
+.runtime select.fld{
+  -webkit-appearance:none;appearance:none;
+  font:inherit;font-weight:700;color:inherit;
+  border:0;border-radius:0;outline-offset:-3px;
+  height:var(--control-height);line-height:calc(var(--control-height) - 2px);
+  padding:0 20px 0 4px;
+  background-color:#fff;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Crect width='16' height='16' fill='%23d4d0c8'/%3E%3Cpath d='M0 0h16v1H0zM0 0h1v16H0z' fill='%23ffffff'/%3E%3Cpath d='M15 0h1v16h-1zM0 15h16v1H0z' fill='%230a0a0a'/%3E%3Cpath d='M14 1h1v14h-1zM1 14h14v1H1z' fill='%23808080'/%3E%3Cpath d='M4.5 6.5h7L8 10.5z' fill='%23000000'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 2px center;
+}
+.runtime select.fld option{font:inherit;background:#fff;color:#000;}
+
+/* リストの見出し行。左は文字だけ、右は文字と釦。行の高さを釦に合わせて揃え、
+   下に他と同じ 4px を空ける。揃えないとリストの上端が左右でずれる。 */
+.runtime .listhead{display:flex;align-items:center;gap:var(--card-gap);
+  min-height:var(--control-height);margin-bottom:4px;}
+.runtime .listhead>.lab{margin-bottom:0;}
+
+/* ダイアログ用の面。この窓は本体を描かず、ダイアログの中身だけを地の色いっぱいに
+   置く。枠と題と閉じるボタンは Windows のもの。 */
+.dialogmode,.dialogmode body,.dialogmode main,.dialogmode .page{
+  width:auto;height:auto;overflow:hidden;background:#d4d0c8;}
+.dialogmode .page{padding:0;max-width:none;}
+.dialogmode .stage{height:auto;max-width:none;width:max-content;}
+.dialogmode .win,.dialogmode .sb{display:none;}
+.dialogmode .veil{position:static;inset:auto;display:none;}
+.dialogmode .veil.show{display:block;}
+.dialogmode .dlg{position:static;transform:none;left:auto;top:auto;
+  margin:0;padding:0;max-width:none;box-shadow:none;}
+.dialogmode .dlg>.tb{display:none;}
+.dialogmode .dlg>.body{padding:12px;max-height:none;overflow:visible;}
+.dialogmode .veil{background:transparent;}

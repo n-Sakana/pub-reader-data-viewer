@@ -34,7 +34,7 @@ if ($SingleKey.Length -ne 8) {
 $scratchName = 'ui-dom-' + $Scenario
 if ($MutateKeyMax230) { $scratchName += '-max230-mutant' }
 $scratch = New-RdvTestDirectory -Root $Root -Name $scratchName
-Copy-Item -LiteralPath (Join-Path $Root 'ReaderDataViewer.ps1') -Destination $scratch
+# ReaderDataViewer.ps1 travels with the recursive src\ copy below.
 Copy-Item -LiteralPath $SettingsSource -Destination (Join-Path $scratch 'settings.json')
 foreach ($directory in 'src', 'lib', 'web', 'data') {
     Copy-Item -LiteralPath (Join-Path $Root $directory) -Destination $scratch -Recurse
@@ -84,7 +84,7 @@ $states = [Rdv3Ledger]::FreshStates(
     $merge.Lines.Length,
     $cfg.Screen.Work.InitialStored)
 [Rdv3Xlsx]::Write(
-    (Join-Path $scratch 'ReaderDataViewer-Ledger.xlsx'),
+    (Join-Path $scratch $cfg.Ledger),
     $merge.Head,
     $cfg.Screen.Work.Column,
     $merge.Lines,
@@ -102,7 +102,7 @@ try {
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = 'powershell.exe'
     $start.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "' +
-        (Join-Path $scratch 'ReaderDataViewer.ps1') + '"'
+        (Join-Path $scratch 'src\ReaderDataViewer.ps1') + '"'
     $start.WorkingDirectory = $scratch
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
@@ -133,7 +133,7 @@ finally {
         Write-Output ("closing test-owned variant app process {0}" -f $process.Id)
         Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
     }
-    Write-Output ("scratch: {0}" -f $scratch)
+    Remove-RdvTestDirectory -Path $scratch -Passed ($result -eq 0)
 }
 
 exit $result

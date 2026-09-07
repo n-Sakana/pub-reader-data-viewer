@@ -1040,7 +1040,7 @@ internal abstract class Rdv3Expression
             separator = text;
             position = at;
             count = length;
-            if (name == "regexExtract") { pattern = new Regex(text, RegexOptions.CultureInvariant); }
+            if (name == "regexExtract") { pattern = new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); }
         }
 
         public override string Evaluate(string[] row)

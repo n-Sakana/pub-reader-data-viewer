@@ -1,0 +1,158 @@
+{
+  "scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
+  "utc": "2026-09-07T23:01:15.176040+00:00",
+  "platform": "Windows-11-10.0.26200-SP0",
+  "passed": 30,
+  "failed": 0,
+  "details": {
+    "text_reference_count": 168,
+    "node_version": "v24.12.0",
+    "native_test_cases_provided_not_executed": 50,
+    "sample_data": {
+      "A": {
+        "source_rows": 1000,
+        "keyed_rows": 1000,
+        "columns": 10,
+        "file": "tableA.csv"
+      },
+      "B": {
+        "source_rows": 1000,
+        "keyed_rows": 990,
+        "columns": 10,
+        "file": "tableB.csv"
+      },
+      "C": {
+        "source_rows": 1000,
+        "keyed_rows": 1000,
+        "columns": 10,
+        "file": "tableC.csv"
+      },
+      "delete.csv": {
+        "source_rows": 342,
+        "columns": 2
+      }
+    }
+  },
+  "tests": [
+    {
+      "name": "csharp-lexical-delimiters:src\\01_App.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\02_MainWindow.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\03_Theme.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3App.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Config.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Core.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Csv.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Data.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Files.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Index.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Jobs.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Json.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Ledger.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Modals.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Process.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Screen.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Settings.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Shared.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Text.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Ui.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Uia.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Values.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Watch.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Xlsx.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:tests\\RegressionTests.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "text-reference-names",
+      "status": "PASS"
+    },
+    {
+      "name": "new-helper-reference-names",
+      "status": "PASS"
+    },
+    {
+      "name": "javascript-node-syntax",
+      "status": "PASS"
+    },
+    {
+      "name": "sample-jsonc-structure-and-safe-trigger",
+      "status": "PASS"
+    },
+    {
+      "name": "supplied-csv-shape-keys-source-references",
+      "status": "PASS"
+    }
+  ]
+}

@@ -180,7 +180,7 @@ public sealed class Rdv3Judgment
             r.Result = ro.Need("result");
             if (r.Pattern.Length > 0)
             {
-                try { r.PatternRule = new Regex(r.Pattern, RegexOptions.CultureInvariant); }
+                try { r.PatternRule = new Regex(r.Pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); }
                 catch (Exception ex) { throw ro.Member("pattern").Fail("is not a usable regular expression (" + ex.Message + ")"); }
             }
             if (r.EqualsAny.Length == 0 && r.PatternRule == null && !r.Empty) { throw ro.Fail("has no condition (equals / pattern / empty)"); }
@@ -245,7 +245,7 @@ public sealed class Rdv3WorkState
     public string ButtonTip = "";
     // automatic: a single hit from the watched application advances the
     // state; manual: only the work-state button can advance it.
-    public string Trigger = "automatic";
+    public string Trigger = "manual";
 
     public Rdv3StateDef ById(string id)
     {
@@ -302,6 +302,8 @@ public sealed class Rdv3WorkState
             if (s.Stored.Length == 0) { throw so.Member("stored").Fail("must not be blank (a blank ledger cell is 'no state')"); }
             if (w.ById(s.Id) != null) { throw so.Member("id").Fail(s.Id + " is used twice"); }
             if (w.ByStored(s.Stored) != null) { throw so.Fail("stored value " + s.Stored + " is used twice"); }
+            for (int k = 0; k < s.Stored.Length; k++)
+            { if (s.Stored[k] < ' ') { throw so.Fail("stored state cannot contain control characters"); } }
             w.States.Add(s);
         }
         w.Initial = o.Need("initial");
@@ -769,11 +771,7 @@ public sealed class Rdv3Screen
         for (int i = 0; i < ExportDefaultFields.Length; i++)
         {
             string reference = ExportDefaultFields[i];
-            bool available = reference == "$work";
-            for (int k = 0; !available && k < data.LabelOrder.Count; k++)
-            {
-                if (data.LabelOrder[k] == reference && data.IndexOf(reference) >= 0) { available = true; }
-            }
+            bool available = reference == "$work" || data.IndexOf(reference) >= 0;
             if (!available)
             {
                 throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is not an export field", exportLine);

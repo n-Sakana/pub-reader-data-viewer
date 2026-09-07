@@ -155,7 +155,14 @@ public sealed class Rdv3PickerForm
 
     public static Rdv3Target Pick(Rdv3Form owner)
     {
-        if (ReaderDataViewer.App.IsProbe) { return null; }
+        if (ReaderDataViewer.App.IsProbe &&
+            !string.Equals(
+                Environment.GetEnvironmentVariable("RDV_HEADLESS_RUN_PICKER"),
+                "1",
+                StringComparison.Ordinal))
+        {
+            return null;
+        }
         Rdv3PickerForm picker = new Rdv3PickerForm(owner);
         current = picker;
         picker.timer.Start();

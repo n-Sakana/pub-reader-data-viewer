@@ -7,14 +7,23 @@
 | `winforms/` | フェーズ17完了時点の C# / WinForms 製品。ソース、ビルド、検査、文書、配布物を一式で凍結 |
 | `vba/` | 退役した実用 VBA 版のソース、専用ビルド・検査、設計と実測 |
 | `comparisons/` | 1 対 1・一対多の方式比較ソース、ビルド、結果 |
-| `benchmarks/` | 方式選定の凍結済み証拠 (`excel-background-bench`、100 万行)。結論は「起動手段は効かない、結果の戻し方が効く」 |
-| `showcase/` | VBA Pixel Bridge。Excel 分離アーキテクチャの技術ショーケースで、Reader 本体とは無関係 |
 | `ui-prototypes/` | 現行 UI (v2) より前の HTML 案。`v1-main.html` / `v1-settings.html` は v2 直前の正本 |
 | `ui-v2/` | 手描き UI 時代の幾何検査、実測値、HTML 正本。標準 WinForms コントロールへの移行で退役 |
 
 `winforms/` は commit `dc8f761` の内容を 2026-09-04 に移したものです。通常ビルドから参照せず、中身を変更しません。
 
-`benchmarks/` と `showcase/` は 2026-09-03 にリポジトリ直下からここへ移しました。中身は変えていません。それ以前の
+## ここから出したもの
+
+`benchmarks/` (`excel-background-bench`、100 万行の方式選定の証拠。結論は「起動手段は効かない、結果の戻し方が効く」) と
+`showcase/` (VBA Pixel Bridge。Excel 分離アーキテクチャの技術ショーケースで、**Reader 本体とは無関係**) は、
+2026-09-07 にこのリポジトリから外しました。2 つで追跡ファイル 84 件・96 MB あり、Reader の現役版とも直前版とも
+つながっていないためです。
+
+- 中身はそのまま `C:\repos\_backup\reader-data-viewer-archive-20260907\` にあります (生成物を含めて 358 ファイル)。
+- git の履歴には残っているので、`git show 3e72dad:archive/showcase/README.md` のように読めますし、
+  `git checkout 3e72dad -- archive/benchmarks` で丸ごと戻せます。
+
+どちらも 2026-09-03 にリポジトリ直下からいったんここへ移したものです。中身は一度も変えていません。それ以前の
 配置を参照している文書やスクリプトのパスは、当時の記録としてそのままにしてあります。
 
 退役直前の配置と再現手順をそのまま必要とする場合は commit `017bb3e` を参照します。アーカイブ内のスクリプトは当時のパスを記録として保持しており、現在位置から直接実行する入口ではありません。

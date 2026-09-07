@@ -23,7 +23,7 @@ if ($null -eq (Get-Command node.exe -ErrorAction SilentlyContinue)) {
 }
 
 $sampleFacts = @{}
-$sampleExpected = Join-Path $Root 'data-1k\expected.txt'
+$sampleExpected = Join-Path $Root 'data\expected.txt'
 if (-not (Test-Path -LiteralPath $sampleExpected -PathType Leaf)) {
     throw "sample evidence is missing: $sampleExpected"
 }
@@ -46,7 +46,7 @@ $TargetIdentity = $sampleFacts['cand1.firstidentity']
 $scratch = New-RdvTestDirectory -Root $Root -Name 'guard-run'
 $appDirectory = Join-Path $scratch 'app'
 New-Item -ItemType Directory -Path $appDirectory | Out-Null
-foreach ($file in 'ReaderDataViewer.ps1', 'settings.json') {
+foreach ($file in 'settings.json') {
     Copy-Item -LiteralPath (Join-Path $Root $file) -Destination $appDirectory
 }
 foreach ($directory in 'src', 'lib', 'web', 'data') {
@@ -77,7 +77,7 @@ $merge = [Rdv3Ledger]::BuildFromCsv($cfg.Data, $dataDirectory)
 $initialStates = [Rdv3Ledger]::FreshStates(
     $merge.Lines.Length,
     $cfg.Screen.Work.InitialStored)
-$ledger = Join-Path $appDirectory 'ReaderDataViewer-Ledger.xlsx'
+$ledger = Join-Path $appDirectory $cfg.Ledger
 [Rdv3Xlsx]::Write(
     $ledger,
     $merge.Head,
@@ -86,7 +86,7 @@ $ledger = Join-Path $appDirectory 'ReaderDataViewer-Ledger.xlsx'
     $initialStates,
     'guard-seed')
 
-$log = Join-Path $appDirectory 'ReaderDataViewer.log'
+$log = Join-Path $appDirectory $cfg.Log
 $fakeLock = $ledger + '.lock'
 $markerPath = $ledger + '.version'
 $utf8 = New-Object Text.UTF8Encoding($false)
@@ -309,7 +309,7 @@ try {
     $start = New-Object Diagnostics.ProcessStartInfo
     $start.FileName = 'powershell.exe'
     $start.Arguments = '-NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "' +
-        (Join-Path $appDirectory 'ReaderDataViewer.ps1') + '"'
+        (Join-Path $appDirectory 'src\ReaderDataViewer.ps1') + '"'
     $start.WorkingDirectory = $appDirectory
     $start.UseShellExecute = $false
     $start.CreateNoWindow = $true
@@ -562,6 +562,6 @@ if ($checks.Count -ne 35) {
     Write-Output ("  FAIL assertion count: expected 35, actual {0}" -f $checks.Count)
     $fail++
 }
-Write-Output ("scratch: {0}" -f $scratch)
+Remove-RdvTestDirectory -Path $scratch -Passed ($fail -eq 0)
 if ($fail -gt 0) { exit 1 }
 Write-Output 'RESULT: PASS'

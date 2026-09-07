@@ -147,6 +147,11 @@ public sealed class Rdv3Index
     public int FindBytes(byte[] buf, int off, int len, out List<int> rows)
     {
         if (fixedAscii && len != keyLen) { rows = null; return 0; }
+        if (fixedAscii)
+        {
+            for (int i = off; i < off + len; i++)
+            { if (buf[i] > 127) { rows = null; return 0; } }
+        }
         if (!fixedAscii && keyEncoding == null) { rows = null; return 0; }
         string k = fixedAscii ? Encoding.ASCII.GetString(buf, off, len) : keyEncoding.GetString(buf, off, len);
         if (!map.TryGetValue(k, out rows)) { return 0; }

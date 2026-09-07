@@ -65,20 +65,22 @@ public static class Rdv3Xlsx
         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
         {
             string[] shared = ReadSharedStrings(z);
-            ZipArchiveEntry sheet = FindSheet(z);
+            ZipArchiveEntry sheet = FindSheet(z, false);
             if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
-            using (XmlReader xr = XmlReader.Create(sheet.Open()))
+            using (XmlReader xr = Xml(sheet.Open()))
             {
                 List<string> cells = null;
                 bool inRow = false;
                 int col = 0;
                 int rowNumber = 0;
+                HashSet<int> seenColumns = new HashSet<int>();
                 while (xr.Read())
                 {
                     if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "row")
                     {
                         inRow = true;
                         cells = new List<string>();
+                        seenColumns.Clear();
                         col = 0;
                         rowNumber++;
                         int stated;
@@ -96,6 +98,7 @@ public static class Rdv3Xlsx
                             int referenced = ColOf(cellRef);
                             if (referenced >= 0) { col = referenced; }
                         }
+                        if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
                         while (cells.Count <= col) { cells.Add(""); }
                         cells[col] = ReadCellValue(xr, xr.GetAttribute("t"), shared);
                         col++;
@@ -130,7 +133,7 @@ public static class Rdv3Xlsx
                 }
             }
         }
-        if (head == null || (!headOnly && result.Count == 0))
+        if (head == null)
         {
             throw new Rdv3DataError(Rdv3Text.DataNoRows.Replace("{file}", file).Replace("{row}", "0"));
         }
@@ -164,7 +167,7 @@ public static class Rdv3Xlsx
         char[] safe = null;
         for (int i = 0; i < value.Length; i++)
         {
-            if (value[i] >= ' ') { continue; }
+            if (value[i] >= ' ' || value[i] == '\r' || value[i] == '\n') { continue; }
             if (warning.Length == 0)
             {
                 warning = Rdv3Text.DataControlChar.Replace("{file}", file)
@@ -178,15 +181,18 @@ public static class Rdv3Xlsx
     }
 
     // ---- write -------------------------------------------------------------
-    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId)
+    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId, string contract = null)
     {
+        ValidateWrite(head, stateHead, lines, states);
         string dir = Path.GetDirectoryName(Path.GetFullPath(path));
-        string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + runId);
+        string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + Guid.NewGuid().ToString("N"));
         try
         {
-            using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
+            using (FileStream fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write))
             using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Create))
             {
+                if (!string.IsNullOrEmpty(contract))
+                { AddEntry(z, "rdv-contract.xml", "<contract>" + contract + "</contract>"); }
                 AddEntry(z, "[Content_Types].xml",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
@@ -276,14 +282,14 @@ public static class Rdv3Xlsx
 
     private static void Cell(StreamWriter w, string v, bool head)
     {
-        w.Write(head ? "<c t=\"inlineStr\" s=\"1\"><is><t>" : "<c t=\"inlineStr\"><is><t>");
+        w.Write(head ? "<c t=\"inlineStr\" s=\"1\"><is><t xml:space=\"preserve\">" : "<c t=\"inlineStr\"><is><t xml:space=\"preserve\">");
         Esc(w, v, 0, v.Length);
         w.Write("</t></is></c>");
     }
 
     private static void CellSpan(StreamWriter w, string s, int off, int len)
     {
-        w.Write("<c t=\"inlineStr\"><is><t>");
+        w.Write("<c t=\"inlineStr\"><is><t xml:space=\"preserve\">");
         Esc(w, s, off, len);
         w.Write("</t></is></c>");
     }
@@ -294,7 +300,8 @@ public static class Rdv3Xlsx
         for (int i = off; i < end; i++)
         {
             char ch = s[i];
-            if (ch == '&') { w.Write("&amp;"); }
+            if (ch == '\r') { w.Write("&#13;"); }
+            else if (ch == '&') { w.Write("&amp;"); }
             else if (ch == '<') { w.Write("&lt;"); }
             else if (ch == '>') { w.Write("&gt;"); }
             else { w.Write(ch); }
@@ -318,7 +325,7 @@ public static class Rdv3Xlsx
     }
 
     public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states,
-                            out string warning)
+                            out string warning, string expectedContract = null)
     {
         warning = "";
         // ReadWrite | Delete: another copy of the app may replace the file
@@ -330,7 +337,8 @@ public static class Rdv3Xlsx
         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
         {
             string[] shared = ReadSharedStrings(z);
-            ZipArchiveEntry sheet = FindSheet(z);
+            CheckContract(z, expectedContract);
+            ZipArchiveEntry sheet = FindSheet(z, true);
             if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
 
             List<string> outLines = new List<string>(131072);
@@ -338,16 +346,18 @@ public static class Rdv3Xlsx
             string[] cells = new string[head.Length + 1];
             bool sawHeader = false;
 
-            using (XmlReader xr = XmlReader.Create(sheet.Open()))
+            using (XmlReader xr = Xml(sheet.Open()))
             {
                 int col = 0;
                 bool inRow = false;
+                HashSet<int> seenColumns = new HashSet<int>();
                 while (xr.Read())
                 {
                     if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "row")
                     {
                         inRow = true;
                         col = 0;
+                        seenColumns.Clear();
                         for (int i = 0; i < cells.Length; i++) { cells[i] = ""; }
                         if (xr.IsEmptyElement) { inRow = false; }
                         continue;
@@ -360,9 +370,11 @@ public static class Rdv3Xlsx
                             int rc = ColOf(r);
                             if (rc >= 0) { col = rc; }
                         }
+                        if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
                         string t = xr.GetAttribute("t");
                         string v = ReadCellValue(xr, t, shared);
                         if (col < cells.Length) { cells[col] = v; }
+                        else if (v.Length > 0) { throw new InvalidDataException("ledger has unexpected non-empty columns: " + path); }
                         col++;
                         continue;
                     }
@@ -426,11 +438,16 @@ public static class Rdv3Xlsx
     {
         if (xr.IsEmptyElement) { return ""; }
         StringBuilder v = new StringBuilder();
+        bool formula = false, cached = false;
         using (XmlReader sub = xr.ReadSubtree())
         {
             bool moved = sub.Read();
             while (moved)
             {
+                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "rPh")
+                { sub.Skip(); moved = !sub.EOF; continue; }
+                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "f") { formula = true; }
+                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "v") { cached = true; }
                 if (sub.NodeType == XmlNodeType.Element &&
                     (sub.LocalName == "v" || sub.LocalName == "t") && !sub.IsEmptyElement)
                 {
@@ -442,6 +459,7 @@ public static class Rdv3Xlsx
                 moved = sub.Read();
             }
         }
+        if (formula && !cached) { throw new InvalidDataException("XLSX formula has no cached result; recalculate and save the source workbook"); }
         return Resolve(t, v.ToString(), shared);
     }
 
@@ -453,10 +471,13 @@ public static class Rdv3Xlsx
             if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out idx) &&
                 shared != null && idx >= 0 && idx < shared.Length)
             {
+                if (shared[idx].Length > 32767) { throw new InvalidDataException("XLSX shared string exceeds 32767 characters"); }
                 return shared[idx];
             }
-            return "";
+            throw new InvalidDataException("invalid shared-string index in XLSX");
         }
+        if (t == "e") { throw new InvalidDataException("XLSX contains a formula/error cell: " + s); }
+        if (s.Length > 32767) { throw new InvalidDataException("XLSX cell exceeds 32767 characters"); }
         return s;
     }
 
@@ -465,12 +486,14 @@ public static class Rdv3Xlsx
         ZipArchiveEntry e = z.GetEntry("xl/sharedStrings.xml");
         if (e == null) { return null; }
         List<string> all = new List<string>();
-        using (XmlReader xr = XmlReader.Create(e.Open()))
+        using (XmlReader xr = Xml(e.Open()))
         {
             StringBuilder cur = null;
             bool moved = xr.Read();
             while (moved)
             {
+                if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "rPh")
+                { xr.Skip(); moved = !xr.EOF; continue; }
                 if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "si")
                 {
                     if (cur != null) { all.Add(cur.ToString()); }
@@ -493,19 +516,93 @@ public static class Rdv3Xlsx
         return all.ToArray();
     }
 
-    private static ZipArchiveEntry FindSheet(ZipArchive z)
+    private static XmlReader Xml(Stream stream)
     {
-        ZipArchiveEntry e = z.GetEntry("xl/worksheets/sheet1.xml");
-        if (e != null) { return e; }
-        foreach (ZipArchiveEntry x in z.Entries)
+        XmlReaderSettings settings = new XmlReaderSettings();
+        settings.DtdProcessing = DtdProcessing.Prohibit;
+        settings.XmlResolver = null;
+        settings.CloseInput = true;
+        settings.MaxCharactersInDocument = 512L * 1024L * 1024L;
+        return XmlReader.Create(stream, settings);
+    }
+
+    private static XmlDocument Document(ZipArchiveEntry entry)
+    {
+        if (entry == null) { throw new InvalidDataException("XLSX workbook metadata is missing"); }
+        XmlDocument doc = new XmlDocument();
+        doc.XmlResolver = null;
+        using (XmlReader reader = Xml(entry.Open())) { doc.Load(reader); }
+        return doc;
+    }
+
+    private static ZipArchiveEntry FindSheet(ZipArchive z, bool ledger)
+    {
+        XmlDocument workbook = Document(z.GetEntry("xl/workbook.xml"));
+        XmlDocument relations = Document(z.GetEntry("xl/_rels/workbook.xml.rels"));
+        XmlElement selected = null;
+        int sheetCount = 0;
+        foreach (XmlNode node in workbook.GetElementsByTagName("*"))
         {
-            if (x.FullName.StartsWith("xl/worksheets/", StringComparison.OrdinalIgnoreCase) &&
-                x.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
-            {
-                return x;
-            }
+            XmlElement sheet = node as XmlElement;
+            if (sheet == null || sheet.LocalName != "sheet") { continue; }
+            sheetCount++;
+            if ((!ledger && selected == null) || (ledger && sheet.GetAttribute("name") == SheetName)) { selected = sheet; }
         }
-        return null;
+        // The writer creates a single managed sheet. Do not silently discard
+        // additional sheets someone added to the shared ledger.
+        if (ledger && sheetCount != 1) { throw new InvalidDataException("shared ledger must contain only the LEDGER worksheet; preserve additional sheets separately"); }
+        if (selected == null) { throw new InvalidDataException(ledger ? "LEDGER worksheet is missing" : "no worksheet in workbook"); }
+        string id = "";
+        foreach (XmlAttribute attribute in selected.Attributes)
+        { if (attribute.LocalName == "id") { id = attribute.Value; } }
+        foreach (XmlNode node in relations.GetElementsByTagName("*"))
+        {
+            XmlElement relation = node as XmlElement;
+            if (relation == null || relation.LocalName != "Relationship" || relation.GetAttribute("Id") != id) { continue; }
+            if (relation.GetAttribute("TargetMode") == "External"
+                || !relation.GetAttribute("Type").EndsWith("/worksheet", StringComparison.Ordinal))
+            { throw new InvalidDataException("selected XLSX sheet is not a local worksheet"); }
+            Uri target = new Uri(new Uri("http://rdv.local/xl/workbook.xml"), relation.GetAttribute("Target").Replace('\\', '/'));
+            if (target.Host != "rdv.local" || target.Scheme != "http") { throw new InvalidDataException("invalid worksheet target"); }
+            ZipArchiveEntry entry = z.GetEntry(Uri.UnescapeDataString(target.AbsolutePath).TrimStart('/'));
+            if (entry == null) { throw new InvalidDataException("worksheet relationship points to a missing part"); }
+            return entry;
+        }
+        throw new InvalidDataException("worksheet relationship is missing");
+    }
+
+    private static void CheckContract(ZipArchive zip, string expected)
+    {
+        if (string.IsNullOrEmpty(expected)) { return; }
+        ZipArchiveEntry entry = zip.GetEntry("rdv-contract.xml");
+        if (entry == null) { return; } // Legacy ledger: header validation still applies.
+        XmlDocument doc = Document(entry);
+        if (doc.DocumentElement == null || doc.DocumentElement.LocalName != "contract"
+            || doc.DocumentElement.InnerText != expected)
+        { throw new InvalidDataException(Rdv3Text.StorageContractMismatch); }
+    }
+
+    private static void ValidateCell(string value)
+    {
+        if (value == null || value.Length > 32767) { throw new InvalidDataException("invalid/oversized XLSX cell"); }
+        XmlConvert.VerifyXmlChars(value);
+    }
+
+    private static void ValidateWrite(string[] head, string stateHead, string[] lines, string[] states)
+    {
+        if (head == null || lines == null || states == null || lines.Length != states.Length
+            || head.Length == 0 || head.Length >= 16384 || lines.Length >= 1048576)
+        { throw new InvalidDataException("invalid XLSX dimensions or state count"); }
+        ValidateCell(stateHead);
+        for (int c = 0; c < head.Length; c++) { ValidateCell(head[c]); }
+        for (int r = 0; r < lines.Length; r++)
+        {
+            ValidateCell(states[r]);
+            if (lines[r] == null) { throw new InvalidDataException("null ledger row"); }
+            string[] cells = lines[r].Split('\t');
+            if (cells.Length != head.Length) { throw new InvalidDataException("ledger row column count differs from header"); }
+            for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c]); }
+        }
     }
 
     // "D5" -> 3. Letters only matter; the row digits are ignored.
@@ -519,6 +616,7 @@ public static class Rdv3Xlsx
             if (ch >= 'A' && ch <= 'Z') { col = col * 26 + (ch - 'A' + 1); any = true; }
             else if (ch >= 'a' && ch <= 'z') { col = col * 26 + (ch - 'a' + 1); any = true; }
             else { break; }
+            if (col > 16384) { throw new InvalidDataException("XLSX column reference exceeds XFD"); }
         }
         return any ? col - 1 : -1;
     }

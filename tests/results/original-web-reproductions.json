@@ -1,0 +1,29 @@
+{
+  "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
+  "baseline_reproduction": true,
+  "utc": "2026-09-07T16:53:36.213205+00:00",
+  "platform": "Linux-6.18.35-x86_64-with-glibc2.41",
+  "tests": [
+    {
+      "name": "input-visible-value-normalization",
+      "status": "FAIL",
+      "detail": "visible newlines were not removed",
+      "page_errors": []
+    },
+    {
+      "name": "ime-enter-does-not-search",
+      "status": "FAIL",
+      "detail": "IME confirmation incorrectly triggered search",
+      "page_errors": []
+    },
+    {
+      "name": "duplicate-actions-unique-id-and-routing",
+      "status": "FAIL",
+      "detail": "duplicate DOM ids: ['b-upd', 'b-upd']",
+      "page_errors": []
+    }
+  ],
+  "browser": "144.0.7559.96",
+  "passed": 0,
+  "failed": 3
+}

@@ -102,8 +102,8 @@ public sealed class Rdv3Form
     private Rdv3Data exportFilterData;
     private int modalToken;
     private int waitingToken;
+    public bool IsModalOpen { get { return waitingToken != 0; } }
     private Rdv3Json modalResult;
-    private DispatcherFrame modalFrame;
     private Rdv3Target pickedTarget;
     private int pickerPollMs = 40;
 
@@ -111,6 +111,7 @@ public sealed class Rdv3Form
     public readonly Rdv3View View = new Rdv3View();
 
     public Action<string> OnSearch;
+    public Action<string> OnKeyChanged;
     public Action OnClear;
     public Action OnWorkState;
     public Action OnRefreshLedger;
@@ -277,11 +278,11 @@ public sealed class Rdv3Form
         });
     }
 
-    public void ClearResult()
+    public void ClearResult(bool keepKey = false)
     {
         Ui(delegate
         {
-            keyText = "";
+            if (!keepKey) { keyText = ""; }
             View.SearchKey = "";
             candidates = new List<Rdv3CandRow>();
             candidateTotal = 0;
@@ -338,7 +339,7 @@ public sealed class Rdv3Form
     public void Tell(string title, string body) { Rdv3ConfirmForm.Tell(this, title, body); }
     public bool AskLedgerSwitch(List<Rdv3CandRow> rows) { return Rdv3LedgerUpdateForm.Ask(this, rows); }
     public void TellResetRows(List<Rdv3CandRow> rows) { Rdv3LedgerUpdateForm.TellReset(this, rows); }
-    public void TellUnmatched(List<Rdv3UnmatchedChange> rows) { Rdv3UnmatchedForm.Tell(this, rows); }
+    public bool TellUnmatched(List<Rdv3UnmatchedChange> rows) { return Rdv3UnmatchedForm.Tell(this, rows); }
 
     public void Fatal(string title, string body)
     {
@@ -379,18 +380,17 @@ public sealed class Rdv3Form
             if (modal == "candidates") { return Rdv3Json.Parse("{\"ok\":true,\"index\":0}"); }
             return Rdv3Json.Parse("{\"ok\":true}");
         }
-        if (!pageReady) { return Rdv3Json.Parse("{\"ok\":false}"); }
+        if (!pageReady || IsModalOpen) { return Rdv3Json.Parse("{\"ok\":false}"); }
         modalToken++;
         waitingToken = modalToken;
         modalResult = null;
-        modalFrame = new DispatcherFrame();
-        host.PostJson("{\"type\":\"modalOpen\",\"token\":" +
+        host.ShowDialogSurface(
+            BuildInitJson(),
+            "{\"type\":\"modalOpen\",\"token\":" +
             waitingToken.ToString(CultureInfo.InvariantCulture) +
             ",\"modal\":" + Rdv3WebJson.Q(modal) +
             ",\"content\":" + content + "}");
-        Dispatcher.PushFrame(modalFrame);
         Rdv3Json result = modalResult;
-        modalFrame = null;
         modalResult = null;
         waitingToken = 0;
         return result ?? Rdv3Json.Parse("{\"ok\":false}");
@@ -420,7 +420,7 @@ public sealed class Rdv3Form
 
     internal void PatchModal(string field, string value)
     {
-        host.PostJson("{\"type\":\"modalPatch\",\"token\":" +
+        host.PostSurfaceJson("{\"type\":\"modalPatch\",\"token\":" +
             waitingToken.ToString(CultureInfo.InvariantCulture) +
             ",\"field\":" + Rdv3WebJson.Q(field) +
             ",\"value\":" + Rdv3WebJson.Q(value) + "}");
@@ -428,7 +428,7 @@ public sealed class Rdv3Form
 
     internal void PostPickerPreview(string json)
     {
-        host.PostJson("{\"type\":\"pickerPreview\",\"preview\":" + json + "}");
+        host.PostSurfaceJson("{\"type\":\"pickerPreview\",\"preview\":" + json + "}");
     }
 
     internal void SetPickedTarget(Rdv3Target target)
@@ -462,7 +462,11 @@ public sealed class Rdv3Form
 
     private void OnPageLoaded(object sender, EventArgs eventArgs)
     {
-        host.PostJson(BuildInitJson());
+        string init = BuildInitJson();
+        host.PostJson(init);
+        // Build the dialog surface now, while nobody is waiting for it, so the
+        // first dialog opens as quickly as the tenth.
+        host.PrewarmDialogSurface(init);
     }
 
     private void OnClosingRequested(
@@ -491,7 +495,11 @@ public sealed class Rdv3Form
                     if (handler != null) { handler(this, EventArgs.Empty); }
                 }
             }
-            else if (type == "key") { keyText = Text(root, "value"); }
+            else if (type == "key")
+            {
+                keyText = Text(root, "value");
+                if (OnKeyChanged != null) { OnKeyChanged(keyText); }
+            }
             else if (type == "action")
             {
                 Rdv3Json action = root;
@@ -499,6 +507,13 @@ public sealed class Rdv3Form
             }
             else if (type == "window") { host.WindowCommand(Text(root, "command")); }
             else if (type == "modalResult") { CompleteModal(root); }
+            else if (type == "dialogSize")
+            {
+                host.SizeDialogSurface(
+                    Number(root, "width", 0),
+                    Number(root, "height", 0),
+                    Text(root, "title"));
+            }
             else if (type == "modalShown")
             {
                 PostOnUi(delegate { CaptureModal(root); });
@@ -506,7 +521,10 @@ public sealed class Rdv3Form
             else if (type == "settingsSubmit") { ValidateSettings(root); }
             else if (type == "validateExportFilter") { ValidateExportFilter(root); }
             else if (type == "browse") { Browse(root); }
-            else if (type == "picker") { PickTarget(); }
+            // The pick runs its own message loop. Starting it from inside
+            // this handler stops WebView2 delivering anything else until it
+            // ends, so the dialog size reported right after never arrives.
+            else if (type == "picker") { PostOnUi(delegate { PickTarget(); }); }
             else if (type == "pickerCancel") { Rdv3PickerForm.CancelCurrent(); }
         }
         catch (Exception exception)
@@ -518,7 +536,7 @@ public sealed class Rdv3Form
     private void ValidateSettings(Rdv3Json root)
     {
         int token = Number(root, "token", 0);
-        if (token != waitingToken || modalFrame == null) { return; }
+        if (token != waitingToken || waitingToken == 0) { return; }
         string dataDir = Text(root, "dataDir").Trim();
         string ledger = Text(root, "ledger").Trim();
         string log = Text(root, "log").Trim();
@@ -542,7 +560,7 @@ public sealed class Rdv3Form
             error = Rdv3Text.LblCandidateRows;
             field = "candidateRows";
         }
-        host.PostJson("{\"type\":\"settingsValidation\",\"token\":" +
+        host.PostSurfaceJson("{\"type\":\"settingsValidation\",\"token\":" +
             token.ToString(CultureInfo.InvariantCulture) +
             ",\"ok\":" + Rdv3WebJson.B(error.Length == 0) +
             ",\"error\":" + Rdv3WebJson.Q(error) +
@@ -552,7 +570,7 @@ public sealed class Rdv3Form
     private void ValidateExportFilter(Rdv3Json root)
     {
         int token = Number(root, "token", 0);
-        if (token != waitingToken || modalFrame == null || exportFilterData == null) { return; }
+        if (token != waitingToken || waitingToken == 0 || exportFilterData == null) { return; }
         string reference = Text(root, "field");
         string firstText = Text(root, "first");
         string lastText = Text(root, "last");
@@ -593,7 +611,7 @@ public sealed class Rdv3Form
                 lastText = last.ToString(CultureInfo.InvariantCulture);
             }
         }
-        host.PostJson("{\"type\":\"exportFilterValidation\",\"token\":" +
+        host.PostSurfaceJson("{\"type\":\"exportFilterValidation\",\"token\":" +
             token.ToString(CultureInfo.InvariantCulture) +
             ",\"ok\":" + Rdv3WebJson.B(error.Length == 0) +
             ",\"error\":" + Rdv3WebJson.Q(error) +
@@ -620,23 +638,23 @@ public sealed class Rdv3Form
     private void CompleteModal(Rdv3Json root)
     {
         int token = Number(root, "token", 0);
-        if (modalFrame == null || token != waitingToken) { return; }
+        if (waitingToken == 0 || token != waitingToken) { return; }
         Rdv3Json result = root.Member("result");
         modalResult = result != null && result.Kind == Rdv3Json.TObject
             ? result : Rdv3Json.Parse("{\"ok\":false}");
-        modalFrame.Continue = false;
+        host.CloseDialogSurface();
     }
 
     private void CaptureModal(Rdv3Json root)
     {
-        if (!ReaderDataViewer.App.IsProbe || modalFrame == null ||
+        if (!ReaderDataViewer.App.IsProbe || waitingToken == 0 ||
             Number(root, "token", 0) != waitingToken) { return; }
         string path = Environment.GetEnvironmentVariable(
             "RDV_WEBVIEW2_PROBE_MODAL_CAPTURE");
         if (string.IsNullOrWhiteSpace(path)) { return; }
         host.CaptureToFile(path);
         modalResult = Rdv3Json.Parse("{\"ok\":false}");
-        modalFrame.Continue = false;
+        host.CloseDialogSurface();
     }
 
     private void Browse(Rdv3Json root)
@@ -720,13 +738,13 @@ public sealed class Rdv3Form
         Rdv3Target picked = Rdv3PickerForm.Pick(this);
         if (picked == null)
         {
-            host.PostJson("{\"type\":\"pickerResult\",\"token\":" +
+            host.PostSurfaceJson("{\"type\":\"pickerResult\",\"token\":" +
                 waitingToken.ToString(CultureInfo.InvariantCulture) +
                 ",\"target\":null}");
             return;
         }
         pickedTarget = picked;
-        host.PostJson("{\"type\":\"pickerResult\",\"token\":" +
+        host.PostSurfaceJson("{\"type\":\"pickerResult\",\"token\":" +
             waitingToken.ToString(CultureInfo.InvariantCulture) +
             ",\"target\":" + Rdv3SettingsForm.TargetJson(picked, pickerPollMs) + "}");
     }

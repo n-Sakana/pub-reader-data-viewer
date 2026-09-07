@@ -292,7 +292,8 @@ public sealed class Rdv3Json
                     if (src[pos] == '\n') { line++; }
                     pos++;
                 }
-                pos = Math.Min(src.Length, pos + 2);
+                if (pos + 1 >= src.Length) { throw new Rdv3LoadError("the block comment is not closed", line); }
+                pos += 2;
             }
             else { return; }
         }
@@ -305,7 +306,16 @@ public sealed class Rdv3Json
         return src[pos];
     }
 
+    private int depth;
+
     private Rdv3Json ReadValue(string path)
+    {
+        if (++depth > 128) { throw new Rdv3LoadError("JSON nesting exceeds 128 levels", line); }
+        try { return ReadValueCore(path); }
+        finally { depth--; }
+    }
+
+    private Rdv3Json ReadValueCore(string path)
     {
         char c = Peek();
         int at = pos;
@@ -386,8 +396,19 @@ public sealed class Rdv3Json
         {
             if (pos >= src.Length) { throw new Rdv3LoadError("the text is not closed", line); }
             char c = src[pos++];
-            if (c == '"') { return sb.ToString(); }
-            if (c == '\n') { throw new Rdv3LoadError("a line break inside text", line); }
+            if (c == '"')
+            {
+                string value = sb.ToString();
+                for (int i = 0; i < value.Length; i++)
+                {
+                    if (!char.IsSurrogate(value[i])) { continue; }
+                    if (!char.IsHighSurrogate(value[i]) || i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
+                    { throw new Rdv3LoadError("unpaired UTF-16 surrogate in text", line); }
+                    i++;
+                }
+                return value;
+            }
+            if (c < ' ') { throw new Rdv3LoadError("unescaped control character inside text", line); }
             if (c != '\\') { sb.Append(c); continue; }
             if (pos >= src.Length) { throw new Rdv3LoadError("the text is not closed", line); }
             char e = src[pos++];
@@ -411,22 +432,36 @@ public sealed class Rdv3Json
         }
     }
 
+    private bool Digit() { return pos < src.Length && src[pos] >= '0' && src[pos] <= '9'; }
+
     private Rdv3Json ReadNumber()
     {
         int start = pos;
         if (pos < src.Length && src[pos] == '-') { pos++; }
-        while (pos < src.Length)
+        if (!Digit()) { throw new Rdv3LoadError("a number needs an integer part", line); }
+        if (src[pos] == '0')
         {
-            char c = src[pos];
-            if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') { pos++; }
-            else { break; }
+            pos++;
+            if (Digit()) { throw new Rdv3LoadError("a number cannot have a leading zero", line); }
+        }
+        else { while (Digit()) { pos++; } }
+        if (pos < src.Length && src[pos] == '.')
+        {
+            pos++;
+            if (!Digit()) { throw new Rdv3LoadError("a fraction needs digits", line); }
+            while (Digit()) { pos++; }
+        }
+        if (pos < src.Length && (src[pos] == 'e' || src[pos] == 'E'))
+        {
+            pos++;
+            if (pos < src.Length && (src[pos] == '+' || src[pos] == '-')) { pos++; }
+            if (!Digit()) { throw new Rdv3LoadError("an exponent needs digits", line); }
+            while (Digit()) { pos++; }
         }
         double d;
         if (!double.TryParse(src.Substring(start, pos - start), NumberStyles.Float,
-                CultureInfo.InvariantCulture, out d))
-        {
-            throw new Rdv3LoadError("a number that is not understood", line);
-        }
+                CultureInfo.InvariantCulture, out d) || double.IsNaN(d) || double.IsInfinity(d))
+        { throw new Rdv3LoadError("a number is invalid or outside the finite range", line); }
         Rdv3Json n = new Rdv3Json(TNumber);
         n.Num = d;
         return n;

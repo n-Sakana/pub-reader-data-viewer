@@ -1,0 +1,3452 @@
+# Reader Data Viewer source changes — review artifact
+# Paths are relative to the application folder; line endings normalized to LF.
+# The fixed ZIP already includes these changes; do not reapply this patch.
+--- a/README.md
++++ b/README.md
+@@ -1,88 +1,72 @@
+-# Reader Data Viewer
++# Reader Data Viewer — バグ点検・修正版
+ 
+-Reader Data Viewer は C# / WPF の窓に WebView2 を載せる Windows デスクトップアプリです。
++2026-09-08 改訂。CSV／XLSXを設定に従って統合し、検索、作業状態の変更、共有台帳への送信を行うWindows用アプリです。ソースを起動時にWindows PowerShellでコンパイルし、WPFとWebView2で画面を表示します。
+ 
+-`ReaderDataViewer.vbs` から黒いコンソールを出さずに起動し、承認済み v13 の HTML 画面を表示します。検索、候補選択、処理状態、台帳更新・削除、送信、CSV 出力、設定、UI Automation 監視は WebView2 の JSON ブリッジから既存の処理本体へ接続されています。画面の構成と寸法はルートの `settings.json` にある `screen` 定義から組み立てます。
++> **検証状況：Linux上のブラウザー試験14項目と静的・サンプル整合検査30項目は通過。WindowsでのC#コンパイル、WPF／WebView2起動、実際の複数PC・SMB共有試験は未実施です。本番台帳に置き換える前に、下記のWindows試験と共有試験を行ってください。**
+ 
+-通常起動は `ReaderDataViewer.vbs` をダブルクリックします。起動ログをコンソールで確認するときだけ `ReaderDataViewer.cmd` を使います。ビルドと検査は `build.bat` をダブルクリックします。いずれも管理者権限やインストールを必要としません。
++## 今回変わった点
+ 
+-## どこに何があるか
++同じレコードの作業状態を別の人が変更していた場合、後から送信した値で無条件に上書きせず、未送信の競合として残すようにしました。ロック取得後の最新台帳に対して、元の内容と変更前の状態を照合します。送信済みの状態への再送信は二重に計上しません。
+ 
+-人が書くものだけがリポジトリ直下に出ます。
++**監視による作業状態変更は既定で手動です。** `screen.workState.trigger` を `manual` としています。外部画面の検出は検索に使用し、処理済みにする操作は作業状態ボタンで行います。従来の自動変更が業務上必要な場合は、テスト後に `automatic` を明記してください。
++
++**CSV出力は新規ファイルのみです。** 既存ファイル、入力表、削除用入力、設定、台帳、プログラムなどへの上書きを拒否します。数式として解釈され得る値の先頭にアポストロフィを付ける「Excel向けに数式を無効化」は既定で有効です。機械連携で元の値が必要な場合は解除します。CSVの同名列は必要に応じて `A.id` のように識別可能な見出しへ変わります。
++
++詳細・残存制約は [AUDIT_REPORT.md](AUDIT_REPORT.md) にあります。
++
++## 起動前の準備
++
++64ビットWindows、Windows PowerShell 5.1系の.NET Framework／WPF環境、WebView2 Runtimeを使用する構成です。同梱の `lib/` はそのまま配置してください。今回DLLの更新や組織端末の実行許可設定は行っていません。
++
++ZIPを**展開してから**利用します。共有運用ではアプリ一式を各PCのローカルフォルダーへ置き、`paths.ledger` だけを同一の共有ファイルへ向ける構成を基本とします。ログはPC別のローカル保存にします。ローカルの未送信変更を複数PCへコピーして使い回さないでください。
++
++`settings.json` の相対パスはアプリのフォルダーが基準です。`data.tables` と処理ジョブの相対入力ファイル名は `paths.dataDir` が基準です。設定に列挙された入力表は起動時に存在する必要があります。添付の `data/` は元ZIPの内容を変えていません。
++
++最初はコマンドプロンプトで次を実行します。
++
++```bat
++build.bat compile
++build.bat test
++ReaderDataViewer.cmd
++```
++
++`compile` はコンパイルのみ、`test` は隔離したサンプルを使うC#の回帰試験です。どちらも本番台帳を更新しません。ただし、この報告時点でWindows上での合否は未確認です。`build.bat` の引数省略は `compile` です。元READMEにあった `build.bat data` や未同梱のデータ生成・過去版復元機能は提供していません。
++
++通常起動は `ReaderDataViewer.vbs`、起動メッセージをコンソールで確認する場合は `ReaderDataViewer.cmd` を利用します。32ビットの起動元から呼ばれた場合も、存在すればSysnative経由で64ビットPowerShellを選択します。組織の実行制御により起動が制限される場合は管理者に確認してください。
++
++## 基本操作と「保存」の意味
++
++起動すると最初の更新ジョブで入力表と台帳を確認します。台帳の新規作成・更新は確認後に実行します。読み込めない既存台帳を、そのまま上書き再作成することはしません。
++
++検索キーを入力して検索し、複数候補がある場合は対象を選びます。作業状態ボタンで変更した値は、まず**そのWindowsユーザーのローカル未送信変更**として保存されます。これだけでは他の人の共有台帳には反映されません。**「変更を送信」して共有台帳へ反映**してください。アプリを閉じても未送信分はローカルに残ります。別PCで起動しても元PCの未送信分は引き継がれません。
++
++競合一覧の通常の「OK」やEscは未送信変更を保持します。不要な変更は「一覧の未送信変更を破棄」を選び、追加確認します。破棄前のバックアップファイルの場所が表示されます。破棄操作は共有台帳を変更しません。必要な変更をやり直す際は、最新台帳を読み直し、対象行を再確認してください。
++
++CSV出力は**その時点で当該PCに見えている台帳とローカル未送信状態**のスナップショットです。他PCの未送信分や、まだ読み直していない共有変更は含みません。確定版の一覧が必要な場合は、各PCの送信と最新台帳への切替を確認してから出力してください。
++
++## 共有運用・設定変更
++
++共有運用の準備、移行、障害時の確認は [docs/shared-ledger.md](docs/shared-ledger.md) を参照してください。OneDrive等の同期コピーを「同時に開ける1つの台帳」として使う構成は対象外です。動作中に共有台帳をExcel等で直接編集しないでください。
++
++JSONで変更できる範囲と注意点は [docs/settings.md](docs/settings.md) にあります。列構成・識別キー・状態の保存値を変える場合は、全PCを停止してバックアップと移行を行います。旧版と修正版を混在させないでください。
++
++## 配布物
+ 
+ ```text
+-ReaderDataViewer.vbs     コンソールを出さない通常入口
+-ReaderDataViewer.cmd     起動失敗をコンソールで確認する入口
+-build.bat                ビルド・検査・データ生成の入口
+-settings.json            データ、処理、画面の設定
+-src/                     C# ソース 21 本と ReaderDataViewer.ps1 (起動とコンパイル)
+-web/index.html            v13 モックから取り出した窓とダイアログの正本
+-web/app.js                screen 定義の描画と WebView2 操作ブリッジ
+-web/app.css               settings.json の寸法を受ける v13 補助スタイル
+-lib/                     WebView2 の再配布 DLL と表示文書
+-build/                   生成・検査・配布のスクリプト。build/samples/ はサンプル定義 5 種
+-archive/winforms/        フェーズ17完了時点で凍結した WinForms 版
++ReaderDataViewer.cmd / .vbs   起動入口
++settings.json                 設定（JSONC、schema 3）
++src/                          アプリC# 23ファイルと起動PowerShell
++web/                          HTML、JavaScript、CSS
++lib/                          元ZIPのWebView2 DLL・表示文書
++data/                         元ZIPの入力CSVとログ（内容維持）
++build.bat                     compile / test の入口
++AUDIT_REPORT.md                点検・修正・検証結果
++docs/                         設定、共有運用、原README、変更一覧
++tests/                        C#、ブラウザー、静的検査、隔離サンプル、検証結果
+ ```
+ 
+-## どこに何ができるか
+-
+-生成物の置き場は **2 か所だけ**です。どちらも追跡していません。
+-
+-```text
+-data/                        入力表 3 枚と delete.csv、expected.txt
+-                             アプリが読む唯一の実体。台帳・ロック・版・動作ログもここ
+-build/out/ReaderDataViewer/  配布物。丸ごとコピーして配る
+-build/out/samples/           サンプル 5 種
+-build/out/work/              検査の一時領域。検査が通ったらその場で消える
+-build/out/data-100k/         -OutDir を付けて生成したときの行き先
+-```
+-
+-## 作り直す
+-
+-`build.bat` がすべて作り直します。
+-
+-```text
+-build.bat            build\out\ReaderDataViewer\ を組み立て、動かして検証する
+-build.bat test       検査を全部 (サンプル、設定の契約、終了時の守り、画面 DOM)
+-build.bat data       data\ と build\out\samples\ を生成する
+-build.bat compile    src\*.cs を起動時と同じ手順でコンパイルだけ行う
+-```
+-
+-個別に走らせるときは `build\` の中を直接呼びます。
+-
+-```text
+-powershell -File build\gen_data2.ps1        data\ の入力表 3 枚と delete.csv、expected.txt
+-powershell -File build\gen_data2.ps1 -Rows 100000 -OutDir data-100k   大きい方 (build\out\ の下へ)
+-powershell -File build\gen_samples.ps1      build\out\samples\ の 5 種 (定義は build\samples\)
+-powershell -File build\compile_check.ps1    コンパイルだけ
+-powershell -File build\build_dist.ps1       配布物の組み立てと検証
+-powershell -File build\test_samples.ps1            サンプル定義と製品の突き合わせ
+-powershell -File build\test_settings_contract.ps1  settings.json の契約
+-powershell -File build\test_exit_guard.ps1         共有台帳のロックと終了時の守り
+-powershell -File build\test_ui_dom.ps1             WebView2 の DOM を読む画面回帰
+-```
+-
+-検査はいずれも窓を先生の画面に出しません。検査は 1 回ごとに `src/`・`lib/`・`web/`・`data/` を作業ディレクトリへ複製しますが、**通れば自分で消します**。失敗したときだけ残り、その場所を出力の最後に書きます。
+-
+-台帳 (`ReaderDataViewer-Ledger.xlsx`)、そのロックと版、動作ログは `settings.json` の `paths` に従って `data/` の中へ書かれます。リポジトリ直下には出ません。
+-
+-配布は `build\out\ReaderDataViewer\` を丸ごと配ります。`ReaderDataViewer.ps1` が起動のたびに `src\*.cs` をコンパイルするため、事前のビルド成果物はありません。
+-
+-WinForms 版は [archive/winforms](archive/winforms/) に、内容を変えず一式で保全しています。現役版はそこからコードを参照しません。
+-
+-## 履歴を後ろへ動かすとき
+-
+-このリポジトリは複数の端末に置かれ、機械が定期的に commit して端末どうしで同期しています（`fin-berth …` という作者の commit がそれです）。そのため **片方の端末だけで `git reset` して履歴を後ろへ戻しても、その戻しは残りません。**
+-
+-戻らない理由は commit 側ではなく取り込み側にあります。相手の端末はまだ古い（＝こちらより先の）先端を持っており、同期はそれを見て次のどちらかを行います。
+-
+-- 戻したこちらの先端が相手の先端の祖先になる → **早送りで元の位置へ戻される**
+-- 双方が分岐している → **こちらの commit を相手の先端の上へ載せ替える**（rebase）
+-
+-後者は同じ変更が別のハッシュで二重に生えるので、`git log` に同じ日時・同じ件名の commit が 2 つ並びます。2026-09-07 の時点で、このリポジトリの `main` と GitHub 側にその二重が 5 組ありました（`git log --cherry-pick --right-only` で片側固有の変更が 0 件であることを確認済み）。
+-
+-**後ろへ動かす操作をするなら、先に相手の端末の先端を揃えること。**片側だけで完結する操作ではありません。二重が既にできてしまった場合は、履歴を書き換えず `git merge -s ours` で取り込めば、中身を変えずに枝を 1 本へ戻せます。
++検査の詳細は [tests/README.md](tests/README.md) にあります。`tests/results/native-status.json` は未実施の記録であり、合格証跡ではありません。Windows試験後の実際の結果は `core-results.txt` に出力されます。
+ 
+ ## ライセンス
+ 
+-本体は [CC0 1.0 Universal](LICENSE) です。同梱する WebView2 の表示は [第三者ソフトウェアの表示](THIRD-PARTY-NOTICES.md) を参照してください。
++元ZIPの `LICENSE`、`THIRD-PARTY-NOTICES.md`、`lib/` 内の表示文書を維持しています。元のREADMEも `docs/README.original.md` に保全しました。
+--- a/ReaderDataViewer.cmd
++++ b/ReaderDataViewer.cmd
+@@ -1,6 +1,7 @@
+ @echo off
+ setlocal EnableExtensions
+ set "RDV_PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
++if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "RDV_PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+ if not exist "%RDV_PS%" set "RDV_PS=powershell.exe"
+ 
+ "%RDV_PS%" -NoLogo -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0src\ReaderDataViewer.ps1" %*
+--- a/ReaderDataViewer.vbs
++++ b/ReaderDataViewer.vbs
+@@ -7,6 +7,7 @@
+ Dim baseDirectory
+ Dim scriptPath
+ Dim powerShellPath
++Dim nativePowerShellPath
+ Dim command
+ Dim exitCode
+ Dim logDirectory
+@@ -18,6 +19,11 @@
+ scriptPath = fileSystem.BuildPath(baseDirectory, "src\ReaderDataViewer.ps1")
+ powerShellPath = shell.ExpandEnvironmentStrings("%SystemRoot%") & _
+     "\System32\WindowsPowerShell\v1.0\powershell.exe"
++nativePowerShellPath = shell.ExpandEnvironmentStrings("%SystemRoot%") & _
++    "\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
++If fileSystem.FileExists(nativePowerShellPath) Then
++    powerShellPath = nativePowerShellPath
++End If
+ If Not fileSystem.FileExists(powerShellPath) Then
+     powerShellPath = "powershell.exe"
+ End If
+--- /dev/null
++++ b/build.bat
+@@ -0,0 +1,14 @@
++@echo off
++setlocal
++set "PS=%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe"
++if exist "%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe" set "PS=%SystemRoot%\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
++if /i "%~1"=="test" goto test
++if not "%~1"=="" if /i not "%~1"=="compile" goto usage
++"%PS%" -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0src\ReaderDataViewer.ps1" -CompileOnly
++exit /b %errorlevel%
++:test
++"%PS%" -NoProfile -ExecutionPolicy Bypass -STA -File "%~dp0src\ReaderDataViewer.ps1" -TestCore
++exit /b %errorlevel%
++:usage
++echo Usage: build.bat [compile^|test]
++exit /b 2
+--- a/settings.json
++++ b/settings.json
+@@ -296,6 +296,8 @@
+     },
+ 
+     "workState": {
++      // manual: 監視による検索だけでは作業状態を変更しません。automatic で旧動作。
++      "trigger": "manual",
+       "store": { "column": "処理済み" },
+       "states": [
+         { "id": "todo", "text": "未処理", "short": "未", "look": "neutral", "stored": "FALSE" },
+--- a/src/02_MainWindow.cs
++++ b/src/02_MainWindow.cs
+@@ -360,6 +360,7 @@
+                     webDirectory,
+                     CoreWebView2HostResourceAccessKind.Allow);
+                 webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
++                webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+                 webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                 webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                 webView.CoreWebView2.Navigate(StartPage);
+@@ -469,10 +470,14 @@
+             }
+         }
+ 
++        private void OnNewWindowRequested(object sender, CoreWebView2NewWindowRequestedEventArgs eventArgs)
++        { eventArgs.Handled = true; }
++
+         private void OnWebMessageReceived(
+             object sender,
+             CoreWebView2WebMessageReceivedEventArgs eventArgs)
+         {
++            if (!eventArgs.Source.StartsWith("https://" + TrustedHost + "/", StringComparison.OrdinalIgnoreCase)) { return; }
+             Action<string> handler = WebMessage;
+             if (handler != null) { handler(eventArgs.WebMessageAsJson); }
+         }
+@@ -501,6 +506,7 @@
+             if (webView.CoreWebView2 != null)
+             {
+                 webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
++                webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
+                 webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+                 webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+             }
+@@ -700,6 +706,8 @@
+                     trustedHost,
+                     webDirectory,
+                     CoreWebView2HostResourceAccessKind.Allow);
++                webView.CoreWebView2.NavigationStarting += OnNavigationStarting;
++                webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
+                 webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
+                 webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                 webView.CoreWebView2.Navigate(startPage);
+@@ -729,10 +737,19 @@
+             }
+         }
+ 
++        private void OnNavigationStarting(object sender, CoreWebView2NavigationStartingEventArgs eventArgs)
++        {
++            if (!eventArgs.Uri.StartsWith("https://" + trustedHost + "/", StringComparison.OrdinalIgnoreCase)) { eventArgs.Cancel = true; }
++        }
++
++        private void OnNewWindowRequested(object sender, CoreWebView2NewWindowRequestedEventArgs eventArgs)
++        { eventArgs.Handled = true; }
++
+         private void OnWebMessageReceived(
+             object sender,
+             CoreWebView2WebMessageReceivedEventArgs eventArgs)
+         {
++            if (!eventArgs.Source.StartsWith("https://" + trustedHost + "/", StringComparison.OrdinalIgnoreCase)) { return; }
+             Action<string> handler = WebMessage;
+             if (handler != null) { handler(eventArgs.WebMessageAsJson); }
+         }
+@@ -741,6 +758,8 @@
+         {
+             if (webView.CoreWebView2 != null)
+             {
++                webView.CoreWebView2.NavigationStarting -= OnNavigationStarting;
++                webView.CoreWebView2.NewWindowRequested -= OnNewWindowRequested;
+                 webView.CoreWebView2.NavigationCompleted -= OnNavigationCompleted;
+                 webView.CoreWebView2.WebMessageReceived -= OnWebMessageReceived;
+             }
+--- a/src/Rdv3App.cs
++++ b/src/Rdv3App.cs
+@@ -117,6 +117,7 @@
+     private readonly string appDir;
+     private readonly string dataDir;
+     private readonly string ledgerPath;
++    private readonly string storageContract;
+     private readonly int pid;
+ 
+     private int state = StBoot;
+@@ -140,6 +141,7 @@
+     private int procSeq;
+     private string activeRunId = "";
+     private string activeSearchId = "";
++    private string activeSearchKey = "";
+ 
+     private int shownRow = -1;
+     private string shownKey = "";
+@@ -158,8 +160,11 @@
+     private Rdv3SharedMarker seenMarker;
+     private Rdv3SharedMarker deferredMarker;
+     private long lastMarkerPoll;
++    private bool markerPollQueued;
++    private string ledgerObservedStamp;
+     private bool sharedReloading;
+     private bool markerReadFailed;
++    private DateTime reloadRetryAfter = DateTime.MinValue;
+     private volatile bool closing;
+ 
+     // app construction instant, for the boot->operable startup figure
+@@ -177,6 +182,7 @@
+         screen = settings.Screen;
+         work = screen.Work;
+         dataDef = settings.Data;
++        storageContract = Rdv3Files.StorageContract(dataDef, work);
+         appDir = appBaseDir;
+         dataDir = data;
+         ledgerPath = ledger;
+@@ -185,6 +191,7 @@
+         pending = pendingChanges;
+         shared = sharedFiles;
+         seenMarker = initialMarker;
++        try { ledgerObservedStamp = Rdv3Files.Stamp(ledgerPath); } catch (Exception) { ledgerObservedStamp = null; }
+         log.OnFail = delegate(string msg) { form.Error(Rdv3Text.ErrLogWrite + msg); };
+         // the ledger columns the screen binds to, fixed by the definition
+         form.SetFields(new Rdv3Fields(dataDef.ColumnRefs));
+@@ -192,6 +199,10 @@
+         worker.OnError = JobFailed;
+ 
+         form.OnSearch = ManualSearch;
++        form.OnKeyChanged = delegate(string value)
++        {
++            if (!string.Equals((value ?? "").Trim(), activeSearchKey, StringComparison.Ordinal)) { ClearShown(); }
++        };
+         form.OnClear = DoClear;
+         form.OnWorkState = DoWorkState;
+         form.OnRefreshLedger = RefreshLedger;
+@@ -259,6 +270,7 @@
+ 
+     private void StartCheck(Rdv3ProcessJobDef process)
+     {
++        ClearShown();
+         state = StChecking;
+         runSeq++;
+         string rid = "R" + runSeq.ToString(CultureInfo.InvariantCulture);
+@@ -319,7 +331,7 @@
+         string[] oldLines = null;
+         string[] oldStates = null;
+         string loadError = null;
+-        bool exists = File.Exists(ledgerPath);
++        bool exists = Rdv3Files.Exists(ledgerPath);
+         if (exists)
+         {
+             try
+@@ -349,7 +361,8 @@
+                     mr.Lines, dataDef.IdentityCol, work.InitialStored)
+                 : Rdv3Process.Execute(mr.Prepared, oldLines, oldStates, work.InitialStored, false).Update;
+             int firstDiff;
+-            same = Rdv3Ledger.SameContent(oldLines, preview.Lines, out firstDiff);
++            Rdv3Ledger.SameContent(oldLines, preview.Lines, out firstDiff);
++            same = Rdv3Ledger.SameLedger(oldLines, oldStates, preview.Lines, preview.States);
+             log.Write(rid, "compare", "rows_old=" + oldLines.Length.ToString(CultureInfo.InvariantCulture)
+                 + " rows_source=" + mr.Lines.Length.ToString(CultureInfo.InvariantCulture)
+                 + " rows_result=" + preview.Lines.Length.ToString(CultureInfo.InvariantCulture)
+@@ -390,6 +403,14 @@
+ 
+         if (oldLines == null)
+         {
++            if (ledgerExists)
++            {
++                // A read error is not permission to destroy the unreadable file.
++                form.Error(Rdv3Text.ErrLedgerRead + (loadError ?? ""));
++                if (ledLines != null) { ContinueWithActive(rid, "ledger-read-failed"); }
++                else { EnterBlocked(); }
++                return;
++            }
+             // missing or unreadable: never silently rebuild -- ask, with the
+             // reason on the screen
+             string body = ledgerExists
+@@ -409,8 +430,8 @@
+         if (same)
+         {
+             log.Write(rid, "decision", "no difference");
+-            if (ledLines != null && runSeq > 1) { ContinueWithActive(rid, Rdv3Text.NoteNoDiff); form.Notice(Rdv3Text.NoteNoDiff); }
+-            else { AdoptLedger(rid, oldLines, oldStates, mr.Head, Rdv3Text.NoteNoDiff); }
++            // No source-content change does NOT mean the shared states are old.
++            AdoptLedger(rid, oldLines, oldStates, mr.Head, Rdv3Text.NoteNoDiff);
+             return;
+         }
+ 
+@@ -447,9 +468,14 @@
+     private void ReadLedger(string[] head, out string[] lines, out string[] states)
+     {
+         string warning;
+-        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states, out warning);
++        Rdv3Xlsx.Read(ledgerPath, head, work.Column, out lines, out states, out warning, storageContract);
+         Rdv3Ledger.CheckIdentities(lines, dataDef.IdentityCol, System.IO.Path.GetFileName(ledgerPath),
+             LabelOrRef(dataDef.Columns[dataDef.IdentityCol].Ref));
++        for (int i = 0; i < states.Length; i++)
++        {
++            if (work.ByStored(states[i]) == null)
++            { throw new InvalidDataException(Rdv3Text.LedgerStateInvalid + (i + 2).ToString(CultureInfo.InvariantCulture)); }
++        }
+         if (warning.Length > 0)
+         {
+             log.Write("-", "warning", warning);
+@@ -502,12 +528,16 @@
+             string[] effective = pending.Overlay(lines, states, dataDef.IdentityCol);
+             log.Write(rid, "index", "table=LEDGER rows=" + lines.Length.ToString(CultureInfo.InvariantCulture)
+                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+-            ledLines = lines;
+-            sharedStates = states;
+-            ledStates = effective;
+-            ledHead = head;
+-            ledIndex = ix;
+-            form.RunOnUi(delegate { EnterReady(rid, note); });
++            form.RunOnUi(delegate
++            {
++                if (closing || !string.Equals(rid, activeRunId, StringComparison.Ordinal)) { return; }
++                ledLines = lines;
++                sharedStates = states;
++                ledStates = effective;
++                ledHead = head;
++                ledIndex = ix;
++                EnterReady(rid, note);
++            });
+         };
+         worker.Post(job);
+     }
+@@ -524,7 +554,7 @@
+         Rdv3MergeResult mr = mergeResult;
+         Rdv3ProcessJobDef process = mr.Job;
+         string initial = work.InitialStored;
+-        bool mayReplaceUnreadable = (savedLines == null);
++        string[] checkedLines = savedLines;
+         string[] beforeLines = ledLines;
+         string[] beforeStates = ledStates;
+ 
+@@ -544,21 +574,17 @@
+                 long t = Rdv3Clock.Now();
+                 string[] latestLines = null;
+                 string[] latestStates = null;
+-                if (File.Exists(ledgerPath))
++                if (Rdv3Files.Exists(ledgerPath))
+                 {
+-                    try
+-                    {
+-                        ReadLedger(mr.Head, out latestLines, out latestStates);
+-                        log.Write(rid, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
+-                            + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+-                    }
+-                    catch (Exception ex)
+-                    {
+-                        if (!mayReplaceUnreadable) { throw; }
+-                        log.Write(rid, "load", "under_lock unreadable; approved replacement: " + ex.Message);
+-                    }
++                    ReadLedger(mr.Head, out latestLines, out latestStates);
++                    log.Write(rid, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
++                        + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+                 }
+ 
++                int firstChanged;
++                if ((checkedLines == null) != (latestLines == null)
++                    || (checkedLines != null && !Rdv3Ledger.SameContent(checkedLines, latestLines, out firstChanged)))
++                { throw new IOException(Rdv3Text.UpdateChangedDuringCheck); }
+                 t = Rdv3Clock.Now();
+                 update = (mr.Prepared == null)
+                     ? Rdv3Ledger.ApplyUpdate(process, latestLines, latestStates,
+@@ -583,7 +609,7 @@
+                 {
+                     t = Rdv3Clock.Now();
+                     Rdv3Xlsx.Write(ledgerPath, mr.Head, work.Column, update.Lines, update.States,
+-                        pid.ToString(CultureInfo.InvariantCulture) + "-" + rid);
++                        pid.ToString(CultureInfo.InvariantCulture) + "-" + rid, storageContract);
+                     ledgerWritten = true;
+                     log.Write(rid, "persist", "target=xlsx rows=" + update.Lines.Length.ToString(CultureInfo.InvariantCulture)
+                         + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+@@ -666,7 +692,7 @@
+     {
+         try
+         {
+-            if (System.IO.File.Exists(ledgerPath))
++            if (Rdv3Files.Exists(ledgerPath))
+             {
+                 return System.IO.File.GetLastWriteTime(ledgerPath)
+                     .ToString("MM-dd HH:mm", CultureInfo.InvariantCulture);
+@@ -736,9 +762,9 @@
+ 
+     private void ClearShown()
+     {
+-        string typed = form.KeyText;
+-        form.ClearResult();
+-        form.SetKeyText(typed);
++        activeSearchId = "";
++        activeSearchKey = "";
++        form.ClearResult(true);
+         shownRow = -1;
+         shownKey = "";
+         shownCands = null;
+@@ -784,27 +810,33 @@
+     // watch thread. "target" is the name of the watched screen the number came
+     // off: with several watched at once, a reading in the log is only traceable
+     // back to the work it belongs to if it says which one delivered it.
+-    private void Detected(string key, double detectMs, int polls, long t0, string target)
+-    {
+-        log.Write("-", "detect", "key=" + key + " target=" + target
+-            + " latency_ms=" + Rdv3Log.F(detectMs)
+-            + " polls=" + polls.ToString(CultureInfo.InvariantCulture));
+-        if (state != StReady)
+-        {
+-            log.Write("-", "search", "ignored key=" + key + " target=" + target
+-                + " reason=not-ready (detected)");
+-            return;
+-        }
+-        form.SetKeyText(key);
+-        Search(key, "detect", target, detectMs, t0);
+-    }
+-
+-    // any thread. t0 is the confirm instant: the search clock is already running.
++    private bool Detected(string key, double detectMs, int polls, long t0, string target)
++    {
++        bool accepted = false;
++        form.RunOnUi(delegate
++        {
++            if (closing || state != StReady || savingMark || form.IsModalOpen) { return; }
++            form.SetKeyText(key);
++            Search(key, "detect", target, detectMs, t0);
++            accepted = true;
++        });
++        if (accepted)
++        {
++            log.Write("-", "detect", "key=" + key + " target=" + target
++                + " latency_ms=" + Rdv3Log.F(detectMs) + " polls=" + polls.ToString(CultureInfo.InvariantCulture));
++        }
++        return accepted;
++    }
++
++    // UI thread. t0 is the confirm instant: the search clock is already running.
+     private void Search(string key, string source, string target, double detectMs, long t0)
+     {
++        if (state != StReady || savingMark || form.IsModalOpen) { return; }
++        ClearShown();
+         searchSeq++;
+         string sid = "S" + searchSeq.ToString(CultureInfo.InvariantCulture);
+         activeSearchId = sid;
++        activeSearchKey = key;
+ 
+         Rdv3Job job = new Rdv3Job();
+         job.RunId = sid;
+@@ -842,6 +874,8 @@
+         }
+         form.RunOnUi(delegate
+         {
++            if (closing || state != StReady || !string.Equals(sid, activeSearchId, StringComparison.Ordinal)
++                || !object.ReferenceEquals(lines, ledLines)) { return; }
+             form.ShowCandidates(key, rows, n);
+             shownKey = key;
+             shownCands = candRows;
+@@ -866,9 +900,12 @@
+             // never part of the search time -- and never the worker's wait
+             form.PostOnUi(delegate
+             {
+-                if (!string.Equals(sid, activeSearchId, StringComparison.Ordinal)) { return; }
++                if (closing || state != StReady || savingMark || form.IsModalOpen
++                    || !string.Equals(sid, activeSearchId, StringComparison.Ordinal)
++                    || !object.ReferenceEquals(lines, ledLines)) { return; }
+                 int picked = form.PickFromList();
+-                if (picked >= 0)
++                if (picked >= 0 && state == StReady && string.Equals(sid, activeSearchId, StringComparison.Ordinal)
++                    && object.ReferenceEquals(lines, ledLines))
+                 {
+                     PickCandidate(picked);
+                     if (source == "detect") { AutoCompleteDetected(); }
+@@ -1059,6 +1096,7 @@
+ 
+     private void DoClear()
+     {
++        activeSearchId = "";
+         form.ClearResult();
+         shownRow = -1;
+         shownKey = "";
+@@ -1119,19 +1157,20 @@
+                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+ 
+             apply = pending.PrepareSend(latestLines, latestStates, dataDef.IdentityCol, work.InitialStored);
+-            if (apply.Resolved.Count > 0)
++            if (apply.FromInitial + apply.ToInitial > 0)
+             {
+                 t = Rdv3Clock.Now();
+                 Rdv3Xlsx.Write(ledgerPath, ledHead, work.Column, latestLines, apply.States,
+-                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag);
++                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag, storageContract);
+                 ledgerWritten = true;
+                 log.Write(tag, "persist", "target=xlsx rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
+                     + " changes=" + apply.Resolved.Count.ToString(CultureInfo.InvariantCulture)
+                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+                 marker = shared.WriteMarker("send", latestLines.Length, apply.FromInitial, apply.ToInitial);
+                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=send");
+-                pending.Remove(apply.Resolved);
+-            }
++            }
++            // Includes idempotent retries after a previously committed send.
++            pending.Remove(apply.Resolved);
+             ledgerLock.Release();
+             ledgerLock = null;
+ 
+@@ -1147,7 +1186,7 @@
+                 {
+                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
+                 }
+-                if (keepApply.Unmatched.Count > 0) { form.TellUnmatched(keepApply.Unmatched); }
++                if (keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
+             });
+         }
+         catch (Exception ex)
+@@ -1163,13 +1202,47 @@
+                 EndWriteGuard(tag, false);
+                 ReadyAfterShared(tag, "send-failed");
+                 form.Error(Rdv3Text.ErrSend + ex.Message);
+-                if (keepApply != null && keepApply.Unmatched.Count > 0) { form.TellUnmatched(keepApply.Unmatched); }
++                if (keepApply != null && keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
+             });
+         }
+         finally
+         {
+             if (ledgerLock != null) { ledgerLock.Dispose(); }
+         }
++    }
++
++    private void HandleUnmatched(List<Rdv3UnmatchedChange> rows)
++    {
++        if (!form.TellUnmatched(rows) || !form.Ask(Rdv3Text.UnmatchedTitle, Rdv3Text.DiscardPendingConfirm)) { return; }
++        List<string> ids = new List<string>();
++        for (int i = 0; i < rows.Count; i++) { ids.Add(rows[i].Identity); }
++        savingMark = true;
++        form.EnableOps(false);
++        Rdv3Job job = new Rdv3Job();
++        job.RunId = "P" + (++procSeq).ToString(CultureInfo.InvariantCulture);
++        job.Kind = "state";
++        job.TimeoutMs = cfg.SaveTimeoutMs;
++        job.Work = delegate
++        {
++            try
++            {
++                string backup = pending.Path + ".discard-" + Guid.NewGuid().ToString("N") + ".bak";
++                File.Copy(pending.Path, backup, false);
++                pending.Remove(ids);
++                ledStates = pending.Overlay(ledLines, sharedStates, dataDef.IdentityCol);
++                form.RunOnUi(delegate
++                {
++                    EndWriteGuard(job.RunId, true);
++                    ReadyAfterShared(job.RunId, "discarded-conflicts");
++                    form.Notice(Rdv3Text.PendingBackup + backup);
++                });
++            }
++            catch (Exception ex)
++            {
++                form.RunOnUi(delegate { EndWriteGuard(job.RunId, false); ResumeReady(); form.Error(ex.Message); });
++            }
++        };
++        worker.Post(job);
+     }
+ 
+     private Rdv3LedgerLock WaitForSharedLock(string tag, string activeText)
+@@ -1236,6 +1309,7 @@
+ 
+     private void OpenUpdateJob(string jobId)
+     {
++        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
+         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
+         Rdv3ProcessJobDef process = dataDef.JobOf(jobId);
+         if (process == null || process.Kind != "update") { return; }
+@@ -1244,12 +1318,15 @@
+ 
+     private void OpenDeleteJob(string jobId)
+     {
++        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
+         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
+         if (Rdv3ProcessForm.ShowJob(form, dataDef, jobId, dataDir, ledgerPath)) { StartDeleteJob(jobId); }
+     }
+ 
+     private void StartDeleteJob(string jobId)
+     {
++        if (state != StReady || savingMark) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
++        ClearShown();
+         Rdv3ProcessJobDef process = dataDef.JobOf(jobId);
+         if (process == null || process.Kind != "delete") { return; }
+         state = StApplying;
+@@ -1302,7 +1379,7 @@
+             {
+                 t = Rdv3Clock.Now();
+                 Rdv3Xlsx.Write(ledgerPath, ledHead, work.Column, result.Lines, result.States,
+-                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag);
++                    pid.ToString(CultureInfo.InvariantCulture) + "-" + tag, storageContract);
+                 ledgerWritten = true;
+                 log.Write(tag, "persist", "target=xlsx rows=" + result.Lines.Length.ToString(CultureInfo.InvariantCulture)
+                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+@@ -1348,6 +1425,7 @@
+ 
+     private void OpenTableExport()
+     {
++        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
+         if (state != StReady) { form.Error(Rdv3Text.ErrNotReady); return; }
+         string exportDir = System.IO.Path.GetDirectoryName(
+             System.IO.Path.Combine(appDir, Rdv3Text.ExportDefaultPath));
+@@ -1365,8 +1443,13 @@
+         }
+         Rdv3ExportRequest request = Rdv3ExportForm.Pick(form, dataDef, screen, appDir);
+         if (request == null) { return; }
+-        string[] lines = ledLines;
+-        string[] states = ledStates;
++        try { request.Path = Rdv3Files.ExportPath(request.Path, appDir, dataDir, ledgerPath, log.Path, cfg.SourcePath, dataDef); }
++        catch (Exception ex) { form.Error(Rdv3Text.ErrExport + ex.Message); return; }
++        string[] lines = (string[])ledLines.Clone();
++        string[] states = (string[])ledStates.Clone();
++        savingMark = true;
++        closeAskedWhileSaving = false;
++        form.EnableOps(false);
+         Rdv3Job job = new Rdv3Job();
+         job.RunId = "E" + (++procSeq).ToString(CultureInfo.InvariantCulture);
+         job.Kind = "export";
+@@ -1377,6 +1460,7 @@
+ 
+     private void ExportJob(string tag, Rdv3ExportRequest request, string[] lines, string[] states)
+     {
++        bool exportedFile = false;
+         try
+         {
+             List<int> columns = new List<int>();
+@@ -1385,11 +1469,11 @@
+                 columns.Add(request.Fields[i] == "$work" ? -2 : dataDef.IndexOf(request.Fields[i]));
+             }
+             StringBuilder output = new StringBuilder();
++            string[] headings = Rdv3Files.ExportHeaders(request.Fields, dataDef, work.Column);
+             for (int i = 0; i < request.Fields.Count; i++)
+             {
+                 if (i > 0) { output.Append(','); }
+-                string heading = request.Fields[i] == "$work" ? work.Column : dataDef.Columns[columns[i]].Column;
+-                output.Append(CsvCell(heading));
++                output.Append(Rdv3Files.CsvCell(headings[i], request.ExcelSafe));
+             }
+             output.Append("\r\n");
+             int exported = 0;
+@@ -1401,14 +1485,14 @@
+                 {
+                     if (i > 0) { output.Append(','); }
+                     string value = columns[i] == -2 ? states[row] : values[columns[i]];
+-                    output.Append(CsvCell(value));
++                    output.Append(Rdv3Files.CsvCell(value, request.ExcelSafe));
+                 }
+                 output.Append("\r\n");
+                 exported++;
+             }
+-            string dir = System.IO.Path.GetDirectoryName(request.Path);
+-            if (dir != null && dir.Length > 0 && !Directory.Exists(dir)) { Directory.CreateDirectory(dir); }
+-            File.WriteAllText(request.Path, output.ToString(), new UTF8Encoding(true));
++            Rdv3Files.ExportPath(request.Path, appDir, dataDir, ledgerPath, log.Path, cfg.SourcePath, dataDef);
++            Rdv3Files.WriteNewText(request.Path, output.ToString());
++            exportedFile = true;
+             log.Write(tag, "export", "rows=" + exported.ToString(CultureInfo.InvariantCulture) + " source_rows="
+                 + lines.Length.ToString(CultureInfo.InvariantCulture) + " filters="
+                 + request.Filters.Count.ToString(CultureInfo.InvariantCulture) + " fields="
+@@ -1420,6 +1504,10 @@
+             log.Write(tag, "error", "stage=export msg=" + ex.Message);
+             form.RunOnUi(delegate { form.Error(Rdv3Text.ErrExport + ex.Message); });
+         }
++        finally
++        {
++            form.RunOnUi(delegate { EndWriteGuard(tag, exportedFile); ResumeReady(); });
++        }
+     }
+ 
+     private static string CsvCell(string value)
+@@ -1434,7 +1522,11 @@
+     // and the running session adopts what it can without a restart.
+     private void OpenSettings()
+     {
+-        Rdv3Config edited = Rdv3SettingsForm.Edit(form, cfg);
++        if (savingMark || form.IsModalOpen) { form.Error(Rdv3Text.ErrSaveInFlight); return; }
++        Rdv3Config latest;
++        try { latest = Rdv3Config.Load(cfg.SourcePath); }
++        catch (Exception ex) { form.Error(Rdv3Text.ErrSettingsSave + ex.Message); return; }
++        Rdv3Config edited = Rdv3SettingsForm.Edit(form, latest);
+         if (edited == null) { return; }
+         string err = edited.Save(cfg.SourcePath);
+         if (err != null)
+@@ -1445,6 +1537,7 @@
+         }
+         cfg.AdoptRuntimeFrom(edited);
+         cfg.AdoptSavedFrom(edited);
++        watchdog.Interval = TimeSpan.FromMilliseconds(cfg.PumpMs);
+         form.SetWatch(WatchName(), watchDetail);
+         watch.Rebind();
+         log.Write("-", "settings", "saved: " + cfg.Describe());
+@@ -1471,30 +1564,56 @@
+ 
+     private void PollSharedMarker()
+     {
+-        if (lastMarkerPoll != 0 && Rdv3Clock.MsSince(lastMarkerPoll) < cfg.MarkerPollMs) { return; }
++        if (closing || markerPollQueued || (lastMarkerPoll != 0 && Rdv3Clock.MsSince(lastMarkerPoll) < cfg.MarkerPollMs)) { return; }
+         lastMarkerPoll = Rdv3Clock.Now();
+-        Rdv3SharedMarker marker;
+-        try
+-        {
+-            marker = shared.ReadMarker();
+-            if (markerReadFailed)
+-            {
+-                markerReadFailed = false;
+-                log.Write("-", "marker", "read recovered");
+-            }
+-        }
+-        catch (Exception ex)
+-        {
+-            if (!markerReadFailed)
+-            {
+-                markerReadFailed = true;
+-                log.Write("-", "error", "stage=marker-read msg=" + ex.Message);
+-                form.Error(Rdv3Text.ErrSharedMarker + ex.Message);
+-            }
+-            return;
+-        }
+-        if (marker == null) { return; }
+-        if (seenMarker != null && marker.Version <= seenMarker.Version) { return; }
++        markerPollQueued = true;
++        Rdv3Job job = new Rdv3Job();
++        job.RunId = "marker";
++        job.Kind = "marker";
++        job.TimeoutMs = cfg.CheckTimeoutMs;
++        job.Work = delegate
++        {
++            Rdv3SharedMarker marker = null;
++            string stamp = null;
++            string error = null;
++            try { marker = shared.ReadMarker(); } catch (Exception ex) { error = ex.Message; }
++            // XLSX and marker are separate commits. Detect a changed workbook
++            // even when the writer could not update its notification marker.
++            try { stamp = Rdv3Files.Stamp(ledgerPath); } catch (Exception ex) { error = ex.Message; }
++            form.PostOnUi(delegate
++            {
++                markerPollQueued = false;
++                if (closing) { return; }
++                if (error != null)
++                {
++                    if (!markerReadFailed) { form.Error(Rdv3Text.ErrSharedMarker + error); log.Write("-", "marker", error); }
++                    markerReadFailed = true;
++                }
++                else { markerReadFailed = false; }
++                bool fileChanged = stamp != null && ledgerObservedStamp != null && stamp != ledgerObservedStamp;
++                if (stamp != null) { ledgerObservedStamp = stamp; }
++                if (marker != null && !SameMarker(marker, seenMarker)) { ObserveMarker(marker); }
++                else if (fileChanged)
++                {
++                    Rdv3SharedMarker reload = new Rdv3SharedMarker();
++                    reload.Kind = "update";
++                    reload.WriterId = "workbook-change-without-marker";
++                    reload.WrittenUtcTicks = DateTime.UtcNow.Ticks;
++                    deferredMarker = reload;
++                }
++            });
++        };
++        worker.Post(job);
++    }
++
++    private static bool SameMarker(Rdv3SharedMarker a, Rdv3SharedMarker b)
++    {
++        return a != null && b != null && a.Version == b.Version
++            && a.WrittenUtcTicks == b.WrittenUtcTicks && a.WriterId == b.WriterId;
++    }
++
++    private void ObserveMarker(Rdv3SharedMarker marker)
++    {
+         RememberMarker(marker);
+         log.Write("-", "marker", "observed version=" + marker.Version.ToString(CultureInfo.InvariantCulture)
+             + " kind=" + marker.Kind + " writer=" + marker.WriterId);
+@@ -1527,12 +1646,15 @@
+     {
+         if (marker == null) { return; }
+         seenMarker = marker;
+-        if (deferredMarker != null && deferredMarker.Version <= marker.Version) { deferredMarker = null; }
++        if (marker.FileStamp != null) { ledgerObservedStamp = marker.FileStamp; }
++        if (SameMarker(deferredMarker, marker)) { deferredMarker = null; }
+     }
+ 
+     private void QueueDeferredReload()
+     {
+-        if (deferredMarker == null || sharedReloading || savingMark || (state != StReady && state != StBlocked)) { return; }
++        if (deferredMarker == null || sharedReloading || savingMark || form.IsModalOpen || DateTime.UtcNow < reloadRetryAfter
++            || (state != StReady && state != StBlocked)) { return; }
++        ClearShown();
+         Rdv3SharedMarker marker = deferredMarker;
+         deferredMarker = null;
+         sharedReloading = true;
+@@ -1582,6 +1704,7 @@
+                 else
+                 {
+                     ResumeReady();
++                    form.Error(Rdv3Text.StaleLedger);
+                     log.Write(tag, "reload", "switch declined version=" + marker.Version.ToString(CultureInfo.InvariantCulture));
+                 }
+             });
+@@ -1592,8 +1715,9 @@
+             form.RunOnUi(delegate
+             {
+                 sharedReloading = false;
+-                if (deferredMarker == null || deferredMarker.Version < marker.Version) { deferredMarker = marker; }
+-                ResumeReady();
++                if (deferredMarker == null) { deferredMarker = marker; }
++                reloadRetryAfter = DateTime.UtcNow.AddMilliseconds(cfg.MarkerPollMs);
++                if (ledLines != null) { ResumeReady(); } else { EnterBlocked(); }
+                 form.Error(Rdv3Text.ErrSharedReload + ex.Message);
+             });
+         }
+@@ -1708,10 +1832,16 @@
+         Rdv3Job j = worker.TakeOverdue();
+         if (j == null) { return; }
+         log.Write(j.RunId, "timeout", "kind=" + j.Kind + " after_ms=" + Rdv3Log.F(Rdv3Clock.MsSince(j.StartedAt)));
++        if (string.Equals(j.Kind, "search", StringComparison.Ordinal))
++        {
++            if (j.RunId == activeSearchId) { ClearShown(); form.Error(Rdv3Text.ErrSearchTimeout); }
++            return;
++        }
+         if (string.Equals(j.Kind, "state", StringComparison.Ordinal)
+             || string.Equals(j.Kind, "send", StringComparison.Ordinal)
+             || string.Equals(j.Kind, "apply", StringComparison.Ordinal)
+-            || string.Equals(j.Kind, "delete", StringComparison.Ordinal))
++            || string.Equals(j.Kind, "delete", StringComparison.Ordinal)
++            || string.Equals(j.Kind, "export", StringComparison.Ordinal))
+         {
+             // a managed job cannot be aborted, and until the write returns
+             // nobody knows whether the record reached the file. Report the
+@@ -1753,6 +1883,7 @@
+             // here would wait for itself
+             form.PostOnUi(delegate
+             {
++                if (savingMark) { EndWriteGuard(job.RunId, false); }
+                 form.Fatal(Rdv3Text.FatalDataTitle, Rdv3Text.FatalData.Replace("{reason}", ex.Message));
+             });
+             return;
+@@ -1762,7 +1893,8 @@
+             form.Error(Rdv3Text.ErrCheckFailed + ex.Message);
+             // a state job that threw anywhere is still a decided save (failed):
+             // the guard must never outlive the job that armed it
+-            if (string.Equals(job.Kind, "state", StringComparison.Ordinal)) { EndMarkSave(job.RunId, false); }
++            if (job.Kind == "state" || job.Kind == "apply" || job.Kind == "delete" || job.Kind == "send" || job.Kind == "export")
++            { EndWriteGuard(job.RunId, false); }
+             if (!string.Equals(job.RunId, activeRunId, StringComparison.Ordinal)) { return; }
+             activeRunId = "";
+             if (ledLines != null) { ResumeReady(); }
+@@ -1840,6 +1972,19 @@
+         string dataDir = Resolve((dataDirArg.Length > 0) ? dataDirArg : cfg.DataDir, baseDir);
+         string ledgerPath = Resolve((ledgerArg.Length > 0) ? ledgerArg : cfg.Ledger, baseDir);
+         string logPath = Resolve((logArg.Length > 0) ? logArg : cfg.Log, baseDir);
++
++        try
++        {
++            Rdv3Config resolved = cfg.Clone();
++            resolved.DataDir = dataDir; resolved.Ledger = ledgerPath; resolved.Log = logPath;
++            Rdv3Files.ValidateLayout(resolved, baseDir, configPath);
++        }
++        catch (Exception ex)
++        {
++            ReaderDataViewer.App.ShowStartupMessage(Rdv3Text.FatalSettings.Replace("{file}", configPath)
++                .Replace("{reason}", ex.Message), null);
++            return 6;
++        }
+ 
+         // ---- the data the definition names: the files exist and their headers
+         // hold every column the definition uses
+@@ -1886,7 +2031,7 @@
+         }
+         // Keep one local session per ledger. Network-wide serialization is done
+         // separately by the lock file beside the shared ledger.
+-        string mutexName = "RdvApp-" + ledgerPath.ToLowerInvariant().GetHashCode().ToString("x8", CultureInfo.InvariantCulture);
++        string mutexName = "RdvApp-" + Rdv3Files.SessionKey(ledgerPath);
+         bool createdNew;
+         using (Mutex mx = new Mutex(true, mutexName, out createdNew))
+         {
+@@ -1896,6 +2041,15 @@
+                 return 4;
+             }
+ 
++            FileStream localSession;
++            try { localSession = Rdv3Files.AcquireLocalSession(Rdv3PendingStore.PathFor(ledgerPath)); }
++            catch (Exception ex)
++            {
++                ReaderDataViewer.App.ShowStartupMessage(Rdv3Text.ErrAlreadyRunning + "\r\n" + ex.Message, null);
++                return 4;
++            }
++            using (localSession)
++            {
+             Rdv3PendingStore pending;
+             try
+             {
+@@ -1918,7 +2072,10 @@
+                 string instance = Environment.MachineName + "-" + currentPid.ToString(CultureInfo.InvariantCulture)
+                     + "-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
+                 shared = new Rdv3SharedFiles(ledgerPath, Environment.MachineName, Environment.UserName, instance);
+-                initialMarker = shared.ReadMarker();
++                initialMarker = null;
++                try { initialMarker = shared.ReadMarker(); }
++                catch (Exception markerError)
++                { new Rdv3Log(logPath).Write("-", "marker", "startup marker unavailable: " + markerError.Message); }
+             }
+             catch (Exception ex)
+             {
+@@ -1935,6 +2092,7 @@
+             app.LogBoot(compileMs);
+             application.Run(window);
+             return window.ExitCode;
++            }
+         }
+     }
+ 
+--- a/src/Rdv3Config.cs
++++ b/src/Rdv3Config.cs
+@@ -288,6 +288,7 @@
+     public Rdv3Screen Screen;
+ 
+     public string SourcePath = "";
++    private string sourceDigest = "";
+ 
+     // where the three members the dialog owns sit in the file's text
+     private Rdv3Json pathsNode, searchNode, watchNode;
+@@ -301,7 +302,7 @@
+             throw new Rdv3LoadError("the file does not exist: " + path, 0);
+         }
+         string text;
+-        try { text = File.ReadAllText(path, new UTF8Encoding(false)); }
++        try { text = File.ReadAllText(path, new UTF8Encoding(false, true)); }
+         catch (Exception ex) { throw new Rdv3LoadError("the file cannot be read: " + ex.Message, 0); }
+         Rdv3Config c = Parse(text);
+         c.SourcePath = path;
+@@ -368,6 +369,7 @@
+         c.Screen = Rdv3Screen.Read(root.Obj("screen", true));
+         // the screen names ledger columns; they have to be the data's
+         c.Screen.Check(c.Data);
++        c.sourceDigest = Rdv3PendingStore.DigestOf(text);
+         return c;
+     }
+ 
+@@ -376,9 +378,10 @@
+     {
+         get
+         {
+-            if (keyRule == null || keyRule.ToString() != KeyPattern)
+-            {
+-                keyRule = new Regex(KeyPattern, RegexOptions.CultureInvariant);
++            string whole = "\\A(?:" + KeyPattern + ")\\z";
++            if (keyRule == null || keyRule.ToString() != whole)
++            {
++                keyRule = new Regex(whole, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250));
+             }
+             return keyRule;
+         }
+@@ -386,14 +389,20 @@
+ 
+     public bool IsKey(string s)
+     {
+-        return s != null && s.Length > 0 && KeyRule.IsMatch(s);
++        if (string.IsNullOrEmpty(s) || s.Length > 4096) { return false; }
++        try
++        {
++            Match m = KeyRule.Match(s);
++            return m.Success && m.Index == 0 && m.Length == s.Length;
++        }
++        catch (RegexMatchTimeoutException) { return false; }
+     }
+ 
+     // null when the pattern compiles, otherwise the reason it does not
+     public static string PatternError(string pattern)
+     {
+         if (pattern == null || pattern.Trim().Length == 0) { return "empty"; }
+-        try { new Regex(pattern, RegexOptions.CultureInvariant); return null; }
++        try { new Regex("\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); return null; }
+         catch (Exception ex) { return ex.Message; }
+     }
+ 
+@@ -407,7 +416,15 @@
+     {
+         try
+         {
+-            string text = File.ReadAllText(path, new UTF8Encoding(false));
++            // A cooperating writer holds this handle while checking/replacing.
++            // The baseline check also catches edits made by a text editor.
++            using (FileStream editLease = new FileStream(path + ".edit.lock", FileMode.OpenOrCreate,
++                FileAccess.ReadWrite, FileShare.None))
++            {
++            string text = File.ReadAllText(path, new UTF8Encoding(false, true));
++            if (sourceDigest.Length == 0 || !string.Equals(sourceDigest,
++                Rdv3PendingStore.DigestOf(text), StringComparison.Ordinal))
++            { throw new IOException(Rdv3Text.SettingsChangedExternally); }
+             Rdv3Config now = Parse(text);
+             string nl = (text.IndexOf("\r\n", StringComparison.Ordinal) >= 0) ? "\r\n" : "\n";
+             // latest offset first, so the earlier spans stay where they are
+@@ -432,12 +449,13 @@
+             }
+             // the result has to load too, or it is not written
+             Parse(text);
+-            string tmp = path + ".tmp-" + DateTime.Now.Ticks.ToString(CultureInfo.InvariantCulture);
+-            File.WriteAllText(tmp, text, new UTF8Encoding(false));
+-            if (File.Exists(path)) { File.Replace(tmp, path, null); }
+-            else { File.Move(tmp, path); }
++            // Validate path collisions before committing, not on the next launch.
++            Rdv3Files.ValidateLayout(Parse(text), System.IO.Path.GetDirectoryName(System.IO.Path.GetFullPath(path)), path);
++            Rdv3PendingStore.AtomicWrite(path, text);
+             SourcePath = path;
++            sourceDigest = Rdv3PendingStore.DigestOf(text);
+             return null;
++            }
+         }
+         catch (Exception ex) { return ex.Message; }
+     }
+@@ -565,6 +583,7 @@
+         DataDir = o.DataDir;
+         Ledger = o.Ledger;
+         Log = o.Log;
++        sourceDigest = o.sourceDigest;
+     }
+ 
+     // deep enough for the dialog to edit without touching the running settings
+@@ -581,6 +600,7 @@
+         c.SaveTimeoutMs = SaveTimeoutMs; c.MarkOverdueMs = MarkOverdueMs; c.PumpMs = PumpMs;
+         c.LockRetryMs = LockRetryMs; c.LockStaleMs = LockStaleMs; c.MarkerPollMs = MarkerPollMs;
+         c.SourcePath = SourcePath;
++        c.sourceDigest = sourceDigest;
+         c.Data = Data; c.Screen = Screen;
+         c.Targets = new List<Rdv3Target>();
+         for (int i = 0; i < Targets.Count; i++) { c.Targets.Add(Targets[i].Clone()); }
+--- a/src/Rdv3Core.cs
++++ b/src/Rdv3Core.cs
+@@ -11,16 +11,16 @@
+ // default; a definition can opt into Unicode, variable width, distinct values
+ // and skipped blank keys for condition-list inputs.
+ //
+-// Structural errors are refused: a wrong column count, a quoted field (this
+-// reader does not unquote), or an unusable key. A control character inside a
++// Structural errors are refused: a wrong column count, malformed quoting,
++// an invalid encoding, or an unusable key. Quoted CSV uses Rdv3Csv. A control character inside a
+ // field is different: refusing a whole input for one old byte is too broad.
+ // The first occurrence is reported and each such byte is replaced with '?',
+ // keeping both the ledger's tab-separated rows and its XML safe. Bytes that
+-// are not valid in the declared encoding are likewise decoded with the
+-// replacement character, and the first such row is remembered for the UI.
++// are not valid in the declared encoding cause an error rather than
++// silently replacing parts of identities or values.
+ //
+ // C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
+-// See build\pack_app.ps1.
++// See build.bat and tests/README.md.
+ // ============================================================================
+ 
+ using System;
+@@ -111,15 +111,11 @@
+         {
+             return Rdv3Xlsx.ReadTableHead(path);
+         }
+-        string file = System.IO.Path.GetFileName(path);
+-        using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read))
+-        using (StreamReader r = new StreamReader(fs, enc, true))
+-        {
+-            string first = r.ReadLine();
+-            if (first == null || first.Trim().Length == 0) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
+-            string ignored;
+-            return SplitHead(first, file, out ignored);
+-        }
++        string[] head;
++        string[][] rows;
++        int[] rowNumbers;
++        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers);
++        return head;
+     }
+ 
+     private static string[] SplitHead(string line, string file, out string warning)
+@@ -165,7 +161,7 @@
+         if (validation == null) { validation = new Rdv3KeyValidation(); }
+         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
+         {
+-            return ReadWorkbook(path, name, enc, keyName, validation);
++            return ReadDecoded(path, name, enc, keyName, validation, true);
+         }
+         Rdv3Table t = new Rdv3Table();
+         t.Name = name;
+@@ -173,8 +169,11 @@
+         t.Enc = enc;
+         t.KeyValidation = validation;
+         t.Buf = File.ReadAllBytes(path);
++        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, keyName, validation, false); }
+         t.InvalidEncodingRow = FindInvalidEncodingRow(t.Buf, enc);
+         string file = System.IO.Path.GetFileName(path);
++        if (t.InvalidEncodingRow != 0)
++        { throw new Rdv3DataError(file + ": invalid " + enc.WebName + " byte sequence at row " + t.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture)); }
+ 
+         byte[] b = t.Buf;
+         int n = b.Length;
+@@ -182,6 +181,8 @@
+         int[] st = new int[cap];
+         int[] en = new int[cap];
+         int rows = 0;
++        int physicalRow = 1;
++        List<int> physicalRows = new List<int>();
+         int pos = 0;
+         if (n >= 3 && b[0] == 0xEF && b[1] == 0xBB && b[2] == 0xBF) { pos = 3; }
+ 
+@@ -199,13 +200,15 @@
+                     Array.Resize(ref st, cap);
+                     Array.Resize(ref en, cap);
+                 }
++                physicalRows.Add(physicalRow);
+                 st[rows] = pos;
+                 en[rows] = e;
+                 rows++;
+             }
+             pos = nl + 1;
+-        }
+-        if (rows < 2) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
++            physicalRow++;
++        }
++        if (rows < 1) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
+ 
+         string headerWarning;
+         t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, out headerWarning);
+@@ -221,14 +224,14 @@
+         t.End = new int[sourceRows];
+         t.KeyAt = new int[sourceRows];
+         if (!validation.UsesFixedAsciiPath) { t.KeyLengths = new int[sourceRows]; }
+-        if (validation.SkipEmpty || !validation.Unique) { t.SourceRows = new int[sourceRows]; }
++        t.SourceRows = new int[sourceRows];
+         HashSet<string> distinct = validation.Unique ? null : new HashSet<string>(StringComparer.Ordinal);
+         int fixedLength = -1;
+         for (int source = 0; source < sourceRows; source++)
+         {
+             int rs = st[source + 1];
+             int re = en[source + 1];
+-            int row = source + 2;              // the row number a person sees (header = 1)
++            int row = physicalRows[source + 1];              // the row number a person sees (header = 1)
+             // one pass over the row: count the columns, refuse a quoted field,
+             // and find the key
+             int field = 0;
+@@ -243,6 +246,7 @@
+                 {
+                     if (b[q] < 0x20)
+                     {
++                        if (field == t.KeyCol) { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); }
+                         if (t.ControlCharacterWarning.Length == 0)
+                         {
+                             t.ControlCharacterWarning = ControlChar(file, row, (int)b[q]);
+@@ -311,16 +315,18 @@
+         return t;
+     }
+ 
+-    private static Rdv3Table ReadWorkbook(string path, string name, Encoding enc, string keyName,
+-                                          Rdv3KeyValidation validation)
++    private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string keyName,
++                                          Rdv3KeyValidation validation, bool workbook)
+     {
+         Rdv3Table t = new Rdv3Table();
+         t.Name = name;
+         t.Path = path;
+         t.Enc = enc;
+         t.KeyValidation = validation;
+-        string warning;
+-        Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning);
++        string warning = "";
++        int[] originalRows = null;
++        if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning); }
++        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows); }
+         t.ControlCharacterWarning = warning;
+         t.KeyCol = t.ColumnOf(keyName);
+         if (t.KeyCol < 0)
+@@ -330,14 +336,29 @@
+         }
+         string[][] source = t.Cells;
+         List<string[]> kept = new List<string[]>(source.Length);
+-        List<int> sourceRows = (validation.SkipEmpty || !validation.Unique) ? new List<int>(source.Length) : null;
++        List<int> sourceRows = new List<int>(source.Length);
+         HashSet<string> distinct = validation.Unique ? null : new HashSet<string>(StringComparer.Ordinal);
+         int fixedLength = -1;
+         string file = System.IO.Path.GetFileName(path);
+         for (int i = 0; i < source.Length; i++)
+         {
+             string key = source[i][t.KeyCol];
+-            int row = i + 2;
++            int row = originalRows == null ? i + 2 : originalRows[i];
++            for (int k = 0; k < key.Length; k++)
++            { if (key[k] < ' ') { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); } }
++            for (int c = 0; c < source[i].Length; c++)
++            {
++                string value = source[i][c];
++                char[] safe = null;
++                for (int k = 0; k < value.Length; k++)
++                {
++                    if (value[k] >= ' ' || value[k] == '\r' || value[k] == '\n') { continue; }
++                    if (t.ControlCharacterWarning.Length == 0) { t.ControlCharacterWarning = ControlChar(file, row, (int)value[k]); }
++                    if (safe == null) { safe = value.ToCharArray(); }
++                    safe[k] = '?';
++                }
++                if (safe != null) { source[i][c] = new string(safe); }
++            }
+             if (key.Length == 0)
+             {
+                 if (validation.SkipEmpty) { continue; }
+--- /dev/null
++++ b/src/Rdv3Csv.cs
+@@ -0,0 +1,141 @@
++// CSV fallback for quoting/multiline fields and non-byte-compatible encodings.
++// The ordinary unquoted UTF-8/Shift-JIS/single-byte path remains in Rdv3Core.
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using System.Text;
++
++public static class Rdv3Csv
++{
++    public static bool NeedsDecoded(byte[] bytes, Encoding encoding)
++    {
++        int cp = encoding.CodePage;
++        if (!encoding.IsSingleByte && cp != 65001 && cp != 932) { return true; }
++        if (bytes.Length >= 2 && ((bytes[0] == 255 && bytes[1] == 254) || (bytes[0] == 254 && bytes[1] == 255))) { return true; }
++        if (bytes.Length >= 3 && bytes[0] == 239 && bytes[1] == 187 && bytes[2] == 191 && cp != 65001) { return true; }
++        for (int i = 0; i < bytes.Length; i++)
++        {
++            if (bytes[i] == (byte)'"' || (bytes[i] == 13 && (i + 1 == bytes.Length || bytes[i + 1] != 10))) { return true; }
++        }
++        return false;
++    }
++
++    public static void Read(string path, Encoding encoding, bool headOnly,
++                            out string[] head, out string[][] rows, out int[] rowNumbers)
++    {
++        head = null;
++        List<string[]> data = new List<string[]>();
++        List<int> numbers = new List<int>();
++        Encoding strict = (Encoding)encoding.Clone();
++        strict.DecoderFallback = DecoderFallback.ExceptionFallback;
++        using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete))
++        {
++            byte[] bom = new byte[4];
++            int n = stream.Read(bom, 0, bom.Length);
++            int cp = 0, skip = 0;
++            if (n >= 4 && bom[0] == 255 && bom[1] == 254 && bom[2] == 0 && bom[3] == 0) { cp = 12000; skip = 4; }
++            else if (n >= 4 && bom[0] == 0 && bom[1] == 0 && bom[2] == 254 && bom[3] == 255) { cp = 12001; skip = 4; }
++            else if (n >= 3 && bom[0] == 239 && bom[1] == 187 && bom[2] == 191) { cp = 65001; skip = 3; }
++            else if (n >= 2 && bom[0] == 255 && bom[1] == 254) { cp = 1200; skip = 2; }
++            else if (n >= 2 && bom[0] == 254 && bom[1] == 255) { cp = 1201; skip = 2; }
++            if (cp != 0 && cp != encoding.CodePage)
++            { throw Error(path, 1, "BOM does not match data.encoding: " + encoding.WebName); }
++            stream.Position = skip;
++            using (StreamReader reader = new StreamReader(stream, strict, false, 65536))
++            {
++                int physical = 1;
++                while (true)
++                {
++                    int first = physical;
++                    bool blank;
++                    string[] cells = Record(reader, path, ref physical, out blank);
++                    if (cells == null) { break; }
++                    if (blank) { continue; }
++                    if (head == null)
++                    {
++                        head = cells;
++                        HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
++                        for (int i = 0; i < head.Length; i++)
++                        {
++                            head[i] = head[i].Trim();
++                            if (head[i].Length == 0 || !names.Add(head[i])) { throw Error(path, first, "blank or duplicate header"); }
++                            for (int k = 0; k < head[i].Length; k++)
++                            { if (head[i][k] < ' ') { throw Error(path, first, "control character in header"); } }
++                        }
++                        if (headOnly) { break; }
++                    }
++                    else
++                    {
++                        if (cells.Length != head.Length) { throw Error(path, first, "column count differs from header"); }
++                        data.Add(cells);
++                        numbers.Add(first);
++                    }
++                }
++            }
++        }
++        if (head == null) { throw Error(path, 1, "CSV has no header"); }
++        rows = data.ToArray();
++        rowNumbers = numbers.ToArray();
++    }
++
++    private static string[] Record(TextReader reader, string path, ref int line, out bool blank)
++    {
++        blank = true;
++        List<string> cells = new List<string>();
++        StringBuilder field = new StringBuilder();
++        bool quoted = false, afterQuote = false, any = false;
++        int recordLine = line;
++        while (true)
++        {
++            int read = reader.Read();
++            if (read < 0)
++            {
++                if (quoted) { throw Error(path, recordLine, "quoted field is not closed"); }
++                if (!any) { return null; }
++                cells.Add(field.ToString());
++                return cells.ToArray();
++            }
++            char ch = (char)read;
++            any = true;
++            if (quoted)
++            {
++                if (ch == '"')
++                {
++                    if (reader.Peek() == '"') { reader.Read(); field.Append('"'); }
++                    else { quoted = false; afterQuote = true; }
++                }
++                else
++                {
++                    field.Append(ch);
++                    if (ch == '\r')
++                    {
++                        if (reader.Peek() == '\n') { reader.Read(); field.Append('\n'); }
++                        line++;
++                    }
++                    else if (ch == '\n') { line++; }
++                }
++                continue;
++            }
++            if (ch == '\r' || ch == '\n')
++            {
++                if (ch == '\r' && reader.Peek() == '\n') { reader.Read(); }
++                line++;
++                cells.Add(field.ToString());
++                return cells.ToArray();
++            }
++            blank = false;
++            if (ch == ',') { cells.Add(field.ToString()); field.Length = 0; afterQuote = false; continue; }
++            if (afterQuote) { throw Error(path, recordLine, "unexpected text after closing quote"); }
++            if (ch == '"')
++            {
++                if (field.Length != 0) { throw Error(path, recordLine, "quote inside an unquoted field"); }
++                quoted = true;
++            }
++            else { field.Append(ch); }
++        }
++    }
++
++    private static Rdv3DataError Error(string path, int line, string reason)
++    { return new Rdv3DataError(Path.GetFileName(path) + ": row " + line.ToString(CultureInfo.InvariantCulture) + ": " + reason); }
++}
+--- /dev/null
++++ b/src/Rdv3Files.cs
+@@ -0,0 +1,188 @@
++// File layout, local session ownership and non-destructive exports. C# 5.
++using System;
++using System.Collections.Generic;
++using System.Globalization;
++using System.IO;
++using System.Text;
++
++public static class Rdv3Files
++{
++    public static string Full(string value, string root)
++    {
++        if (string.IsNullOrWhiteSpace(value)) { throw new IOException("file path is blank"); }
++        return Path.GetFullPath(Path.IsPathRooted(value) ? value : Path.Combine(root, value));
++    }
++
++    public static bool Same(string a, string b)
++    { return string.Equals(Path.GetFullPath(a), Path.GetFullPath(b), StringComparison.OrdinalIgnoreCase); }
++
++    public static bool Exists(string path)
++    {
++        try { File.GetAttributes(path); return true; }
++        catch (FileNotFoundException) { return false; }
++        catch (DirectoryNotFoundException) { return false; }
++    }
++
++    private static bool Under(string path, string directory)
++    {
++        string root = Path.GetFullPath(directory).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
++            + Path.DirectorySeparatorChar;
++        return Path.GetFullPath(path).StartsWith(root, StringComparison.OrdinalIgnoreCase);
++    }
++
++    private static bool ProgramFile(string path, string appDir, string configPath)
++    {
++        if (Same(path, configPath) || Same(path, configPath + ".edit.lock")) { return true; }
++        string[] dirs = { "src", "lib", "web", "docs", "tests" };
++        for (int i = 0; i < dirs.Length; i++) { if (Under(path, Path.Combine(appDir, dirs[i]))) { return true; } }
++        string[] files = { "ReaderDataViewer.cmd", "ReaderDataViewer.vbs", "README.md", "LICENSE",
++            "THIRD-PARTY-NOTICES.md", "build.bat", "AUDIT_REPORT.md" };
++        for (int i = 0; i < files.Length; i++) { if (Same(path, Path.Combine(appDir, files[i]))) { return true; } }
++        return false;
++    }
++
++    private static List<string> InputPaths(Rdv3Data data, string dataDir)
++    {
++        HashSet<string> seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
++        for (int i = 0; i < data.Tables.Count; i++) { seen.Add(Full(data.Tables[i].File, dataDir)); }
++        // File-only job inputs (for example delete.csv) are inputs too.
++        for (int j = 0; j < data.Jobs.Count; j++)
++        {
++            for (int i = 0; i < data.Jobs[j].Inputs.Count; i++)
++            {
++                string file = data.Jobs[j].Inputs[i].File;
++                if (!string.IsNullOrEmpty(file)) { seen.Add(Full(file, dataDir)); }
++            }
++        }
++        return new List<string>(seen);
++    }
++
++    public static void ValidateLayout(Rdv3Config cfg, string appDir, string configPath)
++    {
++        string data = Full(cfg.DataDir, appDir);
++        string ledger = Full(cfg.Ledger, appDir);
++        string log = Full(cfg.Log, appDir);
++        if (!string.Equals(Path.GetExtension(ledger), ".xlsx", StringComparison.OrdinalIgnoreCase))
++        { throw new IOException("paths.ledger must have the .xlsx extension"); }
++        if (Same(ledger, log) || Same(log, ledger + ".lock") || Same(log, ledger + ".version")
++            || ProgramFile(ledger, appDir, configPath) || ProgramFile(log, appDir, configPath))
++        { throw new IOException("paths collide with a protected application/ledger file"); }
++        foreach (string source in InputPaths(cfg.Data, data))
++        {
++            if (Same(source, ledger) || Same(source, log) || Same(source, ledger + ".lock")
++                || Same(source, ledger + ".version"))
++            { throw new IOException("input file collides with a ledger/log file: " + source); }
++        }
++    }
++
++    public static string ExportPath(string value, string appDir, string dataDir, string ledgerPath,
++                                     string logPath, string configPath, Rdv3Data data)
++    {
++        string path = Full(value, appDir);
++        if (!string.Equals(Path.GetExtension(path), ".csv", StringComparison.OrdinalIgnoreCase))
++        { throw new IOException(Rdv3Text.ExportCsvOnly); }
++        if (ProgramFile(path, appDir, configPath) || Same(path, ledgerPath) || Same(path, logPath)
++            || Same(path, ledgerPath + ".lock") || Same(path, ledgerPath + ".version"))
++        { throw new IOException(Rdv3Text.ExportProtected); }
++        foreach (string source in InputPaths(data, dataDir))
++        {
++            if (Same(path, source))
++            { throw new IOException(Rdv3Text.ExportProtected); }
++        }
++        if (Exists(path)) { throw new IOException(Rdv3Text.ExportExists); }
++        return path;
++    }
++
++    public static string[] ExportHeaders(List<string> fields, Rdv3Data data, string stateColumn)
++    {
++        string[] headers = new string[fields.Count];
++        Dictionary<string, int> counts = new Dictionary<string, int>(StringComparer.Ordinal);
++        for (int i = 0; i < fields.Count; i++)
++        {
++            int column = fields[i] == "$work" ? -1 : data.IndexOf(fields[i]);
++            if (column < 0 && fields[i] != "$work") { throw new InvalidDataException("unknown export field: " + fields[i]); }
++            headers[i] = column < 0 ? stateColumn : data.Columns[column].Column;
++            int count; counts.TryGetValue(headers[i], out count); counts[headers[i]] = count + 1;
++        }
++        HashSet<string> used = new HashSet<string>(StringComparer.Ordinal);
++        for (int i = 0; i < fields.Count; i++)
++        {
++            string name = counts[headers[i]] > 1
++                ? (fields[i] == "$work" ? headers[i] + " ($work)" : fields[i]) : headers[i];
++            string unique = name; int suffix = 2;
++            while (!used.Add(unique)) { unique = name + " [" + (suffix++).ToString(CultureInfo.InvariantCulture) + "]"; }
++            headers[i] = unique;
++        }
++        return headers;
++    }
++
++    public static string CsvCell(string value, bool excelSafe)
++    {
++        string text = value ?? "";
++        string probe = text.TrimStart();
++        if (excelSafe && probe.Length > 0 && "=+-@".IndexOf(probe[0]) >= 0) { text = "'" + text; }
++        if (text.IndexOfAny(new char[] { ',', '"', '\r', '\n' }) < 0) { return text; }
++        return "\"" + text.Replace("\"", "\"\"") + "\"";
++    }
++
++    public static void WriteNewText(string path, string text)
++    {
++        string directory = Path.GetDirectoryName(Path.GetFullPath(path));
++        Directory.CreateDirectory(directory);
++        string temp = Path.Combine(directory, ".rdv-export-" + Guid.NewGuid().ToString("N") + ".tmp");
++        try
++        {
++            using (FileStream stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
++            {
++                using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(true, true), 65536, true))
++                { writer.Write(text); }
++                stream.Flush(true);
++            }
++            // Move does not overwrite a file created by someone else meanwhile.
++            File.Move(temp, path);
++        }
++        finally { if (File.Exists(temp)) { File.Delete(temp); } }
++    }
++
++    public static string SessionKey(string ledger)
++    {
++        return Rdv3PendingStore.DigestOf(Path.GetFullPath(ledger).ToLowerInvariant())
++            .Replace("/", "_").Replace("+", "-").TrimEnd('=');
++    }
++
++    public static FileStream AcquireLocalSession(string pendingPath)
++    {
++        Directory.CreateDirectory(Path.GetDirectoryName(pendingPath));
++        // Keep the file, release only the handle. Deleting an unlocked pathname
++        // introduces a race with a new owner. OS handle cleanup handles a crash.
++        return new FileStream(pendingPath + ".session.lock", FileMode.OpenOrCreate,
++            FileAccess.ReadWrite, FileShare.None);
++    }
++
++    public static string StorageContract(Rdv3Data data, Rdv3WorkState work)
++    {
++        List<string> entries = new List<string>();
++        entries.Add("RDV-STORAGE-1");
++        entries.Add(data.IdentityCol.ToString(CultureInfo.InvariantCulture));
++        entries.Add(work.Column);
++        entries.Add(work.Initial);
++        for (int i = 0; i < data.Columns.Count; i++) { entries.Add(data.Columns[i].Ref); }
++        List<string> states = new List<string>();
++        for (int i = 0; i < work.States.Count; i++)
++        { states.Add(Rdv3PendingStore.DigestOf(work.States[i].Id) + ":" + Rdv3PendingStore.DigestOf(work.States[i].Stored)); }
++        states.Sort(StringComparer.Ordinal);
++        entries.AddRange(states);
++        StringBuilder canonical = new StringBuilder();
++        for (int i = 0; i < entries.Count; i++)
++        { canonical.Append(entries[i].Length.ToString(CultureInfo.InvariantCulture)).Append(':').Append(entries[i]); }
++        return Rdv3PendingStore.DigestOf(canonical.ToString());
++    }
++
++    public static string Stamp(string path)
++    {
++        if (!Exists(path)) { return "missing"; }
++        FileInfo file = new FileInfo(path);
++        return file.LastWriteTimeUtc.Ticks.ToString(CultureInfo.InvariantCulture)
++            + ":" + file.Length.ToString(CultureInfo.InvariantCulture);
++    }
++}
+--- a/src/Rdv3Index.cs
++++ b/src/Rdv3Index.cs
+@@ -147,6 +147,11 @@
+     public int FindBytes(byte[] buf, int off, int len, out List<int> rows)
+     {
+         if (fixedAscii && len != keyLen) { rows = null; return 0; }
++        if (fixedAscii)
++        {
++            for (int i = off; i < off + len; i++)
++            { if (buf[i] > 127) { rows = null; return 0; } }
++        }
+         if (!fixedAscii && keyEncoding == null) { rows = null; return 0; }
+         string k = fixedAscii ? Encoding.ASCII.GetString(buf, off, len) : keyEncoding.GetString(buf, off, len);
+         if (!map.TryGetValue(k, out rows)) { return 0; }
+--- a/src/Rdv3Json.cs
++++ b/src/Rdv3Json.cs
+@@ -292,7 +292,8 @@
+                     if (src[pos] == '\n') { line++; }
+                     pos++;
+                 }
+-                pos = Math.Min(src.Length, pos + 2);
++                if (pos + 1 >= src.Length) { throw new Rdv3LoadError("the block comment is not closed", line); }
++                pos += 2;
+             }
+             else { return; }
+         }
+@@ -305,7 +306,16 @@
+         return src[pos];
+     }
+ 
++    private int depth;
++
+     private Rdv3Json ReadValue(string path)
++    {
++        if (++depth > 128) { throw new Rdv3LoadError("JSON nesting exceeds 128 levels", line); }
++        try { return ReadValueCore(path); }
++        finally { depth--; }
++    }
++
++    private Rdv3Json ReadValueCore(string path)
+     {
+         char c = Peek();
+         int at = pos;
+@@ -386,8 +396,19 @@
+         {
+             if (pos >= src.Length) { throw new Rdv3LoadError("the text is not closed", line); }
+             char c = src[pos++];
+-            if (c == '"') { return sb.ToString(); }
+-            if (c == '\n') { throw new Rdv3LoadError("a line break inside text", line); }
++            if (c == '"')
++            {
++                string value = sb.ToString();
++                for (int i = 0; i < value.Length; i++)
++                {
++                    if (!char.IsSurrogate(value[i])) { continue; }
++                    if (!char.IsHighSurrogate(value[i]) || i + 1 >= value.Length || !char.IsLowSurrogate(value[i + 1]))
++                    { throw new Rdv3LoadError("unpaired UTF-16 surrogate in text", line); }
++                    i++;
++                }
++                return value;
++            }
++            if (c < ' ') { throw new Rdv3LoadError("unescaped control character inside text", line); }
+             if (c != '\\') { sb.Append(c); continue; }
+             if (pos >= src.Length) { throw new Rdv3LoadError("the text is not closed", line); }
+             char e = src[pos++];
+@@ -411,22 +432,36 @@
+         }
+     }
+ 
++    private bool Digit() { return pos < src.Length && src[pos] >= '0' && src[pos] <= '9'; }
++
+     private Rdv3Json ReadNumber()
+     {
+         int start = pos;
+         if (pos < src.Length && src[pos] == '-') { pos++; }
+-        while (pos < src.Length)
+-        {
+-            char c = src[pos];
+-            if ((c >= '0' && c <= '9') || c == '.' || c == 'e' || c == 'E' || c == '+' || c == '-') { pos++; }
+-            else { break; }
++        if (!Digit()) { throw new Rdv3LoadError("a number needs an integer part", line); }
++        if (src[pos] == '0')
++        {
++            pos++;
++            if (Digit()) { throw new Rdv3LoadError("a number cannot have a leading zero", line); }
++        }
++        else { while (Digit()) { pos++; } }
++        if (pos < src.Length && src[pos] == '.')
++        {
++            pos++;
++            if (!Digit()) { throw new Rdv3LoadError("a fraction needs digits", line); }
++            while (Digit()) { pos++; }
++        }
++        if (pos < src.Length && (src[pos] == 'e' || src[pos] == 'E'))
++        {
++            pos++;
++            if (pos < src.Length && (src[pos] == '+' || src[pos] == '-')) { pos++; }
++            if (!Digit()) { throw new Rdv3LoadError("an exponent needs digits", line); }
++            while (Digit()) { pos++; }
+         }
+         double d;
+         if (!double.TryParse(src.Substring(start, pos - start), NumberStyles.Float,
+-                CultureInfo.InvariantCulture, out d))
+-        {
+-            throw new Rdv3LoadError("a number that is not understood", line);
+-        }
++                CultureInfo.InvariantCulture, out d) || double.IsNaN(d) || double.IsInfinity(d))
++        { throw new Rdv3LoadError("a number is invalid or outside the finite range", line); }
+         Rdv3Json n = new Rdv3Json(TNumber);
+         n.Num = d;
+         return n;
+--- a/src/Rdv3Modals.cs
++++ b/src/Rdv3Modals.cs
+@@ -103,7 +103,7 @@
+ 
+ public static class Rdv3UnmatchedForm
+ {
+-    public static void Tell(Rdv3Form owner, List<Rdv3UnmatchedChange> values)
++    public static bool Tell(Rdv3Form owner, List<Rdv3UnmatchedChange> values)
+     {
+         List<Rdv3UnmatchedChange> rows = values ?? new List<Rdv3UnmatchedChange>();
+         StringBuilder sb = new StringBuilder();
+@@ -119,10 +119,12 @@
+             sb.Append("[").Append(Rdv3WebJson.Q((i + 1).ToString(CultureInfo.InvariantCulture)));
+             sb.Append(',').Append(Rdv3WebJson.Q(rows[i].Identity));
+             sb.Append(',').Append(Rdv3WebJson.Q(rows[i].Reason == "missing"
+-                ? Rdv3Text.UnmatchedMissing : Rdv3Text.UnmatchedChanged)).Append(']');
+-        }
+-        sb.Append("]}");
+-        owner.ShowModal("unmatched", sb.ToString());
++                ? Rdv3Text.UnmatchedMissing : (rows[i].Reason == "state-conflict" ? Rdv3Text.StateConflict
++                    : (rows[i].Reason == "legacy" ? Rdv3Text.LegacyPending : Rdv3Text.UnmatchedChanged)))).Append(']');
++        }
++        sb.Append("],\"discardText\":").Append(Rdv3WebJson.Q(Rdv3Text.DiscardPendingButton)).Append('}');
++        Rdv3Json result = owner.ShowModal("unmatched", sb.ToString());
++        return Rdv3Form.Flag(result, "discard", false);
+     }
+ }
+ 
+@@ -402,6 +404,7 @@
+ public sealed class Rdv3ExportRequest
+ {
+     public string Path = "";
++    public bool ExcelSafe = true;
+     public List<string> Fields = new List<string>();
+     public List<Rdv3ExportFilter> Filters = new List<Rdv3ExportFilter>();
+ 
+@@ -435,9 +438,12 @@
+         content.Append(",\"defaults\":").Append(Rdv3WebJson.S(screen.ExportDefaultFields));
+         content.Append(",\"fields\":[");
+         bool comma = false;
+-        for (int i = 0; i < data.LabelOrder.Count; i++)
+-        {
+-            string reference = data.LabelOrder[i];
++        List<string> exportOrder = new List<string>(data.LabelOrder);
++        for (int i = 0; i < data.Columns.Count; i++)
++        { if (!exportOrder.Contains(data.Columns[i].Ref)) { exportOrder.Add(data.Columns[i].Ref); } }
++        for (int i = 0; i < exportOrder.Count; i++)
++        {
++            string reference = exportOrder[i];
+             int column = data.IndexOf(reference);
+             if (column < 0) { continue; }
+             if (comma) { content.Append(','); }
+@@ -446,7 +452,7 @@
+             Rdv3ColumnTypeDef type = data.TypeOf(reference);
+             content.Append("{\"ref\":").Append(Rdv3WebJson.Q(reference));
+             content.Append(",\"label\":").Append(Rdv3WebJson.Q(
+-                data.LabelOf(reference) + " (" + reference + ")"));
++                data.LabelOf(reference).Length == 0 ? reference : data.LabelOf(reference) + " (" + reference + ")"));
+             content.Append(",\"kind\":").Append(Rdv3WebJson.Q(type == null ? "text" : type.Type));
+             content.Append(",\"format\":").Append(Rdv3WebJson.Q(type == null ? "" : type.Format)).Append('}');
+         }
+@@ -456,7 +462,7 @@
+         content.Append("{\"ref\":\"$work\",\"label\":").Append(Rdv3WebJson.Q(
+             state == null ? screen.Work.Column : state.Text));
+         content.Append(",\"kind\":\"text\",\"format\":\"\"}");
+-        content.Append("]}");
++        content.Append("],\"excelSafeText\":").Append(Rdv3WebJson.Q(Rdv3Text.ExcelSafe)).Append('}');
+ 
+         Rdv3Json result;
+         owner.SetExportFilterData(data);
+@@ -465,6 +471,7 @@
+         if (!Rdv3Form.Flag(result, "ok", false)) { return null; }
+         Rdv3ExportRequest request = new Rdv3ExportRequest();
+         request.Path = Rdv3Form.Text(result, "path").Trim();
++        request.ExcelSafe = Rdv3Form.Flag(result, "excelSafe", true);
+         Rdv3Json selected = result.Member("fields");
+         if (selected != null && selected.Kind == Rdv3Json.TArray)
+         {
+@@ -473,7 +480,7 @@
+                 Rdv3Json item = selected.At(i);
+                 if (item != null && item.Kind == Rdv3Json.TString && refs.Contains(item.Str))
+                 {
+-                    request.Fields.Add(item.Str);
++                    if (!request.Fields.Contains(item.Str)) { request.Fields.Add(item.Str); }
+                 }
+             }
+         }
+--- a/src/Rdv3Process.cs
++++ b/src/Rdv3Process.cs
+@@ -1040,7 +1040,7 @@
+             separator = text;
+             position = at;
+             count = length;
+-            if (name == "regexExtract") { pattern = new Regex(text, RegexOptions.CultureInvariant); }
++            if (name == "regexExtract") { pattern = new Regex(text, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); }
+         }
+ 
+         public override string Evaluate(string[] row)
+--- a/src/Rdv3Screen.cs
++++ b/src/Rdv3Screen.cs
+@@ -180,7 +180,7 @@
+             r.Result = ro.Need("result");
+             if (r.Pattern.Length > 0)
+             {
+-                try { r.PatternRule = new Regex(r.Pattern, RegexOptions.CultureInvariant); }
++                try { r.PatternRule = new Regex(r.Pattern, RegexOptions.CultureInvariant, TimeSpan.FromMilliseconds(250)); }
+                 catch (Exception ex) { throw ro.Member("pattern").Fail("is not a usable regular expression (" + ex.Message + ")"); }
+             }
+             if (r.EqualsAny.Length == 0 && r.PatternRule == null && !r.Empty) { throw ro.Fail("has no condition (equals / pattern / empty)"); }
+@@ -245,7 +245,7 @@
+     public string ButtonTip = "";
+     // automatic: a single hit from the watched application advances the
+     // state; manual: only the work-state button can advance it.
+-    public string Trigger = "automatic";
++    public string Trigger = "manual";
+ 
+     public Rdv3StateDef ById(string id)
+     {
+@@ -302,6 +302,8 @@
+             if (s.Stored.Length == 0) { throw so.Member("stored").Fail("must not be blank (a blank ledger cell is 'no state')"); }
+             if (w.ById(s.Id) != null) { throw so.Member("id").Fail(s.Id + " is used twice"); }
+             if (w.ByStored(s.Stored) != null) { throw so.Fail("stored value " + s.Stored + " is used twice"); }
++            for (int k = 0; k < s.Stored.Length; k++)
++            { if (s.Stored[k] < ' ') { throw so.Fail("stored state cannot contain control characters"); } }
+             w.States.Add(s);
+         }
+         w.Initial = o.Need("initial");
+@@ -769,11 +771,7 @@
+         for (int i = 0; i < ExportDefaultFields.Length; i++)
+         {
+             string reference = ExportDefaultFields[i];
+-            bool available = reference == "$work";
+-            for (int k = 0; !available && k < data.LabelOrder.Count; k++)
+-            {
+-                if (data.LabelOrder[k] == reference && data.IndexOf(reference) >= 0) { available = true; }
+-            }
++            bool available = reference == "$work" || data.IndexOf(reference) >= 0;
+             if (!available)
+             {
+                 throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is not an export field", exportLine);
+--- a/src/Rdv3Shared.cs
++++ b/src/Rdv3Shared.cs
+@@ -21,6 +21,8 @@
+     public string Identity = "";
+     public string Stored = "";
+     public string Digest = "";
++    public string BaselineStored = "";
++    public bool BaselineKnown;
+ 
+     public Rdv3PendingEntry Copy()
+     {
+@@ -28,6 +30,8 @@
+         e.Identity = Identity;
+         e.Stored = Stored;
+         e.Digest = Digest;
++        e.BaselineStored = BaselineStored;
++        e.BaselineKnown = BaselineKnown;
+         return e;
+     }
+ }
+@@ -35,7 +39,7 @@
+ public sealed class Rdv3UnmatchedChange
+ {
+     public string Identity = "";
+-    public string Reason = "";              // missing | changed
++    public string Reason = "";              // missing | changed | state-conflict | legacy
+ }
+ 
+ public sealed class Rdv3PendingApply
+@@ -49,7 +53,8 @@
+ 
+ public sealed class Rdv3PendingStore
+ {
+-    private const string Header = "RDV-PENDING-1";
++    private const string Header = "RDV-PENDING-2";
++    private const string LegacyHeader = "RDV-PENDING-1";
+     private readonly string path;
+     private Dictionary<string, Rdv3PendingEntry> entries =
+         new Dictionary<string, Rdv3PendingEntry>(StringComparer.Ordinal);
+@@ -110,6 +115,19 @@
+             e.Identity = identity;
+             e.Stored = (stored == null) ? "" : stored;
+             e.Digest = DigestOf((line == null) ? "" : line);
++            Rdv3PendingEntry before;
++            // Editing a pending value must not silently rebase an old intent.
++            if (entries.TryGetValue(identity, out before))
++            {
++                e.Digest = before.Digest;
++                e.BaselineStored = before.BaselineStored;
++                e.BaselineKnown = before.BaselineKnown;
++            }
++            else
++            {
++                e.BaselineStored = sharedStored ?? "";
++                e.BaselineKnown = true;
++            }
+             next[identity] = e;
+         }
+         Commit(next);
+@@ -137,6 +155,9 @@
+             int row;
+             if (!rows.TryGetValue(pair.Key, out row)) { continue; }
+             if (!string.Equals(DigestOf(lines[row]), pair.Value.Digest, StringComparison.Ordinal)) { continue; }
++            if (!string.Equals(sharedStates[row], pair.Value.Stored, StringComparison.Ordinal)
++                && (!pair.Value.BaselineKnown || !string.Equals(sharedStates[row], pair.Value.BaselineStored, StringComparison.Ordinal)))
++            { continue; }
+             result[row] = pair.Value.Stored;
+         }
+         return result;
+@@ -166,6 +187,23 @@
+                 result.Unmatched.Add(Unmatched(e.Identity, "changed"));
+                 continue;
+             }
++            // An interrupted send may already have committed the XLSX. Retry is
++            // idempotent; never rewrite or count a value that is already present.
++            if (string.Equals(sharedStates[row], e.Stored, StringComparison.Ordinal))
++            {
++                result.Resolved.Add(e.Identity);
++                continue;
++            }
++            if (!e.BaselineKnown)
++            {
++                result.Unmatched.Add(Unmatched(e.Identity, "legacy"));
++                continue;
++            }
++            if (!string.Equals(sharedStates[row], e.BaselineStored, StringComparison.Ordinal))
++            {
++                result.Unmatched.Add(Unmatched(e.Identity, "state-conflict"));
++                continue;
++            }
+             result.States[row] = e.Stored;
+             result.Resolved.Add(e.Identity);
+             if (string.Equals(e.Stored, initialStored, StringComparison.Ordinal)) { result.ToInitial++; }
+@@ -197,24 +235,32 @@
+ 
+     private void Load()
+     {
+-        if (!File.Exists(path)) { return; }
+-        string[] lines = File.ReadAllLines(path, new UTF8Encoding(false));
+-        if (lines.Length == 0 || !string.Equals(lines[0], Header, StringComparison.Ordinal))
++        if (!Rdv3Files.Exists(path)) { return; }
++        string[] lines = File.ReadAllLines(path, new UTF8Encoding(false, true));
++        if (lines.Length == 0 || (lines[0] != Header && lines[0] != LegacyHeader))
+         {
+             throw new InvalidDataException("pending file has an unknown format: " + path);
+         }
++        bool legacy = lines[0] == LegacyHeader;
+         Dictionary<string, Rdv3PendingEntry> loaded = new Dictionary<string, Rdv3PendingEntry>(StringComparer.Ordinal);
+         for (int i = 1; i < lines.Length; i++)
+         {
+             if (lines[i].Length == 0) { continue; }
+             string[] cells = lines[i].Split('\t');
+-            if (cells.Length != 3) { throw new InvalidDataException("pending file row is invalid: " + (i + 1).ToString(CultureInfo.InvariantCulture)); }
++            if (cells.Length != (legacy ? 3 : 5)) { throw new InvalidDataException("pending file row is invalid: " + (i + 1).ToString(CultureInfo.InvariantCulture)); }
+             Rdv3PendingEntry e = new Rdv3PendingEntry();
+             try
+             {
+                 e.Identity = Decode(cells[0]);
+                 e.Stored = Decode(cells[1]);
+                 e.Digest = cells[2];
++                if (Convert.FromBase64String(e.Digest).Length != 32) { throw new FormatException("invalid digest"); }
++                if (!legacy)
++                {
++                    if (cells[3] != "0" && cells[3] != "1") { throw new FormatException("invalid baseline flag"); }
++                    e.BaselineKnown = cells[3] == "1";
++                    e.BaselineStored = Decode(cells[4]);
++                }
+             }
+             catch (Exception ex)
+             {
+@@ -242,7 +288,9 @@
+         {
+             text.Append(Encode(ordered[i].Identity)).Append('\t');
+             text.Append(Encode(ordered[i].Stored)).Append('\t');
+-            text.Append(ordered[i].Digest).Append("\r\n");
++            text.Append(ordered[i].Digest).Append('\t');
++            text.Append(ordered[i].BaselineKnown ? "1" : "0").Append('\t');
++            text.Append(Encode(ordered[i].BaselineStored)).Append("\r\n");
+         }
+         AtomicWrite(path, text.ToString());
+         entries = next;
+@@ -255,7 +303,7 @@
+ 
+     private static string Decode(string value)
+     {
+-        return Encoding.UTF8.GetString(Convert.FromBase64String(value));
++        return new UTF8Encoding(false, true).GetString(Convert.FromBase64String(value));
+     }
+ 
+     internal static void AtomicWrite(string target, string text)
+@@ -279,6 +327,7 @@
+ 
+ public sealed class Rdv3SharedMarker
+ {
++    public string FileStamp; // local only; captured by the writer under the ledger lock
+     public long Version;
+     public string Host = "";
+     public string User = "";
+@@ -462,6 +511,7 @@
+         line.Append('\t').Append(fromInitial.ToString(CultureInfo.InvariantCulture));
+         line.Append('\t').Append(toInitial.ToString(CultureInfo.InvariantCulture)).Append("\r\n");
+         Rdv3PendingStore.AtomicWrite(markerPath, line.ToString());
++        m.FileStamp = Rdv3Files.Stamp(markerPath.Substring(0, markerPath.Length - ".version".Length));
+         return m;
+     }
+ 
+--- a/src/Rdv3Text.cs
++++ b/src/Rdv3Text.cs
+@@ -16,6 +16,24 @@
+ 
+ public static class Rdv3Text
+ {
++    public const string StorageContractMismatch = "\u3053\u306e\u53f0\u5e33\u3068\u8a2d\u5b9a\u306e\u5217\u30fb\u8b58\u5225\u30ad\u30fc\u30fb\u4f5c\u696d\u72b6\u614b\u306e\u5b9a\u7fa9\u304c\u4e00\u81f4\u3057\u307e\u305b\u3093\u3002\u540c\u3058\u53f0\u5e33\u3092\u4f7f\u3046\u5168PC\u306e\u5b9a\u7fa9\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++
++    public const string UpdateChangedDuringCheck = "\u78ba\u8a8d\u4e2d\u306b\u5171\u6709\u53f0\u5e33\u306e\u5185\u5bb9\u304c\u5909\u308f\u308a\u307e\u3057\u305f\u3002\u4e0a\u66f8\u304d\u305b\u305a\u4e2d\u6b62\u3057\u307e\u3057\u305f\u3002\u3082\u3046\u4e00\u5ea6\u300c\u66f4\u65b0\u300d\u3067\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string ErrSearchTimeout = "\u691c\u7d22\u304c\u6642\u9593\u5185\u306b\u5b8c\u4e86\u3057\u307e\u305b\u3093\u3067\u3057\u305f\u3002\u9045\u308c\u3066\u5c4a\u3044\u305f\u7d50\u679c\u306f\u8868\u793a\u3057\u307e\u305b\u3093\u3002";
++
++    public const string SettingsChangedExternally = "\u8a2d\u5b9a\u30d5\u30a1\u30a4\u30eb\u304c\u5225\u306e\u64cd\u4f5c\u3067\u5909\u66f4\u3055\u308c\u3066\u3044\u307e\u3059\u3002\u753b\u9762\u3092\u958b\u304d\u76f4\u3057\u3066\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string StateConflict = "\u4ed6\u306e\u64cd\u4f5c\u3067\u5171\u6709\u306e\u72b6\u614b\u304c\u5909\u66f4\u3055\u308c\u307e\u3057\u305f\u3002";
++    public const string LegacyPending = "\u65e7\u7248\u306e\u672a\u9001\u4fe1\u5909\u66f4\u3067\u3059\u3002\u5909\u66f4\u524d\u306e\u72b6\u614b\u3092\u78ba\u8a8d\u3067\u304d\u307e\u305b\u3093\u3002";
++    public const string DiscardPendingConfirm = "\u3053\u306e\u4e00\u89a7\u306e\u672a\u9001\u4fe1\u5909\u66f4\u3092\u7834\u68c4\u3057\u307e\u3059\u304b\uff1f \u5171\u6709\u53f0\u5e33\u306e\u5185\u5bb9\u306f\u5909\u66f4\u3057\u307e\u305b\u3093\u3002\u5fc5\u8981\u306a\u5909\u66f4\u306f\u3001\u6700\u65b0\u306e\u5185\u5bb9\u3092\u78ba\u8a8d\u3057\u3066\u304b\u3089\u767b\u9332\u3057\u76f4\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string DiscardPendingButton = "\u4e00\u89a7\u306e\u672a\u9001\u4fe1\u5909\u66f4\u3092\u7834\u68c4";
++    public const string LedgerStateInvalid = "\u53f0\u5e33\u306b\u8a2d\u5b9a\u3067\u5b9a\u7fa9\u3055\u308c\u3066\u3044\u306a\u3044\u4f5c\u696d\u72b6\u614b\u304c\u3042\u308a\u307e\u3059\u3002\u884c ";
++    public const string ExportExists = "\u540c\u540d\u30d5\u30a1\u30a4\u30eb\u3078\u306e\u4e0a\u66f8\u304d\u306f\u884c\u3044\u307e\u305b\u3093\u3002\u5225\u306e\u30d5\u30a1\u30a4\u30eb\u540d\u3092\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string ExportProtected = "\u5165\u529b\u30fb\u53f0\u5e33\u30fb\u8a2d\u5b9a\u30fb\u30d7\u30ed\u30b0\u30e9\u30e0\u95a2\u9023\u306e\u30d5\u30a1\u30a4\u30eb\u306b\u306f\u51fa\u529b\u3067\u304d\u307e\u305b\u3093\u3002";
++    public const string ExportCsvOnly = "\u51fa\u529b\u5148\u306b\u306f .csv \u30d5\u30a1\u30a4\u30eb\u3092\u6307\u5b9a\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string StaleLedger = "\u8868\u793a\u306f\u66f4\u65b0\u524d\u306e\u53f0\u5e33\u3067\u3059\u3002\u300c\u66f4\u65b0\u300d\u3067\u6700\u65b0\u306e\u53f0\u5e33\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
++    public const string ExcelSafe = "Excel\u5411\u3051\u306b\u6570\u5f0f\u3068\u3057\u3066\u89e3\u91c8\u3055\u308c\u308b\u6587\u5b57\u5217\u3092\u7121\u52b9\u5316\uff08\u5148\u982d\u306b\u30a2\u30dd\u30b9\u30c8\u30ed\u30d5\u30a3\u3092\u8ffd\u52a0\uff09";
++    public const string PendingBackup = "\u7834\u68c4\u524d\u306e\u672a\u9001\u4fe1\u5909\u66f4\u3092\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3057\u307e\u3057\u305f: ";
++
+     public const string AppTitle = "Reader Data Viewer";
+ 
+     // ---- the state word in the status bar -----------------------------------
+--- a/src/Rdv3Ui.cs
++++ b/src/Rdv3Ui.cs
+@@ -102,6 +102,7 @@
+     private Rdv3Data exportFilterData;
+     private int modalToken;
+     private int waitingToken;
++    public bool IsModalOpen { get { return waitingToken != 0; } }
+     private Rdv3Json modalResult;
+     private Rdv3Target pickedTarget;
+     private int pickerPollMs = 40;
+@@ -110,6 +111,7 @@
+     public readonly Rdv3View View = new Rdv3View();
+ 
+     public Action<string> OnSearch;
++    public Action<string> OnKeyChanged;
+     public Action OnClear;
+     public Action OnWorkState;
+     public Action OnRefreshLedger;
+@@ -276,11 +278,11 @@
+         });
+     }
+ 
+-    public void ClearResult()
+-    {
+-        Ui(delegate
+-        {
+-            keyText = "";
++    public void ClearResult(bool keepKey = false)
++    {
++        Ui(delegate
++        {
++            if (!keepKey) { keyText = ""; }
+             View.SearchKey = "";
+             candidates = new List<Rdv3CandRow>();
+             candidateTotal = 0;
+@@ -337,7 +339,7 @@
+     public void Tell(string title, string body) { Rdv3ConfirmForm.Tell(this, title, body); }
+     public bool AskLedgerSwitch(List<Rdv3CandRow> rows) { return Rdv3LedgerUpdateForm.Ask(this, rows); }
+     public void TellResetRows(List<Rdv3CandRow> rows) { Rdv3LedgerUpdateForm.TellReset(this, rows); }
+-    public void TellUnmatched(List<Rdv3UnmatchedChange> rows) { Rdv3UnmatchedForm.Tell(this, rows); }
++    public bool TellUnmatched(List<Rdv3UnmatchedChange> rows) { return Rdv3UnmatchedForm.Tell(this, rows); }
+ 
+     public void Fatal(string title, string body)
+     {
+@@ -378,7 +380,7 @@
+             if (modal == "candidates") { return Rdv3Json.Parse("{\"ok\":true,\"index\":0}"); }
+             return Rdv3Json.Parse("{\"ok\":true}");
+         }
+-        if (!pageReady) { return Rdv3Json.Parse("{\"ok\":false}"); }
++        if (!pageReady || IsModalOpen) { return Rdv3Json.Parse("{\"ok\":false}"); }
+         modalToken++;
+         waitingToken = modalToken;
+         modalResult = null;
+@@ -493,7 +495,11 @@
+                     if (handler != null) { handler(this, EventArgs.Empty); }
+                 }
+             }
+-            else if (type == "key") { keyText = Text(root, "value"); }
++            else if (type == "key")
++            {
++                keyText = Text(root, "value");
++                if (OnKeyChanged != null) { OnKeyChanged(keyText); }
++            }
+             else if (type == "action")
+             {
+                 Rdv3Json action = root;
+--- a/src/Rdv3Watch.cs
++++ b/src/Rdv3Watch.cs
+@@ -63,7 +63,7 @@
+     // name of the target it came from: several targets are watched at once, so a
+     // number recorded without its source cannot be traced back to the screen it
+     // was read off
+-    public Action<string, double, int, long, string> OnConfirmed;
++    public Func<string, double, int, long, string, bool> OnConfirmed;
+     public Action<string, string> OnState;      // state, detail
+     public Action<string> OnLabel;              // which target the status line names
+ 
+@@ -273,16 +273,18 @@
+                 double held = Rdv3Clock.MsSince(s.PendingSince);
+                 if (held >= Cfg.StableMs && Cfg.IsKey(cand) && (cand != s.LastFired || s.SawEmpty))
+                 {
+-                    s.LastFired = cand;
+-                    s.SawEmpty = false;
+                     activeName = s.T.Name;
+                     activeDetail = Detail(s);
+                     Announce();
+                     long confirmAt = Rdv3Clock.Now();
+                     if (OnConfirmed != null)
+                     {
+-                        OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls,
+-                            confirmAt, s.T.Name);
++                        if (OnConfirmed(cand, Rdv3Clock.MsBetween(s.PendingSince, confirmAt), s.PendingPolls,
++                            confirmAt, s.T.Name))
++                        {
++                            s.LastFired = cand;
++                            s.SawEmpty = false;
++                        }
+                     }
+                     break;                     // one reading per tick
+                 }
+--- a/src/Rdv3Xlsx.cs
++++ b/src/Rdv3Xlsx.cs
+@@ -65,20 +65,22 @@
+         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
+         {
+             string[] shared = ReadSharedStrings(z);
+-            ZipArchiveEntry sheet = FindSheet(z);
++            ZipArchiveEntry sheet = FindSheet(z, false);
+             if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
+-            using (XmlReader xr = XmlReader.Create(sheet.Open()))
++            using (XmlReader xr = Xml(sheet.Open()))
+             {
+                 List<string> cells = null;
+                 bool inRow = false;
+                 int col = 0;
+                 int rowNumber = 0;
++                HashSet<int> seenColumns = new HashSet<int>();
+                 while (xr.Read())
+                 {
+                     if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "row")
+                     {
+                         inRow = true;
+                         cells = new List<string>();
++                        seenColumns.Clear();
+                         col = 0;
+                         rowNumber++;
+                         int stated;
+@@ -96,6 +98,7 @@
+                             int referenced = ColOf(cellRef);
+                             if (referenced >= 0) { col = referenced; }
+                         }
++                        if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
+                         while (cells.Count <= col) { cells.Add(""); }
+                         cells[col] = ReadCellValue(xr, xr.GetAttribute("t"), shared);
+                         col++;
+@@ -130,7 +133,7 @@
+                 }
+             }
+         }
+-        if (head == null || (!headOnly && result.Count == 0))
++        if (head == null)
+         {
+             throw new Rdv3DataError(Rdv3Text.DataNoRows.Replace("{file}", file).Replace("{row}", "0"));
+         }
+@@ -164,7 +167,7 @@
+         char[] safe = null;
+         for (int i = 0; i < value.Length; i++)
+         {
+-            if (value[i] >= ' ') { continue; }
++            if (value[i] >= ' ' || value[i] == '\r' || value[i] == '\n') { continue; }
+             if (warning.Length == 0)
+             {
+                 warning = Rdv3Text.DataControlChar.Replace("{file}", file)
+@@ -178,15 +181,18 @@
+     }
+ 
+     // ---- write -------------------------------------------------------------
+-    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId)
+-    {
++    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId, string contract = null)
++    {
++        ValidateWrite(head, stateHead, lines, states);
+         string dir = Path.GetDirectoryName(Path.GetFullPath(path));
+-        string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + runId);
++        string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + Guid.NewGuid().ToString("N"));
+         try
+         {
+-            using (FileStream fs = new FileStream(tmp, FileMode.Create, FileAccess.Write))
++            using (FileStream fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write))
+             using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Create))
+             {
++                if (!string.IsNullOrEmpty(contract))
++                { AddEntry(z, "rdv-contract.xml", "<contract>" + contract + "</contract>"); }
+                 AddEntry(z, "[Content_Types].xml",
+                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
+                     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
+@@ -276,14 +282,14 @@
+ 
+     private static void Cell(StreamWriter w, string v, bool head)
+     {
+-        w.Write(head ? "<c t=\"inlineStr\" s=\"1\"><is><t>" : "<c t=\"inlineStr\"><is><t>");
++        w.Write(head ? "<c t=\"inlineStr\" s=\"1\"><is><t xml:space=\"preserve\">" : "<c t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+         Esc(w, v, 0, v.Length);
+         w.Write("</t></is></c>");
+     }
+ 
+     private static void CellSpan(StreamWriter w, string s, int off, int len)
+     {
+-        w.Write("<c t=\"inlineStr\"><is><t>");
++        w.Write("<c t=\"inlineStr\"><is><t xml:space=\"preserve\">");
+         Esc(w, s, off, len);
+         w.Write("</t></is></c>");
+     }
+@@ -294,7 +300,8 @@
+         for (int i = off; i < end; i++)
+         {
+             char ch = s[i];
+-            if (ch == '&') { w.Write("&amp;"); }
++            if (ch == '\r') { w.Write("&#13;"); }
++            else if (ch == '&') { w.Write("&amp;"); }
+             else if (ch == '<') { w.Write("&lt;"); }
+             else if (ch == '>') { w.Write("&gt;"); }
+             else { w.Write(ch); }
+@@ -318,7 +325,7 @@
+     }
+ 
+     public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states,
+-                            out string warning)
++                            out string warning, string expectedContract = null)
+     {
+         warning = "";
+         // ReadWrite | Delete: another copy of the app may replace the file
+@@ -330,7 +337,8 @@
+         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
+         {
+             string[] shared = ReadSharedStrings(z);
+-            ZipArchiveEntry sheet = FindSheet(z);
++            CheckContract(z, expectedContract);
++            ZipArchiveEntry sheet = FindSheet(z, true);
+             if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
+ 
+             List<string> outLines = new List<string>(131072);
+@@ -338,16 +346,18 @@
+             string[] cells = new string[head.Length + 1];
+             bool sawHeader = false;
+ 
+-            using (XmlReader xr = XmlReader.Create(sheet.Open()))
++            using (XmlReader xr = Xml(sheet.Open()))
+             {
+                 int col = 0;
+                 bool inRow = false;
++                HashSet<int> seenColumns = new HashSet<int>();
+                 while (xr.Read())
+                 {
+                     if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "row")
+                     {
+                         inRow = true;
+                         col = 0;
++                        seenColumns.Clear();
+                         for (int i = 0; i < cells.Length; i++) { cells[i] = ""; }
+                         if (xr.IsEmptyElement) { inRow = false; }
+                         continue;
+@@ -360,9 +370,11 @@
+                             int rc = ColOf(r);
+                             if (rc >= 0) { col = rc; }
+                         }
++                        if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
+                         string t = xr.GetAttribute("t");
+                         string v = ReadCellValue(xr, t, shared);
+                         if (col < cells.Length) { cells[col] = v; }
++                        else if (v.Length > 0) { throw new InvalidDataException("ledger has unexpected non-empty columns: " + path); }
+                         col++;
+                         continue;
+                     }
+@@ -426,11 +438,16 @@
+     {
+         if (xr.IsEmptyElement) { return ""; }
+         StringBuilder v = new StringBuilder();
++        bool formula = false, cached = false;
+         using (XmlReader sub = xr.ReadSubtree())
+         {
+             bool moved = sub.Read();
+             while (moved)
+             {
++                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "rPh")
++                { sub.Skip(); moved = !sub.EOF; continue; }
++                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "f") { formula = true; }
++                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "v") { cached = true; }
+                 if (sub.NodeType == XmlNodeType.Element &&
+                     (sub.LocalName == "v" || sub.LocalName == "t") && !sub.IsEmptyElement)
+                 {
+@@ -442,6 +459,7 @@
+                 moved = sub.Read();
+             }
+         }
++        if (formula && !cached) { throw new InvalidDataException("XLSX formula has no cached result; recalculate and save the source workbook"); }
+         return Resolve(t, v.ToString(), shared);
+     }
+ 
+@@ -453,10 +471,13 @@
+             if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out idx) &&
+                 shared != null && idx >= 0 && idx < shared.Length)
+             {
++                if (shared[idx].Length > 32767) { throw new InvalidDataException("XLSX shared string exceeds 32767 characters"); }
+                 return shared[idx];
+             }
+-            return "";
+-        }
++            throw new InvalidDataException("invalid shared-string index in XLSX");
++        }
++        if (t == "e") { throw new InvalidDataException("XLSX contains a formula/error cell: " + s); }
++        if (s.Length > 32767) { throw new InvalidDataException("XLSX cell exceeds 32767 characters"); }
+         return s;
+     }
+ 
+@@ -465,12 +486,14 @@
+         ZipArchiveEntry e = z.GetEntry("xl/sharedStrings.xml");
+         if (e == null) { return null; }
+         List<string> all = new List<string>();
+-        using (XmlReader xr = XmlReader.Create(e.Open()))
++        using (XmlReader xr = Xml(e.Open()))
+         {
+             StringBuilder cur = null;
+             bool moved = xr.Read();
+             while (moved)
+             {
++                if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "rPh")
++                { xr.Skip(); moved = !xr.EOF; continue; }
+                 if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "si")
+                 {
+                     if (cur != null) { all.Add(cur.ToString()); }
+@@ -493,19 +516,93 @@
+         return all.ToArray();
+     }
+ 
+-    private static ZipArchiveEntry FindSheet(ZipArchive z)
+-    {
+-        ZipArchiveEntry e = z.GetEntry("xl/worksheets/sheet1.xml");
+-        if (e != null) { return e; }
+-        foreach (ZipArchiveEntry x in z.Entries)
+-        {
+-            if (x.FullName.StartsWith("xl/worksheets/", StringComparison.OrdinalIgnoreCase) &&
+-                x.FullName.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
+-            {
+-                return x;
+-            }
+-        }
+-        return null;
++    private static XmlReader Xml(Stream stream)
++    {
++        XmlReaderSettings settings = new XmlReaderSettings();
++        settings.DtdProcessing = DtdProcessing.Prohibit;
++        settings.XmlResolver = null;
++        settings.CloseInput = true;
++        settings.MaxCharactersInDocument = 512L * 1024L * 1024L;
++        return XmlReader.Create(stream, settings);
++    }
++
++    private static XmlDocument Document(ZipArchiveEntry entry)
++    {
++        if (entry == null) { throw new InvalidDataException("XLSX workbook metadata is missing"); }
++        XmlDocument doc = new XmlDocument();
++        doc.XmlResolver = null;
++        using (XmlReader reader = Xml(entry.Open())) { doc.Load(reader); }
++        return doc;
++    }
++
++    private static ZipArchiveEntry FindSheet(ZipArchive z, bool ledger)
++    {
++        XmlDocument workbook = Document(z.GetEntry("xl/workbook.xml"));
++        XmlDocument relations = Document(z.GetEntry("xl/_rels/workbook.xml.rels"));
++        XmlElement selected = null;
++        int sheetCount = 0;
++        foreach (XmlNode node in workbook.GetElementsByTagName("*"))
++        {
++            XmlElement sheet = node as XmlElement;
++            if (sheet == null || sheet.LocalName != "sheet") { continue; }
++            sheetCount++;
++            if ((!ledger && selected == null) || (ledger && sheet.GetAttribute("name") == SheetName)) { selected = sheet; }
++        }
++        // The writer creates a single managed sheet. Do not silently discard
++        // additional sheets someone added to the shared ledger.
++        if (ledger && sheetCount != 1) { throw new InvalidDataException("shared ledger must contain only the LEDGER worksheet; preserve additional sheets separately"); }
++        if (selected == null) { throw new InvalidDataException(ledger ? "LEDGER worksheet is missing" : "no worksheet in workbook"); }
++        string id = "";
++        foreach (XmlAttribute attribute in selected.Attributes)
++        { if (attribute.LocalName == "id") { id = attribute.Value; } }
++        foreach (XmlNode node in relations.GetElementsByTagName("*"))
++        {
++            XmlElement relation = node as XmlElement;
++            if (relation == null || relation.LocalName != "Relationship" || relation.GetAttribute("Id") != id) { continue; }
++            if (relation.GetAttribute("TargetMode") == "External"
++                || !relation.GetAttribute("Type").EndsWith("/worksheet", StringComparison.Ordinal))
++            { throw new InvalidDataException("selected XLSX sheet is not a local worksheet"); }
++            Uri target = new Uri(new Uri("http://rdv.local/xl/workbook.xml"), relation.GetAttribute("Target").Replace('\\', '/'));
++            if (target.Host != "rdv.local" || target.Scheme != "http") { throw new InvalidDataException("invalid worksheet target"); }
++            ZipArchiveEntry entry = z.GetEntry(Uri.UnescapeDataString(target.AbsolutePath).TrimStart('/'));
++            if (entry == null) { throw new InvalidDataException("worksheet relationship points to a missing part"); }
++            return entry;
++        }
++        throw new InvalidDataException("worksheet relationship is missing");
++    }
++
++    private static void CheckContract(ZipArchive zip, string expected)
++    {
++        if (string.IsNullOrEmpty(expected)) { return; }
++        ZipArchiveEntry entry = zip.GetEntry("rdv-contract.xml");
++        if (entry == null) { return; } // Legacy ledger: header validation still applies.
++        XmlDocument doc = Document(entry);
++        if (doc.DocumentElement == null || doc.DocumentElement.LocalName != "contract"
++            || doc.DocumentElement.InnerText != expected)
++        { throw new InvalidDataException(Rdv3Text.StorageContractMismatch); }
++    }
++
++    private static void ValidateCell(string value)
++    {
++        if (value == null || value.Length > 32767) { throw new InvalidDataException("invalid/oversized XLSX cell"); }
++        XmlConvert.VerifyXmlChars(value);
++    }
++
++    private static void ValidateWrite(string[] head, string stateHead, string[] lines, string[] states)
++    {
++        if (head == null || lines == null || states == null || lines.Length != states.Length
++            || head.Length == 0 || head.Length >= 16384 || lines.Length >= 1048576)
++        { throw new InvalidDataException("invalid XLSX dimensions or state count"); }
++        ValidateCell(stateHead);
++        for (int c = 0; c < head.Length; c++) { ValidateCell(head[c]); }
++        for (int r = 0; r < lines.Length; r++)
++        {
++            ValidateCell(states[r]);
++            if (lines[r] == null) { throw new InvalidDataException("null ledger row"); }
++            string[] cells = lines[r].Split('\t');
++            if (cells.Length != head.Length) { throw new InvalidDataException("ledger row column count differs from header"); }
++            for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c]); }
++        }
+     }
+ 
+     // "D5" -> 3. Letters only matter; the row digits are ignored.
+@@ -519,6 +616,7 @@
+             if (ch >= 'A' && ch <= 'Z') { col = col * 26 + (ch - 'A' + 1); any = true; }
+             else if (ch >= 'a' && ch <= 'z') { col = col * 26 + (ch - 'a' + 1); any = true; }
+             else { break; }
++            if (col > 16384) { throw new InvalidDataException("XLSX column reference exceeds XFD"); }
+         }
+         return any ? col - 1 : -1;
+     }
+--- a/src/ReaderDataViewer.ps1
++++ b/src/ReaderDataViewer.ps1
+@@ -1,5 +1,7 @@
+-[CmdletBinding(PositionalBinding = $false)]
++﻿[CmdletBinding(PositionalBinding = $false)]
+ param(
++    [switch]$CompileOnly,
++    [switch]$TestCore,
+     [Parameter(ValueFromRemainingArguments = $true)]
+     [string[]]$ReaderArguments
+ )
+@@ -7,6 +9,10 @@
+ Set-StrictMode -Version 2
+ $ErrorActionPreference = 'Stop'
+ $startupFailureExitCode = 3
++if ($ReaderArguments -and $ReaderArguments.Count -gt 0) {
++    [Console]::Error.WriteLine('Unknown arguments: ' + ($ReaderArguments -join ' '))
++    exit 2
++}
+ 
+ function Write-ReaderLauncherLog {
+     param(
+@@ -76,6 +82,10 @@
+         throw "No C# source files were found in: $sourceDirectory"
+     }
+ 
++    if ($TestCore) {
++        $sourceFiles += Get-Item -LiteralPath (Join-Path $baseDirectory 'tests\RegressionTests.cs')
++    }
++
+     $combined = ($sourceFiles | ForEach-Object {
+         [IO.File]::ReadAllText($_.FullName, [Text.Encoding]::UTF8)
+     }) -join [Environment]::NewLine
+@@ -105,6 +115,14 @@
+         -ReferencedAssemblies $references `
+         -Language CSharp
+ 
++    if ($TestCore) {
++        $testExitCode = [Rdv3RegressionTests]::Run($baseDirectory)
++        exit $testExitCode
++    }
++    if ($CompileOnly) {
++        [Console]::WriteLine('PASS: all application C# sources compiled. No window or ledger was opened.')
++        exit 0
++    }
+     $exitCode = [ReaderDataViewer.App]::Run($baseDirectory)
+     exit $exitCode
+ }
+--- /dev/null
++++ b/tests/RegressionTests.cs
+@@ -0,0 +1,373 @@
++// Windows/.NET Framework regression tests. Never write the supplied input data
++// or the configured ledger. All ledger/CSV/pending fixtures use a fresh temp dir.
++using System;
++using System.Collections.Generic;
++using System.Diagnostics;
++using System.Globalization;
++using System.IO;
++using System.IO.Compression;
++using System.Text;
++using System.Threading;
++
++public static class Rdv3RegressionTests
++{
++    private static string root, temp;
++    private static int passed, failed;
++    private static readonly List<string> results = new List<string>();
++
++    private static void Check(bool condition, string message)
++    { if (!condition) { throw new Exception(message); } }
++    private static void Throws<T>(Action action) where T : Exception
++    {
++        try { action(); }
++        catch (T) { return; }
++        throw new Exception("Expected " + typeof(T).Name);
++    }
++    private static void Test(string name, Action action)
++    {
++        try { action(); passed++; results.Add("PASS " + name); }
++        catch (Exception ex) { failed++; results.Add("FAIL " + name + ": " + ex); }
++        Console.WriteLine(results[results.Count - 1]);
++    }
++    private static string NewPath(string suffix)
++    { return Path.Combine(temp, Guid.NewGuid().ToString("N") + suffix); }
++    private static string Csv(string text, Encoding encoding)
++    {
++        string path = NewPath(".csv");
++        File.WriteAllText(path, text, encoding);
++        return path;
++    }
++    private static Rdv3Table Table(string text)
++    { return Rdv3Table.Read(Csv(text, new UTF8Encoding(false)), "T", Encoding.UTF8, "id"); }
++    private static Rdv3PendingStore Pending()
++    { return new Rdv3PendingStore(NewPath(".pending")); }
++    private static string[] Lines() { return new string[] { "001\tA", "002\tB" }; }
++    private static string[] States() { return new string[] { "0", "0" }; }
++    private static void Entry(ZipArchive zip, string name, string text)
++    {
++        using (StreamWriter writer = new StreamWriter(zip.CreateEntry(name).Open(), new UTF8Encoding(false)))
++        { writer.Write(text); }
++    }
++    private static string Worksheet(string cell)
++    {
++        return "<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>"
++            + "<row><c t=\"inlineStr\"><is><t>id</t></is></c></row><row>" + cell + "</row></sheetData></worksheet>";
++    }
++    private static string Fixture(string cell, bool reordered)
++    {
++        string path = NewPath(".xlsx");
++        using (FileStream stream = File.Create(path))
++        using (ZipArchive zip = new ZipArchive(stream, ZipArchiveMode.Create))
++        {
++            Entry(zip, "xl/workbook.xml", "<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets>"
++                + (reordered ? "<sheet name=\"first\" sheetId=\"2\" r:id=\"r2\"/>" : "")
++                + "<sheet name=\"LEDGER\" sheetId=\"1\" r:id=\"r1\"/></sheets></workbook>");
++            Entry(zip, "xl/_rels/workbook.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">"
++                + "<Relationship Id=\"r1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet1.xml\"/>"
++                + "<Relationship Id=\"r2\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet\" Target=\"worksheets/sheet2.xml\"/></Relationships>");
++            Entry(zip, "xl/worksheets/sheet1.xml", Worksheet(cell));
++            Entry(zip, "xl/worksheets/sheet2.xml", Worksheet("<c t=\"inlineStr\"><is><t>SECOND-PART-FIRST-TAB</t></is></c>"));
++            Entry(zip, "xl/sharedStrings.xml", "<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>one</t></si></sst>");
++        }
++        return path;
++    }
++    private static string[][] ReadSource(string path)
++    {
++        string[] head; string[][] rows; string warning;
++        Rdv3Xlsx.ReadTable(path, out head, out rows, out warning);
++        return rows;
++    }
++    private static void RewriteSheet(string path, Func<string, string> change)
++    {
++        using (FileStream file = new FileStream(path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
++        using (ZipArchive zip = new ZipArchive(file, ZipArchiveMode.Update))
++        {
++            ZipArchiveEntry old = zip.GetEntry("xl/worksheets/sheet1.xml");
++            string text;
++            using (StreamReader reader = new StreamReader(old.Open())) { text = reader.ReadToEnd(); }
++            old.Delete(); Entry(zip, "xl/worksheets/sheet1.xml", change(text));
++        }
++    }
++    private static void ReadLedger(string path, string contract)
++    {
++        string[] lines, states; string warning;
++        Rdv3Xlsx.Read(path, new string[] { "id", "value" }, "state", out lines, out states, out warning, contract);
++    }
++
++    public static int Run(string directory)
++    {
++        root = Path.Combine(Path.GetFullPath(directory), "tests", "fixtures");
++        temp = Path.Combine(Path.GetTempPath(), "rdv-regression-" + Guid.NewGuid().ToString("N"));
++        Directory.CreateDirectory(temp);
++        passed = failed = 0; results.Clear();
++        results.Add("UTC " + DateTime.UtcNow.ToString("o", CultureInfo.InvariantCulture));
++        results.Add("OS " + Environment.OSVersion + "; CLR " + Environment.Version);
++        try
++        {
++            Test("json-comments-trailing-comma", delegate { Check(Rdv3Json.Parse("{/*x*/\"a\":[1,],}").Member("a").Count == 1, "JSONC"); });
++            Test("json-invalid-number-forms", delegate {
++                foreach (string value in new string[] { "01", "1.", "-.1", "1e", "1e9999", "+1" })
++                { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse(value); }); }
++            });
++            Test("json-unclosed-comment", delegate { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse("{} /*oops"); }); });
++            Test("json-unescaped-control", delegate { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse("\"a\tb\""); }); });
++            Test("json-surrogate-pairs", delegate {
++                Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse("\"\\uD800\""); });
++                Check(Rdv3Json.Parse("\"\\uD83D\\uDE00\"").Str.Length == 2, "valid pair");
++            });
++            Test("json-depth-limit", delegate { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse(new string('[', 140) + "0" + new string(']', 140)); }); });
++            Test("json-duplicate-member", delegate { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse("{\"a\":1,\"a\":2}"); }); });
++            Test("whole-input-regex", delegate {
++                Rdv3Config c = new Rdv3Config(); c.KeyPattern = "[0-9]{3}";
++                Check(c.IsKey("123") && !c.IsKey("x123x") && !c.IsKey("123\n"), "full match");
++                c.KeyPattern = "a|ab"; Check(c.IsKey("a") && c.IsKey("ab"), "alternative backtracking");
++            });
++            Test("bounded-regex-time", delegate {
++                Rdv3Config c = new Rdv3Config(); c.KeyPattern = "(a+)+$";
++                Stopwatch clock = Stopwatch.StartNew(); Check(!c.IsKey(new string('a', 36) + "!"), "no match");
++                Check(clock.ElapsedMilliseconds < 5000, "regex timeout was not bounded");
++            });
++            Test("pending-disjoint-merge", delegate {
++                Rdv3PendingStore a = Pending(), b = Pending();
++                a.Set("001", "1", Lines()[0], "0"); b.Set("002", "1", Lines()[1], "0");
++                Rdv3PendingApply first = a.PrepareSend(Lines(), States(), 0, "0");
++                Rdv3PendingApply next = b.PrepareSend(Lines(), first.States, 0, "0");
++                Check(next.States[0] == "1" && next.States[1] == "1", "lost disjoint change");
++            });
++            Test("pending-same-row-conflict", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "2", Lines()[0], "0");
++                Rdv3PendingApply a = p.PrepareSend(Lines(), new string[] { "1", "0" }, 0, "0");
++                Check(a.States[0] == "1" && a.Resolved.Count == 0 && a.Unmatched[0].Reason == "state-conflict" && p.Count == 1, "overwrote conflict");
++                Check(p.Overlay(Lines(), new string[] { "1", "0" }, 0)[0] == "1", "overlay concealed conflict");
++            });
++            Test("pending-idempotent-retry", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "1", Lines()[0], "0");
++                Rdv3PendingApply a = p.PrepareSend(Lines(), new string[] { "1", "0" }, 0, "0");
++                Check(a.Resolved.Count == 1 && a.FromInitial + a.ToInitial == 0, "double counted retry");
++            });
++            Test("pending-content-change", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "1", Lines()[0], "0");
++                Rdv3PendingApply a = p.PrepareSend(new string[] { "001\tNEW", Lines()[1] }, States(), 0, "0");
++                Check(a.Unmatched[0].Reason == "changed" && a.States[0] == "0", "content mismatch");
++            });
++            Test("pending-deleted-row", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "1", Lines()[0], "0");
++                Check(p.PrepareSend(new string[0], new string[0], 0, "0").Unmatched[0].Reason == "missing", "missing");
++            });
++            Test("pending-baseline-not-rebased", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "1", Lines()[0], "0"); p.Set("001", "2", Lines()[0], "1");
++                Check(p.PrepareSend(Lines(), new string[] { "1", "0" }, 0, "0").Unmatched[0].Reason == "state-conflict", "rebased stale intent");
++            });
++            Test("pending-restart-and-discard", delegate {
++                Rdv3PendingStore p = Pending(); p.Set("001", "1", Lines()[0], "0");
++                p = new Rdv3PendingStore(p.Path); Check(p.Snapshot()[0].BaselineKnown, "baseline missing after restart");
++                p.Remove(new List<string>(new string[] { "001" })); Check(new Rdv3PendingStore(p.Path).Count == 0, "discard not persisted");
++            });
++            Test("legacy-pending-fails-closed", delegate {
++                string path = NewPath(".pending");
++                File.WriteAllText(path, "RDV-PENDING-1\r\nMDAx\tMQ==\t" + Rdv3PendingStore.DigestOf(Lines()[0]) + "\r\n", new UTF8Encoding(false));
++                Rdv3PendingStore p = new Rdv3PendingStore(path);
++                Check(p.PrepareSend(Lines(), States(), 0, "0").Unmatched[0].Reason == "legacy", "legacy overwritten");
++                Check(p.PrepareSend(Lines(), new string[] { "1", "0" }, 0, "0").Resolved.Count == 1, "legacy retry not idempotent");
++            });
++            Test("pending-invalid-digest", delegate {
++                string path = NewPath(".pending"); File.WriteAllText(path, "RDV-PENDING-1\r\nMDAx\tMQ==\tbad\r\n");
++                Throws<InvalidDataException>(delegate { new Rdv3PendingStore(path); });
++            });
++            Test("local-session-exclusive", delegate {
++                string path = NewPath(".pending");
++                using (FileStream a = Rdv3Files.AcquireLocalSession(path))
++                { Throws<IOException>(delegate { using (FileStream b = Rdv3Files.AcquireLocalSession(path)) { } }); }
++                using (FileStream c = Rdv3Files.AcquireLocalSession(path)) { }
++            });
++            Test("shared-lock-live-not-stale", delegate {
++                Rdv3SharedFiles shared = new Rdv3SharedFiles(NewPath(".xlsx"), "host", "user", "test"); Rdv3LockInfo info;
++                using (Rdv3LedgerLock a = shared.TryAcquire(out info))
++                {
++                    Check(a != null, "first lock");
++                    Check(shared.TryAcquire(out info) == null, "second lock acquired");
++                    Thread.Sleep(20); long age; Check(!shared.TryRemoveStaleLock(0, out age), "deleted live lock");
++                }
++                using (Rdv3LedgerLock b = shared.TryAcquire(out info)) { Check(b != null, "lock not released"); }
++            });
++            Test("csv-plain-and-blank-lines", delegate {
++                Rdv3Table t = Table("id,note\r\n\r\n001,A\r\n002,B\r\n");
++                Check(t.Rows == 2 && t.SourceRow(0) == 3, "physical row number");
++            });
++            Test("csv-quotes-comma-doublequote-multiline", delegate {
++                Rdv3Table t = Table("\"id\",\"note\"\r\n\"001\",\"a,b\"\r\n\"002\",\"a\"\"b\r\nline\"\r\n");
++                Check(t.Rows == 2 && t.Field(0, 1) == "a,b" && t.Field(1, 1) == "a\"b\r\nline", "quoted CSV");
++            });
++            Test("csv-header-only", delegate { Check(Table("id,note\r\n").Rows == 0 && Table("\"id\",note\r\n").Rows == 0, "empty table"); });
++            Test("csv-cr-only", delegate { Check(Table("id,note\r001,A\r002,B\r").Rows == 2, "CR records"); });
++            Test("csv-declared-utf16", delegate {
++                string path = Csv("id,note\r\n001,\u65e5\u672c\r\n", Encoding.Unicode);
++                Check(Rdv3Table.Read(path, "T", Encoding.Unicode, "id").Field(0, 1) == "\u65e5\u672c", "UTF16 decoding");
++                Throws<Rdv3DataError>(delegate { Rdv3Table.Read(path, "T", Encoding.UTF8, "id"); });
++            });
++            Test("csv-invalid-encoding", delegate {
++                string path = NewPath(".csv"); File.WriteAllBytes(path, new byte[] { 105,100,44,110,10,48,48,49,44,255,10 });
++                Throws<Exception>(delegate { Rdv3Table.Read(path, "T", new UTF8Encoding(false), "id"); });
++            });
++            Test("csv-malformed-and-control-key", delegate {
++                Throws<Rdv3DataError>(delegate { Table("id,note\n001,\"unterminated"); });
++                Throws<Rdv3DataError>(delegate { Table("id,note\n001\t,A\n"); });
++                Throws<Rdv3DataError>(delegate { Table("id,note\n001,A,B\n"); });
++            });
++            Test("csv-unicode-variable-keys", delegate {
++                Rdv3KeyValidation v = new Rdv3KeyValidation(); v.Ascii = false; v.FixedLength = false;
++                string path = Csv("id,note\n\u65e5,A\n\u65e5\u672c,B\n", Encoding.UTF8);
++                Check(Rdv3Table.Read(path, "T", Encoding.UTF8, "id", v).Rows == 2, "Unicode config");
++            });
++            Test("index-no-ascii-replacement-match", delegate {
++                Rdv3Index index = new Rdv3Index(Table("id,note\n?,A\n")); List<int> hits;
++                Check(index.FindBytes(new byte[] { 255 }, 0, 1, out hits) == 0, "non-ASCII matched question mark");
++            });
++            Test("xlsx-roundtrip-whitespace-crlf-zero", delegate {
++                string path = NewPath(".xlsx"); string value = "001\t  A\r\nB  ";
++                Rdv3Xlsx.Write(path, new string[] { "id", "value" }, "state", new string[] { value }, new string[] { "0" }, "t");
++                string[] lines, states; Rdv3Xlsx.Read(path, new string[] { "id", "value" }, "state", out lines, out states);
++                Check(lines[0] == value && states[0] == "0", "roundtrip text changed");
++            });
++            Test("xlsx-write-shape-fails-before-replace", delegate {
++                string path = NewPath(".xlsx"); File.WriteAllText(path, "KEEP");
++                Throws<InvalidDataException>(delegate { Rdv3Xlsx.Write(path, new string[] { "id", "v" }, "state", new string[] { "001" }, new string[] { "0" }, "t"); });
++                Check(File.ReadAllText(path) == "KEEP", "destroyed previous target");
++            });
++            Test("xlsx-invalid-xml-character", delegate {
++                Throws<Exception>(delegate { Rdv3Xlsx.Write(NewPath(".xlsx"), new string[] { "id" }, "state", new string[] { "A\0" }, new string[] { "0" }, "t"); });
++            });
++            Test("xlsx-logical-sheet-order", delegate {
++                Check(ReadSource(Fixture("<c t=\"inlineStr\"><is><t>WRONG</t></is></c>", true))[0][0] == "SECOND-PART-FIRST-TAB", "physical sheet1 was used");
++            });
++            Test("xlsx-header-only-source", delegate {
++                string path = Fixture("", false);
++                Check(ReadSource(path).Length == 0, "header-only XLSX was not empty");
++            });
++            Test("xlsx-ledger-additional-sheets-refused", delegate {
++                Throws<InvalidDataException>(delegate { ReadLedger(Fixture("", true), null); });
++            });
++            Test("xlsx-phonetic-text-not-concatenated", delegate {
++                string cell = "<c t=\"inlineStr\"><is><r><t>AB</t></r><rPh sb=\"0\" eb=\"2\"><t>PHONETIC</t></rPh></is></c>";
++                Check(ReadSource(Fixture(cell, false))[0][0] == "AB", "phonetic text appended");
++            });
++            Test("xlsx-invalid-shared-index", delegate { Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c t=\"s\"><v>999</v></c>", false)); }); });
++            Test("xlsx-no-formula-cache-and-error", delegate {
++                Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c><f>1+1</f></c>", false)); });
++                Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c t=\"e\"><v>#DIV/0!</v></c>", false)); });
++            });
++            Test("xlsx-oversized-column", delegate { Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c r=\"ZZZZZZ999\"><v>1</v></c>", false)); }); });
++            Test("xlsx-extra-ledger-column", delegate {
++                string path = NewPath(".xlsx"); Rdv3Xlsx.Write(path, new string[] { "id", "value" }, "state", Lines(), States(), "t");
++                RewriteSheet(path, delegate(string xml) { return xml.Replace("</row></sheetData>", "<c r=\"D3\" t=\"inlineStr\"><is><t>KEEP-ME</t></is></c></row></sheetData>"); });
++                Throws<InvalidDataException>(delegate { ReadLedger(path, null); });
++            });
++            Test("xlsx-storage-contract", delegate {
++                string path = NewPath(".xlsx"); string contract = Rdv3PendingStore.DigestOf("schema-a");
++                Rdv3Xlsx.Write(path, new string[] { "id", "value" }, "state", Lines(), States(), "t", contract);
++                ReadLedger(path, contract);
++                Throws<InvalidDataException>(delegate { ReadLedger(path, Rdv3PendingStore.DigestOf("schema-b")); });
++            });
++            Test("export-no-overwrite-and-atomic-cleanup", delegate {
++                string path = NewPath(".csv"); Rdv3Files.WriteNewText(path, "KEEP");
++                Throws<IOException>(delegate { Rdv3Files.WriteNewText(path, "REPLACE"); });
++                Check(File.ReadAllText(path) == "KEEP" && Directory.GetFiles(temp, ".rdv-export-*.tmp").Length == 0, "export changed target/temp leak");
++            });
++            Test("export-duplicate-headers-qualified", delegate {
++                Rdv3Data d = new Rdv3Data();
++                Rdv3ColumnRef a = new Rdv3ColumnRef(); a.Ref = "A.id"; a.Column = "id"; d.Columns.Add(a);
++                Rdv3ColumnRef b = new Rdv3ColumnRef(); b.Ref = "B.id"; b.Column = "id"; d.Columns.Add(b);
++                string[] headers = Rdv3Files.ExportHeaders(new List<string> { "A.id", "B.id", "$work" }, d, "id");
++                Check(headers[0] == "A.id" && headers[1] == "B.id" && headers[2] == "id ($work)", "ambiguous export headings");
++            });
++            Test("export-formula-mode-explicit", delegate {
++                Check(Rdv3Files.CsvCell(" =1+1", true) == "' =1+1", "unsafe formula");
++                Check(Rdv3Files.CsvCell("=1+1", false) == "=1+1", "raw export changed");
++                Check(Rdv3Files.CsvCell("a,b", false) == "\"a,b\"", "CSV quoting");
++            });
++            Test("config-sample-and-unlabelled-export", delegate {
++                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
++                string reference = c.Data.Columns[c.Data.Columns.Count - 1].Ref;
++                c.Data.LabelOrder.Remove(reference); c.Screen.ExportDefaultFields = new string[] { reference };
++                c.Screen.Check(c.Data); Check(c.Screen.Work.Trigger == "manual", "unsafe default watch");
++            });
++            Test("config-save-cas", delegate {
++                string path = NewPath(".json"); File.Copy(Path.Combine(root, "settings.json"), path);
++                Rdv3Config a = Rdv3Config.Load(path), b = Rdv3Config.Load(path);
++                a.KeyPattern = "a|ab"; Check(a.Save(path) == null, "first save failed");
++                string after = File.ReadAllText(path); b.KeyPattern = "[0-9]+";
++                Check(b.Save(path) != null && File.ReadAllText(path) == after, "stale settings overwrote newer settings");
++            });
++            Test("config-protected-paths", delegate {
++                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json")); c.Log = c.Ledger;
++                Throws<IOException>(delegate { Rdv3Files.ValidateLayout(c, root, c.SourcePath); });
++                c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
++                string data = Rdv3Files.Full(c.DataDir, root);
++                Throws<IOException>(delegate { Rdv3Files.ExportPath(Path.Combine(data, c.Data.Tables[0].File), root, data, Rdv3Files.Full(c.Ledger, root), Rdv3Files.Full(c.Log, root), c.SourcePath, c.Data); });
++            });
++            Test("config-file-only-job-input-protected", delegate {
++                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
++                c.Log = Path.Combine(c.DataDir, "delete.csv");
++                Throws<IOException>(delegate { Rdv3Files.ValidateLayout(c, root, c.SourcePath); });
++            });
++            Test("supplied-data-pipeline-readonly", delegate {
++                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
++                Rdv3MergeResult m = Rdv3Ledger.BuildFromCsv(c.Data, c.Data.UpdateJob, Rdv3Files.Full(c.DataDir, root));
++                Check(m.Lines != null && m.Lines.Length > 0, "sample pipeline produced no rows");
++                Rdv3Ledger.RowMap(m.Lines, c.Data.IdentityCol, "test");
++            });
++            Test("eight-thread-shared-ledger-simulation", ConcurrentWriters);
++        }
++        finally
++        {
++            results.Add("TOTAL passed=" + passed + " failed=" + failed);
++            string resultPath = Path.Combine(Path.GetFullPath(directory), "tests", "results", "core-results.txt");
++            Directory.CreateDirectory(Path.GetDirectoryName(resultPath));
++            File.WriteAllLines(resultPath, results.ToArray(), new UTF8Encoding(false));
++            try { Directory.Delete(temp, true); } catch (Exception ex) { Console.WriteLine("TEMP CLEANUP: " + ex.Message); }
++        }
++        Console.WriteLine("TOTAL passed=" + passed + " failed=" + failed);
++        return failed == 0 ? 0 : 1;
++    }
++
++    private static void ConcurrentWriters()
++    {
++        string path = NewPath(".xlsx");
++        string[] head = { "id", "value" }, lines = new string[8], states = new string[8];
++        for (int i = 0; i < 8; i++) { lines[i] = i.ToString("D3", CultureInfo.InvariantCulture) + "\tvalue"; states[i] = "0"; }
++        Rdv3Xlsx.Write(path, head, "state", lines, states, "init");
++        List<Exception> errors = new List<Exception>(); List<Thread> threads = new List<Thread>();
++        for (int i = 0; i < 8; i++)
++        {
++            int row = i;
++            Thread thread = new Thread(delegate()
++            {
++                try
++                {
++                    Rdv3PendingStore pending = Pending();
++                    pending.Set(row.ToString("D3", CultureInfo.InvariantCulture), "1", lines[row], "0");
++                    Rdv3SharedFiles shared = new Rdv3SharedFiles(path, "test", "worker", row.ToString(CultureInfo.InvariantCulture));
++                    Rdv3LockInfo info; Rdv3LedgerLock lease = null; Stopwatch clock = Stopwatch.StartNew();
++                    while (lease == null && clock.ElapsedMilliseconds < 30000)
++                    { lease = shared.TryAcquire(out info); if (lease == null) { Thread.Sleep(10); } }
++                    if (lease == null) { throw new Exception("lock wait timed out"); }
++                    using (lease)
++                    {
++                        string[] latest, stored; Rdv3Xlsx.Read(path, head, "state", out latest, out stored);
++                        Rdv3PendingApply apply = pending.PrepareSend(latest, stored, 0, "0");
++                        Check(apply.Unmatched.Count == 0, "unexpected conflict");
++                        Rdv3Xlsx.Write(path, head, "state", latest, apply.States, "send");
++                        shared.WriteMarker("send", latest.Length, apply.FromInitial, apply.ToInitial);
++                        pending.Remove(apply.Resolved);
++                    }
++                }
++                catch (Exception ex) { lock (errors) { errors.Add(ex); } }
++            });
++            threads.Add(thread); thread.Start();
++        }
++        for (int i = 0; i < threads.Count; i++) { threads[i].Join(); }
++        if (errors.Count > 0) { throw new Exception("parallel writer failed", errors[0]); }
++        string[] finalLines, finalStates; Rdv3Xlsx.Read(path, head, "state", out finalLines, out finalStates);
++        for (int i = 0; i < 8; i++) { Check(finalStates[i] == "1", "lost update at row " + i); }
++    }
++}
+--- /dev/null
++++ b/tests/test_static.py
+@@ -0,0 +1,171 @@
++#!/usr/bin/env python3
++"""Limited cross-platform consistency checks; NOT a C# compiler or runtime test.
++Requires: Python 3, pygments, json5, Node.js on PATH.
++"""
++import argparse
++import collections
++import csv
++import datetime
++import hashlib
++import json
++import pathlib
++import platform
++import re
++import subprocess
++import sys
++import json5
++from pygments import lex
++from pygments.lexers import CSharpLexer
++from pygments.token import Comment, Error, String
++
++
++def check(condition, message):
++    if not condition:
++        raise AssertionError(message)
++
++
++def cs_tokens(text):
++    # Pygments misclassifies valid unicode-escape C# char literals.
++    text = re.sub(r"'\\u[0-9a-fA-F]{4}'", "'X'", text)
++    return list(lex(text, CSharpLexer()))
++
++
++def check_cs(path):
++    tokens = cs_tokens(path.read_text(encoding="utf-8-sig"))
++    check(not [(str(k), v) for k, v in tokens if k in Error], "unexpected lexical token in " + path.name)
++    stack = []
++    for kind, value in tokens:
++        if kind in Comment or kind in String:
++            continue
++        for char in value:
++            if char in "{([":
++                stack.append(char)
++            elif char in "})]":
++                check(stack and "{([".index(stack.pop()) == "})]".index(char), "delimiter mismatch in " + path.name)
++    check(not stack, "unclosed delimiter in " + path.name)
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
++    parser.add_argument("--original", type=pathlib.Path, help="Optional unmodified extracted original root")
++    args = parser.parse_args()
++    root = args.root.resolve()
++    results = []
++    details = {}
++
++    def test(name, action):
++        try:
++            action()
++            results.append({"name": name, "status": "PASS"})
++        except Exception as error:
++            results.append({"name": name, "status": "FAIL", "detail": str(error)})
++        print(results[-1]["status"], name, results[-1].get("detail", ""))
++
++    sources = sorted((root / "src").glob("*.cs")) + [root / "tests" / "RegressionTests.cs"]
++    for source in sources:
++        test("csharp-lexical-delimiters:" + str(source.relative_to(root)), lambda p=source: check_cs(p))
++
++    code_only = "\n".join("".join(v for k, v in cs_tokens(p.read_text(encoding="utf-8-sig"))
++                                        if k not in Comment and k not in String) for p in sources)
++
++    def text_members():
++        definition = (root / "src" / "Rdv3Text.cs").read_text(encoding="utf-8-sig")
++        refs = set(re.findall(r"\bRdv3Text\.(\w+)\b", code_only))
++        declared = set(re.findall(r"\b(?:const\s+string|static\s+(?:readonly\s+)?string(?:\[\])?)\s+(\w+)", definition))
++        check(not refs - declared, "undeclared text names: " + str(sorted(refs - declared)))
++        constants = re.findall(r"\bconst\s+string\s+(\w+)", definition)
++        check(len(constants) == len(set(constants)), "duplicate text constants")
++        details["text_reference_count"] = len(refs)
++    test("text-reference-names", text_members)
++
++    def helpers():
++        for name in ("Rdv3Files", "Rdv3Csv"):
++            definition = (root / "src" / (name + ".cs")).read_text()
++            declared = set(re.findall(r"\b(?:public|private)\s+static\s+\S+\s+(\w+)\s*\(", definition))
++            refs = set(re.findall(r"\b" + name + r"\.(\w+)\b", code_only))
++            check(not refs - declared, name + " missing names: " + str(refs - declared))
++        check(all("System.IO.Rdv3Files" not in p.read_text(encoding="utf-8-sig") for p in sources), "invalid namespace substitution")
++    test("new-helper-reference-names", helpers)
++
++    def javascript():
++        run = subprocess.run(["node", "--check", str(root / "web" / "app.js")], capture_output=True, text=True, timeout=30)
++        check(run.returncode == 0, run.stdout + run.stderr)
++        details["node_version"] = subprocess.check_output(["node", "--version"], text=True).strip()
++    test("javascript-node-syntax", javascript)
++
++    cfg = json5.loads((root / "settings.json").read_text(encoding="utf-8-sig"))
++    def sample_config():
++        check(cfg["schema"] == 3 and cfg["screen"]["workState"]["trigger"] == "manual", "schema/trigger")
++        check(cfg["data"]["ledger"]["identity"] in cfg["data"]["ledger"]["columns"]["source"], "identity not persisted")
++        ids = [job["id"] for job in cfg["data"]["jobs"]]
++        check(len(ids) == len(set(ids)), "duplicate job id")
++        details["native_test_cases_provided_not_executed"] = len(re.findall(r'\bTest\("', (root / "tests" / "RegressionTests.cs").read_text()))
++    test("sample-jsonc-structure-and-safe-trigger", sample_config)
++
++    def sample_data():
++        data = cfg["data"]
++        directory = root / cfg["paths"]["dataDir"]
++        tables = {}
++        info = {}
++        for name, spec in data["tables"].items():
++            with (directory / spec["file"]).open(encoding=data["encoding"], newline="") as stream:
++                reader = csv.DictReader(stream)
++                rows = list(reader)
++                heads = reader.fieldnames
++            check(heads and len(heads) == len(set(heads)) and spec["key"] in heads, name + " invalid header")
++            check(all(None not in row and all(v is not None for v in row.values()) for row in rows), name + " column count")
++            validation = spec.get("keyValidation", {})
++            keys = [row[spec["key"]] for row in rows if row[spec["key"]] != "" or validation.get("empty") != "skip"]
++            check(all(keys), name + " empty key")
++            if validation.get("characters", "ascii") == "ascii":
++                check(all(key.isascii() for key in keys), name + " non-ASCII key")
++            if validation.get("length", "fixed") == "fixed":
++                check(len(set(map(len, keys))) <= 1, name + " variable key length")
++            if validation.get("duplicates", "error") == "error":
++                check(len(keys) == len(set(keys)), name + " duplicate key")
++            tables[name] = (heads, rows)
++            info[name] = {"source_rows": len(rows), "keyed_rows": len(keys), "columns": len(heads), "file": spec["file"]}
++        for ref in data["ledger"]["columns"]["source"]:
++            table, column = ref.split(".", 1)
++            check(table in tables and column in tables[table][0], "unknown persisted source column: " + ref)
++        for ref in data["types"]:
++            table, column = ref.split(".", 1)
++            check(table in tables and column in tables[table][0], "unknown typed column: " + ref)
++        for job in data["jobs"]:
++            for spec in job["inputs"]:
++                if "file" in spec:
++                    with (directory / spec["file"]).open(encoding=data["encoding"], newline="") as stream:
++                        reader = csv.DictReader(stream); rows = list(reader)
++                        check(spec["column"] in reader.fieldnames, "missing file-only input column")
++                        info[spec["file"]] = {"source_rows": len(rows), "columns": len(reader.fieldnames)}
++        # Independent shape/reference checks, not execution of the C# merge engine.
++        details["sample_data"] = info
++    test("supplied-csv-shape-keys-source-references", sample_data)
++
++    if args.original:
++        def preserved_files():
++            original = args.original.resolve()
++            old = [p for p in original.rglob("*") if p.is_file()]
++            missing = [str(p.relative_to(original)) for p in old if not (root / p.relative_to(original)).is_file()]
++            check(not missing, "missing original files: " + str(missing))
++            protected = [p for p in old if p.relative_to(original).parts[0] in ("lib", "data") or p.name in ("LICENSE", "THIRD-PARTY-NOTICES.md")]
++            changed = [str(p.relative_to(original)) for p in protected if p.read_bytes() != (root / p.relative_to(original)).read_bytes()]
++            check(not changed, "original inputs/binaries/licenses changed: " + str(changed))
++            details["original_file_count"] = len(old)
++            details["preserved_input_binary_license_files"] = len(protected)
++            details["original_zip_sha256"] = hashlib.sha256((original.parent.parent / "ReaderDataViewer.zip").read_bytes()).hexdigest() if (original.parent.parent / "ReaderDataViewer.zip").exists() else None
++        test("original-file-completeness-and-input-binary-license-preservation", preserved_files)
++
++    passed = sum(item["status"] == "PASS" for item in results)
++    output = {"scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
++              "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(), "platform": platform.platform(),
++              "passed": passed, "failed": len(results) - passed, "details": details, "tests": results}
++    path = root / "tests" / "results" / "static-results.json"
++    path.parent.mkdir(parents=True, exist_ok=True)
++    path.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
++    return 0 if passed == len(results) else 1
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+--- /dev/null
++++ b/tests/test_web.py
+@@ -0,0 +1,212 @@
++#!/usr/bin/env python3
++"""Browser-only regression checks. Mock bridge; does not test C#/WPF/WebView2.
++Requires: Python 3, playwright, Chromium. Uses synthetic records only.
++"""
++import argparse
++import datetime
++import json
++import pathlib
++import platform
++import re
++import sys
++from playwright.sync_api import sync_playwright
++
++SCREEN = {
++    "card": {"width": 840, "gap": 12, "padding": [16, 16, 16, 16],
++             "font": "Arial", "fontSize": 11, "keyValueFontSize": 22,
++             "judgmentFontSize": 18, "unsearchedFontSize": 16},
++    "sections": [{"type": "titleBar", "brand": "RDV regression", "tags": [], "buttons": []},
++                 {"type": "keyPanel", "title": "Search", "label": "Key", "value": "keyLabel",
++                  "inputLabel": "Search", "inputWidth": 180, "maxLength": 8,
++                  "buttons": [{"action": "search", "text": "Search"},
++                              {"action": "clear", "text": "Clear"},
++                              {"action": "workState", "text": "Mark"},
++                              {"action": "updateRecords", "text": "Job one", "job": "one"},
++                              {"action": "updateRecords", "text": "Job two", "job": "two"}]}]}
++STATE = {"opsEnabled": True, "workEnabled": True, "key": "", "values": {},
++         "workText": "Mark", "pending": 0, "judgments": {}}
++BRIDGE = """window.rdvTestMessages=[]; window.chrome=window.chrome||{};
++window.chrome.webview={postMessage:m=>window.rdvTestMessages.push(m),
++addEventListener:(name,h)=>{window.rdvDeliver=m=>h({data:m});}};"""
++
++
++def check(condition, detail):
++    if not condition:
++        raise AssertionError(detail)
++
++
++def clear(page):
++    page.evaluate("window.rdvTestMessages=[]")
++
++
++def messages(page, kind):
++    return page.evaluate("t=>window.rdvTestMessages.filter(m=>m.type===t)", kind)
++
++
++def modal(page, kind, content):
++    page.evaluate("m=>window.rdvDeliver(m)",
++                  {"type": "modalOpen", "token": 123, "modal": kind, "content": content})
++    page.wait_for_selector(".veil.show")
++    page.wait_for_timeout(30)
++    clear(page)
++
++
++def press_enter(page, composing=False, selector="#input"):
++    page.locator(selector).evaluate("(el, composing)=>el.dispatchEvent(new KeyboardEvent('keydown',"
++                                   "{key:'Enter',code:'Enter',keyCode:composing?229:13,"
++                                   "isComposing:composing,bubbles:true,cancelable:true}))", composing)
++
++
++def input_normalization(page):
++    page.locator("#input").evaluate("el=>{el.innerHTML='<div>001\\n002</div>';el.dispatchEvent(new InputEvent('input',{bubbles:true}));}")
++    check(page.locator("#input").text_content() == "001002", "visible newlines were not removed")
++    check(page.locator("#input").evaluate("el=>el.children.length") == 0, "rich DOM remained")
++    check(messages(page, "key")[-1]["value"] == "001002", "visible/input values differ")
++
++
++def ime_main(page):
++    press_enter(page, True)
++    check(not messages(page, "action"), "IME confirmation incorrectly triggered search")
++
++
++def enter_once(page):
++    page.locator("#input").evaluate("el=>el.textContent='001'")
++    press_enter(page)
++    actions = messages(page, "action")
++    check(len(actions) == 1 and actions[0]["name"] == "search" and actions[0]["key"] == "001", str(actions))
++
++
++def max_length(page):
++    page.locator("#input").evaluate("el=>{el.textContent='123456789012';el.dispatchEvent(new InputEvent('input',{bubbles:true}));}")
++    check(page.locator("#input").text_content() == "12345678", "input exceeded configured length")
++
++
++def duplicate_actions(page):
++    buttons = page.locator('[data-action="updateRecords"]')
++    ids = buttons.evaluate_all("els=>els.map(el=>el.id)")
++    check(len(ids) == 2 and len(set(ids)) == 2, "duplicate DOM ids: " + str(ids))
++    buttons.nth(0).click(); buttons.nth(1).click()
++    check([m["job"] for m in messages(page, "action")] == ["one", "two"], "job routing changed")
++
++
++def disabled_actions(page):
++    page.evaluate("s=>window.rdvBridge.state(s)", dict(STATE, opsEnabled=False))
++    page.locator("#b-upd").evaluate("el=>el.click()")
++    press_enter(page)
++    check(not messages(page, "action"), "disabled action fired")
++    check(page.locator("#input").get_attribute("contenteditable") == "false", "disabled input remained editable")
++
++
++def ime_modal(page):
++    modal(page, "confirm", {"title": "Confirmation", "body": "test", "ask": True})
++    press_enter(page, True, ".veil.show [data-modal-default=true]")
++    check(not messages(page, "modalResult"), "IME confirmation committed dialog")
++    press_enter(page, False, ".veil.show [data-modal-default=true]")
++    result = messages(page, "modalResult")
++    check(len(result) == 1 and result[0]["result"]["ok"], str(result))
++
++
++def unmatched(page, discard):
++    modal(page, "unmatched", {"title": "Conflicts", "body": "Keep or discard local only", "discardText": "Discard local",
++                              "rows": [["1", "<img src=x onerror=alert(1)>", "state-conflict"]]})
++    check(page.locator(".veil.show img").count() == 0, "record text became HTML")
++    check("<img" in page.locator(".veil.show").text_content(), "literal text lost")
++    if discard:
++        page.locator(".veil.show .foot .btn").filter(has_text="Discard local").click()
++    else:
++        press_enter(page, False, ".veil.show [data-modal-default=true]")
++    result = messages(page, "modalResult")
++    check(len(result) == 1 and result[0]["result"].get("discard") is discard, str(result))
++
++
++def escape_keeps(page):
++    modal(page, "unmatched", {"title": "Conflicts", "body": "Test", "rows": [["1", "001", "changed"]]})
++    page.keyboard.press("Escape")
++    result = messages(page, "modalResult")
++    check(len(result) == 1 and not result[0]["result"]["ok"] and not result[0]["result"].get("discard"), str(result))
++
++
++def export(page, safe=True, extension="csv"):
++    modal(page, "export", {"title": "Export", "fields": [{"ref": "T.id", "label": "ID", "kind": "text"}],
++                           "defaults": ["T.id"], "destination": "C:\\temp\\output." + extension})
++    checkbox = page.locator("#export-excel-safe")
++    check(checkbox.is_checked(), "formula-safe default not checked")
++    checkbox.set_checked(safe)
++    page.locator(".veil.show [data-modal-default=true]").click()
++    result = messages(page, "modalResult")
++    if extension != "csv":
++        check(not result and page.locator(".veil.show .setting-error").is_visible(), "non-CSV destination accepted")
++    else:
++        check(len(result) == 1 and result[0]["result"]["excelSafe"] is safe and
++              result[0]["result"]["fields"] == ["T.id"], str(result))
++
++
++def rerender_ids(page):
++    page.evaluate("s=>window.rdvBridge.render(s)", SCREEN)
++    check(page.locator("#b-upd").count() == 1 and page.locator("#b-upd-2").count() == 1, "id counters not reset")
++
++
++def main():
++    parser = argparse.ArgumentParser(description=__doc__)
++    parser.add_argument("--root", type=pathlib.Path, default=pathlib.Path(__file__).resolve().parents[1])
++    parser.add_argument("--chromium", default=None, help="Optional installed Chromium executable path")
++    parser.add_argument("--output", type=pathlib.Path)
++    parser.add_argument("--baseline", action="store_true", help="Run only three original-regression reproductions; failures are expected")
++    args = parser.parse_args()
++    tests = [("input-visible-value-normalization", input_normalization), ("ime-enter-does-not-search", ime_main),
++             ("duplicate-actions-unique-id-and-routing", duplicate_actions)]
++    if not args.baseline:
++        tests += [("enter-search-exactly-once", enter_once), ("input-max-length", max_length),
++                  ("disabled-actions-blocked", disabled_actions), ("ime-modal-does-not-commit", ime_modal),
++                  ("unmatched-default-keeps-and-escapes-html", lambda p: unmatched(p, False)),
++                  ("unmatched-explicit-discard", lambda p: unmatched(p, True)), ("escape-keeps-pending", escape_keeps),
++                  ("export-excel-safe-default", lambda p: export(p, True)),
++                  ("export-raw-option", lambda p: export(p, False)),
++                  ("export-rejects-non-csv", lambda p: export(p, True, "xlsx")),
++                  ("rerender-resets-action-ids", rerender_ids)]
++    output = {"scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
++              "baseline_reproduction": args.baseline, "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
++              "platform": platform.platform(), "tests": []}
++    with sync_playwright() as playwright:
++        browser = playwright.chromium.launch(executable_path=args.chromium, headless=True, args=["--no-sandbox"])
++        output["browser"] = browser.version
++        for name, action in tests:
++            page = browser.new_page(viewport={"width": 1100, "height": 900})
++            errors = []
++            page.on("pageerror", lambda error: errors.append(str(error)))
++            page.add_init_script(BRIDGE)
++            try:
++                # Inject the exact bundled files without a network/server or file:// permissions.
++                web = args.root.resolve() / "web"
++                html = (web / "index.html").read_text(encoding="utf-8-sig")
++                html = re.sub(r'<script\b[^>]*\bsrc=[^>]*>\s*</script>', '', html, flags=re.I)
++                html = re.sub(r'<link\b[^>]*\brel=["\']stylesheet["\'][^>]*>', '', html, flags=re.I)
++                page.set_content(html)
++                page.evaluate(BRIDGE)
++                page.add_style_tag(content=(web / "app.css").read_text(encoding="utf-8-sig"))
++                page.add_script_tag(content=(web / "app.js").read_text(encoding="utf-8-sig"))
++                page.wait_for_function("!!window.rdvBridge")
++                page.evaluate("s=>window.rdvBridge.render(s)", SCREEN)
++                page.evaluate("s=>window.rdvBridge.state(s)", STATE)
++                page.wait_for_timeout(30)
++                clear(page)
++                action(page)
++                page.wait_for_timeout(20)
++                check(not errors, "Uncaught browser error: " + str(errors))
++                output["tests"].append({"name": name, "status": "PASS"})
++            except Exception as exc:
++                output["tests"].append({"name": name, "status": "FAIL", "detail": str(exc), "page_errors": errors})
++            finally:
++                page.close()
++            print(output["tests"][-1]["status"], name, output["tests"][-1].get("detail", ""), flush=True)
++        browser.close()
++    output["passed"] = sum(t["status"] == "PASS" for t in output["tests"])
++    output["failed"] = len(tests) - output["passed"]
++    destination = args.output or args.root / "tests" / "results" / "web-results.json"
++    destination.parent.mkdir(parents=True, exist_ok=True)
++    destination.write_text(json.dumps(output, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
++    return 1 if output["failed"] else 0
++
++
++if __name__ == "__main__":
++    sys.exit(main())
+--- a/web/app.js
++++ b/web/app.js
+@@ -108,6 +108,8 @@
+     });
+   }
+ 
++  var actionCounts = {};
++
+   function button(definition, extraClass) {
+     var action = definition.action || '';
+     var node = element('div', (action === 'workState' ? 'tog' : 'btn') +
+@@ -116,7 +118,9 @@
+     node.setAttribute('role', 'button');
+     node.setAttribute('data-action', action);
+     node.setAttribute('data-job', definition.job || '');
+-    node.id = actionId(action);
++    var count = (actionCounts[action] || 0) + 1;
++    actionCounts[action] = count;
++    node.id = actionId(action) + (count > 1 ? '-' + count : '');
+     if (definition.tip) { node.title = definition.tip; node.setAttribute('aria-label', definition.tip); }
+     setMnemonic(node, definition.text || action);
+     activate(node, function () {
+@@ -171,7 +175,14 @@
+     input.style.width = px(definition.inputWidth);
+     input.style.flex = 'none';
+     if (definition.placeholder) { input.setAttribute('data-placeholder', definition.placeholder); }
+-    input.addEventListener('input', onKeyInput);
++    input.addEventListener('input', function (event) { if (!event.isComposing) { onKeyInput(); } });
++    input.addEventListener('compositionend', onKeyInput);
++    input.addEventListener('paste', function (event) {
++      event.preventDefault();
++      var text = (event.clipboardData || window.clipboardData).getData('text/plain').replace(/[\r\n\t]/g, '');
++      document.execCommand('insertText', false, text);
++      onKeyInput();
++    });
+     input.addEventListener('keydown', function (event) {
+       if (event.key === 'Enter') {
+         event.preventDefault();
+@@ -190,12 +201,14 @@
+ 
+   function onKeyInput() {
+     var max = Number(input.getAttribute('data-max-length')) || 64;
+-    var value = input.textContent.replace(/[\r\n]/g, '');
+-    if (value.length > max) { value = value.slice(0, max); input.textContent = value; placeCaretEnd(input); }
++    var value = input.textContent.replace(/[\r\n\t]/g, '');
++    if (value.length > max) { value = value.slice(0, max); }
++    // Keep the submitted value and the visible DOM identical, even after paste.
++    if (input.textContent !== value || input.children.length) { input.textContent = value; placeCaretEnd(input); }
+     post({ type: 'key', value: value });
+   }
+ 
+-  function keyValue() { return input ? input.textContent.trim() : ''; }
++  function keyValue() { return input ? input.textContent.replace(/[\r\n\t]/g, '').trim() : ''; }
+ 
+   function placeCaretEnd(node) {
+     var range = document.createRange();
+@@ -346,6 +359,7 @@
+ 
+   function renderScreen(definition) {
+     screen = definition;
++    actionCounts = {};
+     stage.classList.add('runtime');
+     var card = definition.card;
+     stage.style.setProperty('--card-width', px(card.width));
+@@ -689,7 +703,9 @@
+       { header: '理由' }
+     ], content.rows, { readOnly: true }));
+     var foot = element('div', 'foot');
+-    foot.appendChild(modalButton('OK', true, function () { finishModal({ ok: true }); }));
++    foot.appendChild(modalButton(content.discardText || '一覧の未送信変更を破棄', false,
++      function () { finishModal({ ok: true, discard: true }); }));
++    foot.appendChild(modalButton('OK', true, function () { finishModal({ ok: true, discard: false }); }));
+     shell.body.appendChild(foot);
+   }
+ 
+@@ -1037,6 +1053,7 @@
+     display.setAttribute('aria-label', '日付を選ぶ');
+     display.setAttribute('data-field', field || '');
+     var chosen = new Date();
++    chosen.setHours(0, 0, 0, 0);
+     var shownMonth = new Date(chosen.getFullYear(), chosen.getMonth(), 1);
+     var popup = element('div', 'calendar-popup');
+     popup.setAttribute('role', 'dialog');
+@@ -1352,6 +1369,11 @@
+     updateOperators();
+     var pathRow = element('div', 'kv export-path'); pathRow.style.marginTop = '9px';
+     pathRow.appendChild(element('label', '', '出力先'));
++    var safeRow = element('label', 'export-safe');
++    var excelSafe = element('input'); excelSafe.type = 'checkbox'; excelSafe.checked = true;
++    excelSafe.id = 'export-excel-safe'; safeRow.appendChild(excelSafe);
++    safeRow.appendChild(document.createTextNode(content.excelSafeText || 'Excel向けに数式を無効化'));
++    shell.body.appendChild(safeRow);
+     var destination = editable(content.destination, 'exportPath'); pathRow.appendChild(destination);
+     pathRow.appendChild(browseButton('exportPath', 'export', destination)); shell.body.appendChild(pathRow);
+     var error = element('div', 'setting-error'); error.hidden = true; error.setAttribute('role', 'alert'); shell.body.appendChild(error);
+@@ -1360,7 +1382,11 @@
+       if (!selected.length) {
+         error.textContent = '出力する項目を 1 つ以上選んでください。'; error.hidden = false; return;
+       }
+-      finishModal({ ok: true, path: destination.textContent.trim(), fields: selected, filters: filters });
++      var path = destination.textContent.trim();
++      if (!/\.csv$/i.test(path)) {
++        error.textContent = '出力先には .csv ファイルを指定してください。'; error.hidden = false; return;
++      }
++      finishModal({ ok: true, path: path, fields: selected, filters: filters, excelSafe: excelSafe.checked });
+     }));
+     foot.appendChild(modalButton('キャンセル', false, function () { finishModal({ ok: false }); }));
+     shell.body.appendChild(foot);
+@@ -1443,6 +1469,10 @@
+   }
+ 
+   document.addEventListener('keydown', function (event) {
++    if (event.isComposing || event.keyCode === 229) { event.stopImmediatePropagation(); }
++  }, true);
++
++  document.addEventListener('keydown', function (event) {
+     if (event.key === 'Escape' && activeCalendar) {
+       event.preventDefault(); closeCalendar(true); return;
+     }
+@@ -1458,7 +1488,7 @@
+       }
+     }
+     if (event.key === 'Tab' && currentModal) {
+-      var items = Array.prototype.filter.call(currentModal.querySelectorAll('[contenteditable=true],[tabindex="0"],select'), function (node) {
++      var items = Array.prototype.filter.call(currentModal.querySelectorAll('[contenteditable=true],[tabindex="0"],select,input:not([disabled])'), function (node) {
+         return node.offsetParent !== null && node.getAttribute('aria-disabled') !== 'true';
+       });
+       if (!items.length) { return; }

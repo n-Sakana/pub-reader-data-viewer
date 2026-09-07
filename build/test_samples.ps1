@@ -28,7 +28,7 @@ if ([string]::IsNullOrEmpty($Root)) { $Root = Split-Path -Parent (Split-Path -Pa
 . (Join-Path $Root 'build\test_support.ps1')
 Import-RdvProduct -Root $Root
 
-$samples = Join-Path $Root 'samples'
+$samples = Join-Path $Root 'build\out\samples'
 $all = @('sales', 'factory', 'booking', 'sales-wide', 'factory-compact')
 $want = $(if ([string]::IsNullOrEmpty($Only)) { $all } else { @($Only) })
 foreach ($n in $want) {
@@ -202,5 +202,6 @@ foreach ($name in $want) {
 Write-Output ''
 Write-Output ("{0} passed, {1} failed" -f $script:pass, $script:fail)
 Write-Output ''
+Remove-RdvTestDirectory -Path $work -Passed ($script:fail -eq 0)
 if ($script:fail -gt 0) { Write-Output 'RESULT: FAIL'; exit 1 }
 Write-Output 'RESULT: PASS'
