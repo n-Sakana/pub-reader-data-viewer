@@ -11,9 +11,11 @@ public static class Rdv3Headless
     public static int Run(string appDir, string configPath, string dataDir, bool execute,
                           string outputPath, string baselinePath)
     {
+        string stage = "settings file and definitions";
         try
         {
-            Rdv3Config cfg = Rdv3Config.Load(configPath);
+            Rdv3Config cfg = Rdv3Config.Load(configPath, !execute);
+            stage = "paths, input files and job preparation";
             dataDir = Rdv3Files.Full(string.IsNullOrEmpty(dataDir) ? cfg.DataDir : dataDir, appDir);
             if (execute)
             {
@@ -43,7 +45,20 @@ public static class Rdv3Headless
         }
         catch (Exception error)
         {
-            Console.Error.WriteLine("FAIL " + configPath + ": " + error.Message);
+            Rdv3ValidationError validation = error as Rdv3ValidationError;
+            if (validation == null)
+            {
+                Console.Error.WriteLine("FAIL 1 error");
+                Console.Error.WriteLine("  " + configPath + ": " + error.Message);
+                Console.Error.WriteLine("STOP " + stage + "; subsequent checks were not performed.");
+            }
+            else
+            {
+                Console.Error.WriteLine("FAIL " + N(validation.Errors.Length) + " errors");
+                foreach (string detail in validation.Errors) { Console.Error.WriteLine("  " + configPath + ": " + detail); }
+                Console.Error.WriteLine("STOP " + validation.Stage);
+                foreach (string remaining in validation.Unchecked) { Console.Error.WriteLine("NOT CHECKED " + remaining); }
+            }
             return 3;
         }
     }
@@ -57,25 +72,37 @@ public static class Rdv3Headless
         Rdv3Table[] tables = new Rdv3Table[data.Tables.Count];
         string[][] heads = new string[tables.Length][];
         List<string> warnings = new List<string>();
+        Rdv3Validation validation = execute ? null : new Rdv3Validation();
         for (int i = 0; i < tables.Length; i++)
         {
             Rdv3TableDef def = data.Tables[i];
+            Action read = delegate {
             tables[i] = Rdv3Table.Read(Rdv3Files.Full(def.File, dataDir), def.Id, def.Enc,
                 def.KeyColumns, def.KeyValidation, def.EncodingSetting);
             heads[i] = tables[i].Head;
             new Rdv3Index(tables[i]);
             tables[i].AddWarnings(warnings);
+            };
+            if (validation == null) { read(); }
+            else { validation.Check("input " + def.Id + " (" + def.File + ")", read); }
         }
-        data.Bind(heads);
-        data.ValidateTypes(tables);
+        if (validation != null) { validation.Finish("input files", "input columns/types and job preparation"); }
+        data.Bind(heads, validation);
+        data.ValidateTypes(tables, validation);
+        if (validation != null) { validation.Finish("input types", "job preparation"); }
         Rdv3PreparedProcess update = null;
         List<Rdv3InputResult> inputs = new List<Rdv3InputResult>();
         for (int j = 0; j < data.Jobs.Count; j++)
         {
+            Action prepare = delegate {
             Rdv3PreparedProcess prepared = Rdv3Process.Prepare(data, data.Jobs[j], dataDir, tables);
             warnings.AddRange(prepared.Warnings);
             if (data.Jobs[j] == data.UpdateJob) { update = prepared; inputs.AddRange(prepared.InputResults); }
+            };
+            if (validation == null) { prepare(); }
+            else { validation.Check("job " + data.Jobs[j].Id, prepare); }
         }
+        if (validation != null) { validation.Finish("job preparation", "job execution (use -RunUpdate after fixing the errors)"); }
         string[] before = new string[0], states = new string[0];
         if (execute && !string.IsNullOrEmpty(baselinePath))
         {

@@ -1134,13 +1134,13 @@ public sealed class Rdv3Data
         return c;
     }
 
-    public void Bind(string[][] heads)
+    public void Bind(string[][] heads, Rdv3Validation validation = null)
     {
         for (int t = 0; t < Tables.Count; t++)
         {
             Tables[t].Head = heads[t];
             foreach (string key in Tables[t].KeyColumns)
-            { if (FieldOf(heads[t], key) < 0) { throw Missing(Tables[t], key, "tables." + Tables[t].Id + ".key"); } }
+            { if (FieldOf(heads[t], key) < 0) { Report(validation, Missing(Tables[t], key, "tables." + Tables[t].Id + ".key")); } }
         }
         for (int j = 0; j < Jobs.Count; j++)
         {
@@ -1150,14 +1150,14 @@ public sealed class Rdv3Data
             for (int i = 0; i < job.Joins.Count; i++)
             {
                 job.Joins[i].OnField = FieldOf(spineHead, job.Joins[i].On);
-                if (job.Joins[i].OnField < 0) { throw Missing(Tables[job.SpineOrd], job.Joins[i].On, "jobs.steps.keys"); }
+                if (job.Joins[i].OnField < 0) { Report(validation, Missing(Tables[job.SpineOrd], job.Joins[i].On, "jobs.steps.keys")); }
             }
         }
         for (int i = 0; i < Columns.Count; i++)
         {
             Rdv3ColumnRef c = Columns[i];
             c.Field = FieldOf(heads[c.TableOrd], c.Column);
-            if (c.Field < 0) { throw Missing(Tables[c.TableOrd], c.Column, "ledger.columns"); }
+            if (c.Field < 0) { Report(validation, Missing(Tables[c.TableOrd], c.Column, "ledger.columns")); }
         }
         for (int i = 0; i < TypeOrder.Count; i++)
         {
@@ -1165,15 +1165,16 @@ public sealed class Rdv3Data
             int dot = type.Ref.IndexOf('.');
             string column = type.Ref.Substring(dot + 1);
             type.Field = FieldOf(heads[type.TableOrd], column);
-            if (type.Field < 0) { throw Missing(Tables[type.TableOrd], column, "types"); }
+            if (type.Field < 0) { Report(validation, Missing(Tables[type.TableOrd], column, "types")); }
         }
-        Rdv3Process.ValidateColumns(this, heads);
+        if (validation != null) { validation.Finish("input columns", "input types and job preparation"); }
+        Rdv3Process.ValidateColumns(this, heads, validation);
     }
 
     // Called before the window opens and again when an update re-reads the
     // sources. Empty cells remain a valid missing value; every non-empty value
     // must obey the declared representation exactly.
-    public void ValidateTypes(Rdv3Table[] tables)
+    public void ValidateTypes(Rdv3Table[] tables, Rdv3Validation validation = null)
     {
         for (int i = 0; i < TypeOrder.Count; i++)
         {
@@ -1195,17 +1196,20 @@ public sealed class Rdv3Data
                     string displayType = (type.Type == "date")
                         ? Rdv3Text.TypeDateFormat.Replace("{format}", type.Format)
                         : Rdv3Text.TypeNumber;
-                    throw new Rdv3DataError(Rdv3Text.DataTypedValue
+                    Report(validation, new Rdv3DataError(Rdv3Text.DataTypedValue
                         .Replace("{file}", System.IO.Path.GetFileName(table.Path))
                         .Replace("{row}", table.SourceRow(row).ToString(CultureInfo.InvariantCulture))
                         .Replace("{name}", type.Ref)
                         .Replace("{value}", value)
                         .Replace("{type}", displayType)
-                        + Rdv3Text.InputFixType.Replace("{ref}", type.Ref));
+                        + Rdv3Text.InputFixType.Replace("{ref}", type.Ref)));
                 }
             }
         }
     }
+
+    private static void Report(Rdv3Validation validation, Rdv3DataError error)
+    { if (validation == null) { throw error; } validation.Add(error); }
 
     private static Rdv3DataError Missing(Rdv3TableDef t, string column, string where)
     {

@@ -178,13 +178,18 @@ public static class Rdv3Process
         return prepared;
     }
 
-    public static void ValidateColumns(Rdv3Data data, string[][] heads)
+    public static void ValidateColumns(Rdv3Data data, string[][] heads, Rdv3Validation validation = null)
     {
         for (int i = 0; i < data.Jobs.Count; i++)
         {
+            Action check = delegate {
             Rdv3PreparedProcess prepared = PrepareFromHeads(data, data.Jobs[i], heads);
             Execute(prepared, new string[0], new string[0], "", false);
+            };
+            if (validation == null) { check(); }
+            else { validation.Check("data.jobs[" + i.ToString(CultureInfo.InvariantCulture) + "] column dependencies", check); }
         }
+        if (validation != null) { validation.Finish("job columns", "input types and job preparation"); }
     }
 
     internal static Rdv3ProcessResult Execute(Rdv3PreparedProcess prepared,
