@@ -1,0 +1,12 @@
+[
+  {
+    "name": "readme-detail-only",
+    "status": "PASS",
+    "detail": "identity from the group key; sums 2800/480/120250 and counts saved as T.* columns"
+  },
+  {
+    "name": "readme-append-files",
+    "status": "PASS",
+    "detail": "union of both months, May wins, 3 cancelled rows removed, 2 rows kept"
+  }
+]
