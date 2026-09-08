@@ -141,6 +141,138 @@ def export(page, safe=True, extension="csv"):
               result[0]["result"]["fields"] == ["T.id"], str(result))
 
 
+
+def export_editor(page, token=123):
+    content = {"title": "Export", "fields": [
+        {"ref": "T.id", "label": "ID", "kind": "text"},
+        {"ref": "T.amount", "label": "Amount", "kind": "decimal"},
+        {"ref": "T.day", "label": "Day", "kind": "date", "format": "yyyyMMdd"},
+        {"ref": "$work", "label": "State", "kind": "text"}],
+        "defaults": ["T.id"], "destination": "C:/temp/export.csv"}
+    page.evaluate("m=>window.rdvDeliver(m)",
+                  {"type": "modalOpen", "token": token, "modal": "export", "content": content})
+    page.wait_for_selector(".veil.show")
+    page.wait_for_timeout(30)
+    clear(page)
+
+
+def export_submit(page):
+    page.locator(".veil.show [data-modal-default=true]").click()
+    return messages(page, "modalResult")[-1]["result"]
+
+
+def export_filter_reply(page, token=123, **values):
+    page.evaluate("m=>window.rdvDeliver(m)",
+                  dict(type="exportFilterValidation", token=token, ok=True, **values))
+
+
+def export_move_mouse(page):
+    export_editor(page)
+    lists = page.locator(".veil.show [role=listbox]")
+    lists.nth(0).locator('[data-ref="T.amount"]').dblclick()
+    lists.nth(1).locator('[data-ref="T.id"]').dblclick()
+    lists.nth(0).locator('[data-ref="$work"]').click()
+    page.locator(".veil.show .btn").filter(has_text="▶").click()
+    lists.nth(1).locator('[data-ref="T.amount"]').click()
+    page.locator(".veil.show .btn").filter(has_text="◀").click()
+    check(export_submit(page)["fields"] == ["$work"], "two-way mouse movement lost order or identity")
+
+
+def export_move_keyboard_reset(page):
+    export_editor(page)
+    available = page.locator(".veil.show [role=listbox]").nth(0)
+    available.focus()
+    page.keyboard.press("End")
+    check(available.locator('[data-ref="$work"]').get_attribute("aria-selected") == "true", "End did not select last field")
+    page.keyboard.press("Home")
+    page.keyboard.press("ArrowDown")
+    check(available.locator('[data-ref="T.day"]').get_attribute("aria-selected") == "true", "keyboard selection lost")
+    page.locator(".veil.show .btn").filter(has_text="▶").click()
+    page.locator(".veil.show .btn").filter(has_text="既定に戻す").click()
+    check(export_submit(page)["fields"] == ["T.id"], "configured defaults were not restored")
+
+
+def export_text_filters(page):
+    export_editor(page)
+    operators = page.locator(".veil.show .fgrid select").nth(1)
+    check(operators.locator("option").evaluate_all("es=>es.map(e=>e.value)") ==
+          ["contains", "equals", "startsWith", "notContains"], "text operators changed")
+    for operator, value in [("equals", "001"), ("notContains", "<tag>")]:
+        operators.select_option(operator)
+        page.locator('[data-field="filterFirst"]').fill(value)
+        page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+        request = messages(page, "validateExportFilter")[-1]
+        check(request["field"] == "T.id" and request["first"] == value and request["last"] == "", str(request))
+        export_filter_reply(page, first=value, last="")
+    rows = page.locator(".veil.show table.f3 tbody tr[data-index]")
+    check(rows.count() == 2 and "<tag>" in rows.nth(1).text_content(), "filter labels or literal text lost")
+    check(page.locator(".veil.show table.f3 tag").count() == 0, "filter value was treated as HTML")
+    rows.nth(0).click()
+    page.locator(".veil.show .fgrid .btn").filter(has_text="削除").click()
+    check(export_submit(page)["filters"] ==
+          [{"field": "T.id", "operator": "notContains", "first": "<tag>", "last": ""}], "remove chose wrong filter")
+
+
+def export_typed_filters(page):
+    export_editor(page)
+    field = page.locator(".veil.show .fgrid select").nth(0)
+    field.select_option("T.amount")
+    operators = page.locator(".veil.show .fgrid select").nth(1)
+    check(operators.locator("option").evaluate_all("es=>es.map(e=>e.value)") == ["range"], "numeric range missing")
+    page.locator('[data-field="filterFirst"]').fill("01.0")
+    page.locator('[data-field="filterLast"]').fill("10.00")
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    export_filter_reply(page, first="1", last="10")
+    field.select_option("T.day")
+    first = page.locator('[data-field="filterFirst"]')
+    last = page.locator('[data-field="filterLast"]')
+    first_value = first.text_content()
+    last.focus()
+    page.keyboard.press("ArrowUp")
+    last_value = last.text_content()
+    check(first_value != last_value, "date keyboard editor did not change day")
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    request = messages(page, "validateExportFilter")[-1]
+    check(request["field"] == "T.day" and request["first"] == first_value and request["last"] == last_value, str(request))
+    export_filter_reply(page, first=first_value, last=last_value)
+    check(export_submit(page)["filters"] == [
+        {"field": "T.amount", "operator": "range", "first": "1", "last": "10"},
+        {"field": "T.day", "operator": "range", "first": first_value, "last": last_value}], "typed fields or canonical values lost")
+
+
+def export_validation_error(page):
+    export_editor(page)
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    page.evaluate("m=>window.rdvDeliver(m)", {"type": "exportFilterValidation", "token": 123, "ok": False, "error": "Need a value"})
+    error = page.locator(".veil.show .setting-error")
+    check(error.is_visible() and error.text_content() == "Need a value", "validation error not shown")
+    check(page.locator(".veil.show table.f3 tbody tr[data-index]").count() == 0, "invalid filter added")
+    page.locator('[data-field="filterFirst"]').fill("valid")
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    export_filter_reply(page, first="valid", last="")
+    export_filter_reply(page, first="duplicate", last="")
+    check(error.is_hidden(), "successful retry did not clear error")
+    check(export_submit(page)["filters"] == [
+        {"field": "T.id", "operator": "contains", "first": "valid", "last": ""}], "retry or duplicate response corrupted filters")
+
+
+def export_stale_validation(page):
+    export_editor(page, 201)
+    page.locator('[data-field="filterFirst"]').fill("old")
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    page.keyboard.press("Escape")
+    export_filter_reply(page, token=201, first="late", last="")
+    check(page.locator(".veil.show").count() == 0, "late response reopened closed dialog")
+    export_editor(page, 202)
+    page.locator('[data-field="filterFirst"]').fill("new")
+    page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
+    export_filter_reply(page, token=201, first="old", last="")
+    check(page.locator(".veil.show table.f3 tbody tr[data-index]").count() == 0, "old token modified next dialog")
+    export_filter_reply(page, token=202, first="new", last="")
+    check(export_submit(page)["filters"] == [
+        {"field": "T.id", "operator": "contains", "first": "new", "last": ""}], "next dialog lost its request")
+
+
 def rerender_ids(page):
     page.evaluate("s=>window.rdvBridge.render(s)", SCREEN)
     check(page.locator("#b-upd").count() == 1 and page.locator("#b-upd-2").count() == 1, "id counters not reset")
@@ -163,7 +295,13 @@ def main():
                   ("export-excel-safe-default", lambda p: export(p, True)),
                   ("export-raw-option", lambda p: export(p, False)),
                   ("export-rejects-non-csv", lambda p: export(p, True, "xlsx")),
-                  ("rerender-resets-action-ids", rerender_ids)]
+                  ("rerender-resets-action-ids", rerender_ids),
+                  ("export-two-way-mouse", export_move_mouse),
+                  ("export-keyboard-and-defaults", export_move_keyboard_reset),
+                  ("export-text-filters-and-removal", export_text_filters),
+                  ("export-number-and-date-filters", export_typed_filters),
+                  ("export-validation-error-and-retry", export_validation_error),
+                  ("export-rejects-stale-validation", export_stale_validation)]
     output = {"scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
               "baseline_reproduction": args.baseline, "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "platform": platform.platform(), "tests": []}

@@ -1,7 +1,7 @@
 {
   "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
   "baseline_reproduction": false,
-  "utc": "2026-09-08T16:12:05.467915+00:00",
+  "utc": "2026-09-08T16:37:31.738961+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
   "tests": [
     {
@@ -59,9 +59,35 @@
     {
       "name": "rerender-resets-action-ids",
       "status": "PASS"
+    },
+    {
+      "name": "export-two-way-mouse",
+      "status": "PASS"
+    },
+    {
+      "name": "export-keyboard-and-defaults",
+      "status": "PASS"
+    },
+    {
+      "name": "export-text-filters-and-removal",
+      "status": "FAIL",
+      "detail": "filter labels or literal text lost",
+      "page_errors": []
+    },
+    {
+      "name": "export-number-and-date-filters",
+      "status": "PASS"
+    },
+    {
+      "name": "export-validation-error-and-retry",
+      "status": "PASS"
+    },
+    {
+      "name": "export-rejects-stale-validation",
+      "status": "PASS"
     }
   ],
   "browser": "145.0.7632.6",
-  "passed": 14,
-  "failed": 0
+  "passed": 19,
+  "failed": 1
 }
