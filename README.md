@@ -67,12 +67,12 @@ JSONで変更できる範囲と注意点は [docs/settings.md](docs/settings.md)
 ```text
 ReaderDataViewer.cmd / .vbs   起動入口
 settings.json                 設定（JSONC、schema 3）
-src/                          アプリC# 24ファイルと起動PowerShell
+src/                          アプリC# 27ファイルと起動PowerShell
 web/                          HTML、JavaScript、CSS
 lib/                          元ZIPのWebView2 DLL・表示文書
 data/                         元ZIPの入力CSVとログ（内容維持）
 build.bat / tools/            配布条件の選択 / package / compile / test
-design/                       元配布物の保全確認用ハッシュ
+design/                       現行ソースの期待ハッシュ（変更前の基準も保持）
 AUDIT_REPORT.md                点検・修正・検証結果
 docs/                         設定、共有運用、原README、変更一覧
 tests/                        C#、ブラウザー、静的検査、隔離サンプル、検証結果
