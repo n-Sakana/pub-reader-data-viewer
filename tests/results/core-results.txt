@@ -1,4 +1,4 @@
-UTC 2026-09-08T15:41:29.0076579Z
+UTC 2026-09-08T16:08:16.7886207Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -50,5 +50,17 @@ PASS config-save-cas
 PASS config-protected-paths
 PASS config-file-only-job-input-protected
 PASS supplied-data-pipeline-readonly
+PASS apply-reloads-state-after-lock-wait
+PASS apply-rejects-changed-preview-and-creation-races
+PASS apply-read-failure-never-overwrites-ledger
+PASS apply-write-failure-keeps-old-file
+PASS apply-marker-failure-retains-committed-result
+PASS apply-unchanged-does-not-write-or-notify
+PASS ledger-read-keeps-state-identity-and-contract-checks
+PASS apply-prepared-pipeline-keeps-general-path
+PASS reset-notice-unites-shared-and-local-without-dropping-rows
+PASS write-guard-local-outcome-controls-close
+PASS write-guard-close-and-acquisition-are-exclusive
+PASS write-guard-overdue-worker-remains-held-until-return
 PASS eight-thread-shared-ledger-simulation
-TOTAL passed=51 failed=0
+TOTAL passed=63 failed=0

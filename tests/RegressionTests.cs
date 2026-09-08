@@ -327,6 +327,175 @@ public static class Rdv3RegressionTests
                 Check(m.Lines != null && m.Lines.Length > 0, "sample pipeline produced no rows");
                 Rdv3Ledger.RowMap(m.Lines, c.Data.IdentityCol, "test");
             });
+            Test("apply-reloads-state-after-lock-wait", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(Lines(), States());
+                Rdv3LockInfo owner;
+                Rdv3LedgerLock other = f.Shared.TryAcquire(out owner);
+                Check(other != null, "other writer lock");
+                Rdv3ApplyOutcome outcome = null;
+                using (ManualResetEvent waiting = new ManualResetEvent(false))
+                {
+                    Thread update = new Thread(delegate() {
+                        outcome = f.Store.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines(), "apply",
+                            delegate {
+                                Rdv3LedgerLock lease = null;
+                                Stopwatch clock = Stopwatch.StartNew();
+                                while (lease == null && clock.ElapsedMilliseconds < 5000) {
+                                    lease = f.Shared.TryAcquire(out owner);
+                                    if (lease == null) { waiting.Set(); Thread.Sleep(10); }
+                                }
+                                return lease;
+                            }, f.Trace, f.Warn);
+                    });
+                    update.IsBackground = true;
+                    try {
+                        update.Start();
+                        Check(waiting.WaitOne(5000), "update did not wait for the other writer");
+                        f.Save(Lines(), new string[] { "0", "2" });
+                    }
+                    finally { other.Dispose(); Check(update.Join(5000), "update worker did not return"); }
+                }
+                Check(outcome != null && outcome.Error == null && outcome.Committed, "apply did not commit");
+                Rdv3LedgerSnapshot saved = f.Store.Read(f.Head);
+                Check(saved.Lines[0] == "001\tNEW" && saved.States[1] == "2", "lost the send made while waiting");
+            });
+            Test("apply-rejects-changed-preview-and-creation-races", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(new string[] { "001\tOTHER", "002\tB" }, States());
+                byte[] before = File.ReadAllBytes(f.Path);
+                Rdv3ApplyOutcome changed = f.Apply(f.Source(Lines()), Lines());
+                Check(changed.Error != null && !changed.CanAdopt && !changed.Committed, "stale preview was accepted");
+                Check(Convert.ToBase64String(File.ReadAllBytes(f.Path)) == Convert.ToBase64String(before), "stale preview changed file");
+                Check(!f.Apply(f.Source(Lines()), null).CanAdopt, "created-after-preview file was replaced");
+                ApplyFixture missing = new ApplyFixture();
+                Check(!missing.Apply(missing.Source(Lines()), Lines()).CanAdopt && !File.Exists(missing.Path), "deleted-after-preview file was rebuilt");
+            });
+            Test("apply-read-failure-never-overwrites-ledger", delegate {
+                ApplyFixture f = new ApplyFixture();
+                File.WriteAllText(f.Path, "unreadable ledger");
+                Rdv3ApplyOutcome outcome = f.Apply(f.Source(Lines()), Lines());
+                Check(!outcome.Committed && !outcome.CanAdopt && outcome.Error != null, "corrupt ledger adopted");
+                Check(File.ReadAllText(f.Path) == "unreadable ledger", "corrupt ledger overwritten");
+                Rdv3LockInfo owner;
+                using (Rdv3LedgerLock lease = f.Shared.TryAcquire(out owner)) { Check(lease != null, "failed read leaked lease"); }
+            });
+            Test("apply-write-failure-keeps-old-file", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(Lines(), States());
+                string bytes = Convert.ToBase64String(File.ReadAllBytes(f.Path));
+                using (FileStream held = new FileStream(f.Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    Rdv3ApplyOutcome outcome = f.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines());
+                    Check(outcome.Error != null && !outcome.Committed && !outcome.CanAdopt, "failed replacement reported saved");
+                    Check(Convert.ToBase64String(File.ReadAllBytes(f.Path)) == bytes, "failed replacement damaged file");
+                }
+            });
+            Test("apply-marker-failure-retains-committed-result", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(Lines(), States());
+                File.WriteAllText(f.Shared.MarkerPath, "unreadable marker");
+                Rdv3ApplyOutcome outcome = f.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines());
+                Check(outcome.Committed && outcome.CanAdopt && outcome.Error != null && outcome.Marker == null, "lost committed outcome");
+                Check(f.Store.Read(f.Head).Lines[0] == "001\tNEW", "commit was rolled back after marker failure");
+                Rdv3LockInfo owner;
+                using (Rdv3LedgerLock lease = f.Shared.TryAcquire(out owner)) { Check(lease != null, "marker failure leaked lease"); }
+            });
+            Test("apply-unchanged-does-not-write-or-notify", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(Lines(), new string[] { "1", "2" });
+                File.WriteAllText(f.Shared.MarkerPath, "unreadable marker");
+                string bytes = Convert.ToBase64String(File.ReadAllBytes(f.Path));
+                Rdv3ApplyOutcome outcome = f.Apply(f.Source(Lines()), Lines());
+                Check(outcome.Error == null && outcome.CanAdopt && !outcome.Committed && outcome.Marker == null, "unchanged apply tried to notify");
+                Check(Convert.ToBase64String(File.ReadAllBytes(f.Path)) == bytes, "unchanged apply rewrote ledger");
+            });
+            Test("ledger-read-keeps-state-identity-and-contract-checks", delegate {
+                ApplyFixture f = new ApplyFixture();
+                f.Save(Lines(), new string[] { "unknown", "0" });
+                Throws<InvalidDataException>(delegate { f.Store.Read(f.Head); });
+                f.Save(new string[] { "001\tA", "001\tB" }, States());
+                Throws<Rdv3DataError>(delegate { f.Store.Read(f.Head); });
+                f.Save(Lines(), States());
+                f.Work.States.Add(new Rdv3StateDef { Id = "extra", Stored = "3" });
+                Rdv3LedgerStore incompatible = new Rdv3LedgerStore(f.Path, f.Data, f.Work, f.Shared);
+                Throws<InvalidDataException>(delegate { incompatible.Read(f.Head); });
+            });
+            Test("apply-prepared-pipeline-keeps-general-path", delegate {
+                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+                string path = NewPath(".xlsx");
+                Rdv3SharedFiles shared = new Rdv3SharedFiles(path, "test", "user", "pipeline");
+                Rdv3LedgerStore store = new Rdv3LedgerStore(path, c.Data, c.Screen.Work, shared);
+                string dataDir = Rdv3Files.Full(c.DataDir, root);
+                Rdv3MergeResult source = Rdv3Ledger.BuildFromCsv(c.Data, c.Data.UpdateJob, dataDir);
+                source.Prepared = Rdv3Process.Prepare(c.Data, c.Data.UpdateJob, dataDir);
+                Rdv3LockInfo owner;
+                Rdv3ApplyOutcome outcome = store.Apply(source, null, "pipeline",
+                    delegate { return shared.TryAcquire(out owner); }, delegate(string stage, string detail) { }, delegate(string warning) { });
+                Check(outcome.Error == null && outcome.Committed && store.Read(source.Head).Lines.Length == source.Lines.Length, "general pipeline failed");
+            });
+            Test("reset-notice-unites-shared-and-local-without-dropping-rows", delegate {
+                string[] before = { "001\told", "002\told", "003\told", "004\told", "005\tsame", "006\told", "007\tremoved" };
+                Rdv3PendingStore pending = Pending();
+                pending.Set("002", "2", before[1], "0");
+                string[] effectiveBefore = pending.Overlay(before, new string[] { "0", "0", "2", "0", "2", "2", "2" }, 0);
+                Rdv3UpdateResult update = new Rdv3UpdateResult();
+                update.Lines = new string[] { "003\tnew", "002\tnew", "001\tnew", "004\tnew", "005\tsame", "006\tnew", "008\tadded" };
+                update.States = new string[] { "0", "0", "0", "0", "0", "2", "0" };
+                update.ResetLines.Add("001\tnew"); update.ResetLines.Add("003\tnew");
+                string[] effectiveAfter = pending.Overlay(update.Lines, update.States, 0);
+                Rdv3ResetNotice notice = new Rdv3ResetNotice(0, "0");
+                List<string> rows = notice.AfterUpdate(update, before, effectiveBefore, effectiveAfter);
+                Check(string.Join("|", rows.ToArray()) == "001\tnew|002\tnew|003\tnew", "lost, duplicated or invented reset notification");
+                Check(string.Join("|", notice.ChangedRows(before, effectiveBefore, update.Lines, effectiveAfter).ToArray()) == "003\tnew|002\tnew", "reload/deletion notification order changed");
+                Check(pending.Count == 1 && pending.PrepareSend(update.Lines, update.States, 0, "0").Unmatched[0].Reason == "changed", "notification consumed conflicting pending");
+            });
+            Test("write-guard-local-outcome-controls-close", delegate {
+                for (int i = 0; i < 2; i++) {
+                    Rdv3WriteGuard guard = new Rdv3WriteGuard();
+                    guard.Begin(false);
+                    Check(!guard.TryClose() && guard.Pending && !guard.Closing, "closed before local outcome");
+                    bool requested;
+                    Check(guard.Complete(out requested) && requested && !guard.Pending, "decided write did not release close");
+                    Check(guard.TryClose() && guard.Closing, "close still blocked after outcome");
+                }
+            });
+            Test("write-guard-close-and-acquisition-are-exclusive", delegate {
+                for (int i = 0; i < 100; i++) {
+                    Rdv3WriteGuard guard = new Rdv3WriteGuard(); guard.Begin(true);
+                    bool entered = false, closed = false;
+                    using (ManualResetEvent start = new ManualResetEvent(false)) {
+                        Thread writer = new Thread(delegate() { start.WaitOne(); entered = guard.TryEnterSharedWrite(); });
+                        Thread closer = new Thread(delegate() { start.WaitOne(); closed = guard.TryClose(); });
+                        writer.Start(); closer.Start(); start.Set();
+                        Check(writer.Join(5000) && closer.Join(5000), "guard race stalled");
+                    }
+                    Check(entered != closed, "close and shared write both won or both failed");
+                    Check(!entered || (guard.Pending && !guard.Closing), "write lost its close hold");
+                    Check(!closed || !guard.TryEnterSharedWrite(), "acquired a shared write after close");
+                }
+            });
+            Test("write-guard-overdue-worker-remains-held-until-return", delegate {
+                Rdv3WriteGuard guard = new Rdv3WriteGuard(); guard.Begin(false);
+                Rdv3Worker worker = new Rdv3Worker();
+                using (ManualResetEvent started = new ManualResetEvent(false))
+                using (ManualResetEvent release = new ManualResetEvent(false))
+                using (ManualResetEvent returned = new ManualResetEvent(false)) {
+                    Rdv3Job job = new Rdv3Job(); job.Kind = "apply"; job.RunId = "late"; job.TimeoutMs = 1;
+                    job.Work = delegate { started.Set(); release.WaitOne(); returned.Set(); };
+                    worker.Start(); worker.Post(job);
+                    try {
+                        Check(started.WaitOne(5000), "worker did not start");
+                        Thread.Sleep(20);
+                        Check(worker.TakeOverdue() == job && worker.TakeOverdue() == null, "deadline did not report exactly once");
+                        Check(!guard.TryClose() && guard.Pending && !returned.WaitOne(0), "deadline released or aborted unfinished write");
+                        release.Set(); Check(returned.WaitOne(5000), "late write did not return");
+                        bool requested; guard.Complete(out requested);
+                        Check(requested && guard.TryClose(), "late return did not release close");
+                    }
+                    finally { release.Set(); worker.Stop(); }
+                }
+            });
             Test("eight-thread-shared-ledger-simulation", ConcurrentWriters);
         }
         finally
@@ -339,6 +508,45 @@ public static class Rdv3RegressionTests
         }
         Console.WriteLine("TOTAL passed=" + passed + " failed=" + failed);
         return failed == 0 ? 0 : 1;
+    }
+
+    private sealed class ApplyFixture
+    {
+        public readonly string Path = NewPath(".xlsx");
+        public readonly string[] Head = { "id", "value" };
+        public readonly Rdv3Data Data = new Rdv3Data();
+        public readonly Rdv3WorkState Work = new Rdv3WorkState();
+        public readonly Rdv3SharedFiles Shared;
+        public readonly Rdv3LedgerStore Store;
+        public ApplyFixture()
+        {
+            Data.IdentityCol = 0;
+            Data.Columns.Add(new Rdv3ColumnRef { Ref = "T.id", Column = "id" });
+            Data.Columns.Add(new Rdv3ColumnRef { Ref = "T.value", Column = "value" });
+            Work.Column = "state"; Work.Initial = "initial";
+            Work.States.Add(new Rdv3StateDef { Id = "initial", Stored = "0" });
+            Work.States.Add(new Rdv3StateDef { Id = "first", Stored = "1" });
+            Work.States.Add(new Rdv3StateDef { Id = "second", Stored = "2" });
+            Shared = new Rdv3SharedFiles(Path, "test", "user", "apply");
+            Store = new Rdv3LedgerStore(Path, Data, Work, Shared);
+        }
+        public void Save(string[] lines, string[] states)
+        { Rdv3Xlsx.Write(Path, Head, Work.Column, lines, states, "fixture", Rdv3Files.StorageContract(Data, Work)); }
+        public Rdv3MergeResult Source(string[] lines)
+        {
+            Rdv3MergeResult source = new Rdv3MergeResult();
+            source.Lines = lines; source.Head = Head;
+            source.Job = new Rdv3ProcessJobDef { OnSourceChange = "reset",
+                ApplyStep = new Rdv3ProcessStepDef { Operation = "merge", SourceOnly = "add", Both = "update", TargetOnly = "keep" } };
+            return source;
+        }
+        public void Trace(string stage, string detail) { }
+        public void Warn(string warning) { }
+        public Rdv3ApplyOutcome Apply(Rdv3MergeResult source, string[] checkedLines)
+        {
+            Rdv3LockInfo owner;
+            return Store.Apply(source, checkedLines, "apply", delegate { return Shared.TryAcquire(out owner); }, Trace, Warn);
+        }
     }
 
     private static void ConcurrentWriters()
