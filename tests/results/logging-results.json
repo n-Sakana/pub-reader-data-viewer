@@ -1,0 +1,106 @@
+{
+  "passed": 11,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "validation-success-is-recorded",
+      "status": "PASS",
+      "detail": {
+        "exit": 0,
+        "pid": 36536,
+        "logBytes": 1577
+      }
+    },
+    {
+      "name": "update-success-and-output-unchanged",
+      "status": "PASS",
+      "detail": {
+        "exit": 0,
+        "pid": 51196,
+        "logBytes": 1927,
+        "rows": 990
+      }
+    },
+    {
+      "name": "broken-json-file-log",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 51992,
+        "logBytes": 1605
+      }
+    },
+    {
+      "name": "all-validation-errors-in-file",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 20972,
+        "logBytes": 6174
+      }
+    },
+    {
+      "name": "broken-csv-file-log",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 51620,
+        "logBytes": 2345
+      }
+    },
+    {
+      "name": "invalid-encoding-file-log",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 51176,
+        "logBytes": 2307
+      }
+    },
+    {
+      "name": "missing-input-file-log",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 52512,
+        "logBytes": 2062
+      }
+    },
+    {
+      "name": "unreadable-input-file-log",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 2288,
+        "logBytes": 2102
+      }
+    },
+    {
+      "name": "input-disappears-during-validation",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "pid": 52116,
+        "logBytes": 2098
+      }
+    },
+    {
+      "name": "killed-validation-keeps-last-phase",
+      "status": "PASS",
+      "detail": {
+        "exit": 1,
+        "pid": 35936,
+        "logBytes": 833
+      }
+    },
+    {
+      "name": "killed-update-keeps-last-phase",
+      "status": "PASS",
+      "detail": {
+        "exit": 1,
+        "pid": 17508,
+        "logBytes": 982
+      }
+    }
+  ]
+}

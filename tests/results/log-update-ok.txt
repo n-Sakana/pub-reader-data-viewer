@@ -1,0 +1,14 @@
+2026-09-09 05:28:39.888	pid=51196	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json validate=False update=True
+2026-09-09 05:28:39.921	pid=51196	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:28:40.591	pid=51196	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json validate=False update=True
+2026-09-09 05:28:40.600	pid=51196	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json
+2026-09-09 05:28:40.664	pid=51196	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableA.csv
+2026-09-09 05:28:40.678	pid=51196	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableB.csv
+2026-09-09 05:28:40.686	pid=51196	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableC.csv
+2026-09-09 05:28:40.693	pid=51196	PHASE	input columns and types
+2026-09-09 05:28:40.709	pid=51196	PHASE	preparing job merge-ledger
+2026-09-09 05:28:40.713	pid=51196	PHASE	preparing job delete-listed-records
+2026-09-09 05:28:40.716	pid=51196	PHASE	executing update job merge-ledger
+2026-09-09 05:28:40.736	pid=51196	PHASE	writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json
+2026-09-09 05:28:40.748	pid=51196	PASS	RunUpdate C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json
+2026-09-09 05:28:40.777	pid=51196	END	exit=0 last phase=writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json

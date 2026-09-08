@@ -1,0 +1,13 @@
+2026-09-09 05:28:38.700	pid=36536	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\settings.json data= output= validate=True update=False
+2026-09-09 05:28:38.735	pid=36536	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:28:39.494	pid=36536	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\settings.json data= output= validate=True update=False
+2026-09-09 05:28:39.504	pid=36536	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\settings.json
+2026-09-09 05:28:39.578	pid=36536	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\data\tableA.csv
+2026-09-09 05:28:39.595	pid=36536	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\data\tableB.csv
+2026-09-09 05:28:39.604	pid=36536	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\data\tableC.csv
+2026-09-09 05:28:39.615	pid=36536	PHASE	input columns and types
+2026-09-09 05:28:39.634	pid=36536	PHASE	preparing job merge-ledger
+2026-09-09 05:28:39.636	pid=36536	PHASE	preparing job delete-listed-records
+2026-09-09 05:28:39.642	pid=36536	PHASE	validation finished
+2026-09-09 05:28:39.646	pid=36536	PASS	ValidateOnly C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\validate-ok\settings.json
+2026-09-09 05:28:39.650	pid=36536	END	exit=0 last phase=validation finished
