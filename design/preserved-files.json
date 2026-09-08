@@ -1,5 +1,5 @@
 {
-  "scope": "Expected source, dependencies, launchers, settings, fixtures and tests after input normalization and optional configuration defaults. Changed files retain their uploaded-archive hash where available.",
+  "scope": "Expected source and contracts after per-input encoding, composite identities and headless validation/execution. Original file hashes retained for changed entries.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -69,7 +69,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "f526c18c27735066ba523566fc931b6da14778dbeb07bd8a5e25817892b4809d",
+      "sha256": "8283d8ddd05cd8f324eb5a5adb9db8ffe5c412c708f06a7406db2930c67f24f4",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -79,26 +79,27 @@
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "d6799da44ec30e0d7a97d0beee17a400f4979da5f98897be2f04ad5b0eb934f1",
+      "sha256": "8b267bbf3e3fbabf1e0b97ba3bdcbd05f485f46f3997f8152d0e35e432341fae",
       "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
     },
     {
       "path": "src/Rdv3Csv.cs",
-      "sha256": "db883a8f35bfb18c00f1c196bc5aad3f725b77e2a4f69bc826032f443f0787df",
+      "sha256": "30b056e9b484be6f44b4d9d9f4754876c307a3c1035a0b4562564a3b61392243",
       "baselineSha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df"
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "592632fff9802e0434d828b6c834fb9577bcc27e5a0c4e765a72a65667394b8a",
+      "sha256": "eeee509d8a4986d715fe2df55803f1f1990e35beaed9f136a4b11be7dc9a7aab",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
       "path": "src/Rdv3Files.cs",
-      "sha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+      "sha256": "3e298282ea088e00a9280186c3e08145327d0eb2679f1b596e6f1780a2bc00bd",
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
     },
     {
       "path": "src/Rdv3Index.cs",
-      "sha256": "11b54273f164e9e162f42427fb7a2e424c4f44c1ab8003d232014fe4c7670c0b",
+      "sha256": "e49d4e6e888046cee2104f40c539a9f94ce7824804996c703c7039a604a5a033",
       "baselineSha256": "98a9a9c174ce1c4f6935c42b9be65c72397fe9a7f339527137225d917c8b9e3f"
     },
     {
@@ -112,17 +113,17 @@
     },
     {
       "path": "src/Rdv3Ledger.cs",
-      "sha256": "0d8cecd81d7830f79ddf4d1e82d29075c47c2fe643a47c5f4496f747e707e1e6",
+      "sha256": "81f838a040305d77d58e6b5b8457a84f410ac386ad3e0238b6a5f5b8b692c5db",
       "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465"
     },
     {
       "path": "src/Rdv3Modals.cs",
-      "sha256": "6b5568b4f124811a3f16f767f8a63a5f26011b76b89ab91e88c29c84c3b760e0",
+      "sha256": "cf38bbf735a4b61ae282125e7f9f8bd0778b83d2b43a4f2acd7aa9b85aa44095",
       "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184"
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "a899bcdbe29ee575e56c718c667e01ed74348317046ebc58e7dd46b8f3a33e78",
+      "sha256": "ddfcab0a0835fb89118797810ee3f75de8be51779a2b731ea24ffbbac1539c8c",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
@@ -135,11 +136,12 @@
     },
     {
       "path": "src/Rdv3Shared.cs",
-      "sha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99"
+      "sha256": "f56951a63e5ceb0bed6be668eb9616d3b35c59f2702550929a2ad562e97cf300",
+      "baselineSha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99"
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "b4aeb76259cca24732411acac0ea85b41928535ad18c677fab465de5832359f6",
+      "sha256": "1dbeedc14ea50ce12eb2f609f9f494005f1b3fa3cdc9d8a07bec7416fcaa08df",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -167,11 +169,12 @@
     },
     {
       "path": "src/ReaderDataViewer.ps1",
-      "sha256": "d2bacb39efb7ddca7bff3f65e5bc9a97eacd5fd929a0dd7011e291f04a3283af"
+      "sha256": "33c69e68eb4897dc7884767fe158e38d6ec0b101322dd98a63d9c6c6f6c07aaf",
+      "baselineSha256": "d2bacb39efb7ddca7bff3f65e5bc9a97eacd5fd929a0dd7011e291f04a3283af"
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "3eed90ad4f3340547dabe914889854ef536aa0f0f0c12e961dffaad1d62f5042",
+      "sha256": "2b8fdaaf4bded5fc03ffd7418e6693932ba3941256991fb504277069b144f6c2",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -217,7 +220,8 @@
     },
     {
       "path": "src/Rdv3Program.cs",
-      "sha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
+      "sha256": "bc6e6f09ee2bd507344c2b79db224f29a1d1b001550a3676627472507a0cd91e",
+      "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
     },
     {
       "path": "src/Rdv3Expression.cs",
@@ -226,11 +230,13 @@
     },
     {
       "path": "src/Rdv3LedgerStore.cs",
-      "sha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
+      "sha256": "1ffd8f5aad6b6b90cf4595d03cb9d34e656facbe6e59411c33fce836d0c4eea4",
+      "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
     },
     {
       "path": "src/Rdv3ResetNotice.cs",
-      "sha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
+      "sha256": "9558c3d1197048e7353a65f84e352101f9789897a6aa6c8998aeb980515ddb6a",
+      "baselineSha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
     },
     {
       "path": "src/Rdv3WriteGuard.cs",
@@ -238,7 +244,16 @@
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
+      "sha256": "cebfab4384c10cf5dcd1c7d60c114724e3a20f84d0434bcd59bdca95e8e9abb9",
+      "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
+    },
+    {
+      "path": "src/Rdv3Headless.cs",
+      "sha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
+    },
+    {
+      "path": "src/Rdv3Key.cs",
+      "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
     }
   ]
 }
