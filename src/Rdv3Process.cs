@@ -180,18 +180,47 @@ public static class Rdv3Process
         return prepared;
     }
 
-    public static void ValidateColumns(Rdv3Data data, string[][] heads, Rdv3Validation validation = null)
+    // Walks every job over the input headers alone. Returns the column
+    // references the update job's tables and row sets carry (null when that
+    // walk failed), so that the caller can accept a ledger column a step makes.
+    public static HashSet<string> ValidateColumns(Rdv3Data data, string[][] heads, Rdv3Validation validation = null)
     {
+        HashSet<string> produced = null;
         for (int i = 0; i < data.Jobs.Count; i++)
         {
+            Rdv3ProcessJobDef job = data.Jobs[i];
             Action check = delegate {
-            Rdv3PreparedProcess prepared = PrepareFromHeads(data, data.Jobs[i], heads);
-            Execute(prepared, new string[0], new string[0], "", false);
+            Rdv3PreparedProcess prepared = PrepareFromHeads(data, job, heads);
+            Rdv3ProcessResult result = Execute(prepared, new string[0], new string[0], "", true);
+            if (job != data.UpdateJob) { return; }
+            produced = new HashSet<string>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, Rdv3ProcessValueResult> value in result.Values)
+            { if (value.Value.Kind != "ledger") { produced.UnionWith(value.Value.Columns); } }
+            CheckLedgerSource(data, job, result);
             };
             if (validation == null) { check(); }
             else { validation.Check("data.jobs[" + i.ToString(CultureInfo.InvariantCulture) + "] column dependencies", check); }
         }
         if (validation != null) { validation.Finish("job columns", "input types and job preparation"); }
+        return produced;
+    }
+
+    // Every saved column must reach the ledger-writing step: a column of a
+    // table that was never joined, or dropped by a select, would otherwise
+    // be written as a silent blank in every row.
+    private static void CheckLedgerSource(Rdv3Data data, Rdv3ProcessJobDef job, Rdv3ProcessResult result)
+    {
+        if (job.ApplyStep == null) { return; }
+        Rdv3ProcessValueResult source = result.ValueOf(job.ApplyStep.Target1);
+        if (source == null || source.Kind == "ledger") { return; }
+        HashSet<string> columns = new HashSet<string>(source.Columns, StringComparer.Ordinal);
+        for (int c = 0; c < data.Columns.Count; c++)
+        {
+            if (Array.IndexOf(data.IdentityCols, c) >= 0 || columns.Contains(data.Columns[c].Ref)) { continue; }
+            throw new Rdv3DataError(Rdv3Text.LedgerColumnNotProduced
+                .Replace("{name}", data.Columns[c].Ref)
+                .Replace("{step}", job.ApplyStep.Operation + " " + job.ApplyStep.Target1));
+        }
     }
 
     internal static Rdv3ProcessResult Execute(Rdv3PreparedProcess prepared,
@@ -868,8 +897,14 @@ public static class Rdv3Process
             {
                 int identityPart = Array.IndexOf(data.IdentityCols, c);
                 int from = identityPart >= 0 ? sourceKey[identityPart] : source.ColumnOf(data.Columns[c].Ref);
-                if (from >= 0) { row[c] = source.Rows[r][from]; }
-                else { row[c] = ""; }
+                // ValidateColumns proves this before any row is read; a blank
+                // written here would be a silent loss, never an acceptable value.
+                if (from < 0)
+                {
+                    throw new InvalidDataException(Rdv3Text.LedgerColumnNotProduced
+                        .Replace("{name}", data.Columns[c].Ref).Replace("{step}", step.Operation + " " + step.Target1));
+                }
+                row[c] = source.Rows[r][from];
             }
             sourceLines[r] = string.Join("\t", row);
         }

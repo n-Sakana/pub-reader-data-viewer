@@ -544,6 +544,7 @@ public sealed class Rdv3Data
                 input.Label = table.Label;
                 input.Table = table.Id;
                 input.File = table.File;
+                input.HeaderRow = table.HeaderRow;
                 input.Column = table.Key;
                 input.Columns = table.KeyColumns;
                 input.Key = table.Id + "." + table.Key;
@@ -554,10 +555,11 @@ public sealed class Rdv3Data
             }
             else
             {
-                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding");
+                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding", "headerRow");
                 input.Id = io.Need("id");
                 input.Label = io.StrOr("label", input.Id);
                 input.File = io.Need("file");
+                input.HeaderRow = io.IntOr("headerRow", 1, 1, 1000000);
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");
                 input.KeyValidation = ReadKeyValidation(io);
@@ -994,7 +996,7 @@ public sealed class Rdv3Data
     private static void CompileFastUpdate(Rdv3Data d, Rdv3ProcessJobDef job, Rdv3Json at)
     {
         job.FastJoinPlan = false;
-        if (d.IdentityCols.Length != 1) { return; }
+        if (d.IdentityCols.Length != 1 || d.SpineOrd < 0) { return; }
         job.Spine = "";
         job.SpineOrd = -1;
         job.Joins.Clear();
@@ -1178,6 +1180,40 @@ public sealed class Rdv3Data
         return c;
     }
 
+    // The names a ledger column may start with: an input table, or a value
+    // of the update job (an input id or a step output such as an aggregate).
+    private static HashSet<string> UpdateValueNames(Rdv3Data d)
+    {
+        HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
+        if (d.UpdateJob == null) { return names; }
+        foreach (Rdv3ProcessInputDef input in d.UpdateJob.Inputs) { names.Add(input.Id); }
+        foreach (Rdv3ProcessStepDef step in d.UpdateJob.Steps) { names.Add(step.Output); }
+        return names;
+    }
+
+    // A saved, searched, identifying or typed column: a column of an input
+    // table, or a column the update job makes (calculate's column, aggregate's
+    // as, select's as) under one of that job's value names. Whether such a
+    // column really exists is settled in Bind, once the job's columns are known.
+    private static Rdv3ColumnRef ParseLedgerRef(Rdv3Data d, string s, Rdv3Json at)
+    {
+        string text = (s == null) ? "" : s.Trim();
+        int dot = text.IndexOf('.');
+        if (dot <= 0 || dot == text.Length - 1) { throw at.Fail("a column is written <table>.<column>, not " + text); }
+        string owner = text.Substring(0, dot);
+        if (d.TableOf(owner) != null) { return ParseRef(d, text, at); }
+        if (!UpdateValueNames(d).Contains(owner))
+        {
+            throw at.Fail(owner + " is not one of the tables, nor an input id or step output of the update job");
+        }
+        Rdv3ColumnRef c = new Rdv3ColumnRef();
+        c.Ref = text;
+        c.Table = owner;
+        c.Column = text.Substring(dot + 1);
+        c.TableOrd = -1;
+        return c;
+    }
+
     public void Bind(string[][] heads, Rdv3Validation validation = null)
     {
         for (int t = 0; t < Tables.Count; t++)
@@ -1197,22 +1233,84 @@ public sealed class Rdv3Data
                 if (job.Joins[i].OnField < 0) { Report(validation, Missing(Tables[job.SpineOrd], job.Joins[i].On, "jobs.steps.keys")); }
             }
         }
+        // Columns found in an input header bind here. The others must be made
+        // by the update job (calculate, aggregate, select ... as); that is
+        // known only after the job's column dependencies have been walked.
         for (int i = 0; i < Columns.Count; i++)
         {
             Rdv3ColumnRef c = Columns[i];
-            c.Field = FieldOf(heads[c.TableOrd], c.Column);
-            if (c.Field < 0) { Report(validation, Missing(Tables[c.TableOrd], c.Column, "ledger.columns")); }
+            c.Field = (c.TableOrd >= 0) ? FieldOf(heads[c.TableOrd], c.Column) : -1;
         }
         for (int i = 0; i < TypeOrder.Count; i++)
         {
             Rdv3ColumnTypeDef type = TypeOrder[i];
             int dot = type.Ref.IndexOf('.');
-            string column = type.Ref.Substring(dot + 1);
-            type.Field = FieldOf(heads[type.TableOrd], column);
-            if (type.Field < 0) { Report(validation, Missing(Tables[type.TableOrd], column, "types")); }
+            type.Field = (type.TableOrd >= 0) ? FieldOf(heads[type.TableOrd], type.Ref.Substring(dot + 1)) : -1;
         }
-        if (validation != null) { validation.Finish("input columns", "input types and job preparation"); }
-        Rdv3Process.ValidateColumns(this, heads, validation);
+        if (validation != null) { validation.Finish("input columns", "job columns, ledger columns, input types and job preparation"); }
+        HashSet<string> produced = Rdv3Process.ValidateColumns(this, heads, validation);
+        bool derived = false;
+        for (int i = 0; i < Columns.Count; i++)
+        {
+            Rdv3ColumnRef c = Columns[i];
+            if (c.Field >= 0) { continue; }
+            if (produced != null && produced.Contains(c.Ref)) { derived = true; continue; }
+            Report(validation, MissingRef(c.TableOrd, c.Table, c.Column, "ledger.columns"));
+        }
+        for (int i = 0; i < TypeOrder.Count; i++)
+        {
+            Rdv3ColumnTypeDef type = TypeOrder[i];
+            if (type.Field >= 0 || (produced != null && produced.Contains(type.Ref))) { continue; }
+            int dot = type.Ref.IndexOf('.');
+            Report(validation, MissingRef(type.TableOrd, type.Ref.Substring(0, dot), type.Ref.Substring(dot + 1), "types"));
+        }
+        if (derived)
+        {
+            // A ledger column a step makes is in no input file, so the
+            // byte-indexed left-join shortcut cannot compose the row. The
+            // general pipeline produces exactly the same rows.
+            for (int j = 0; j < Jobs.Count; j++) { Jobs[j].FastJoinPlan = false; }
+            Joins = new List<Rdv3JoinDef>();
+        }
+        if (validation != null) { validation.Finish("ledger columns", "input types and job preparation"); }
+    }
+
+    // A workbook stores a date cell as its serial number. A column declared
+    // as a date is converted to the declared format here, before the type
+    // check; a text cell that already matches the format is left as it is.
+    public void ConvertWorkbookDates(Rdv3Table[] tables)
+    {
+        if (tables == null) { return; }
+        for (int i = 0; i < TypeOrder.Count; i++)
+        {
+            Rdv3ColumnTypeDef type = TypeOrder[i];
+            if (type.Type != "date" || type.TableOrd < 0 || type.TableOrd >= tables.Length || type.Field < 0) { continue; }
+            Rdv3Table table = tables[type.TableOrd];
+            if (table == null || table.Cells == null
+                || !string.Equals(System.IO.Path.GetExtension(table.Path), ".xlsx", StringComparison.OrdinalIgnoreCase)) { continue; }
+            for (int row = 0; row < table.Rows; row++)
+            {
+                string value = table.Cells[row][type.Field];
+                if (value.Length == 0) { continue; }
+                DateTime parsed;
+                if (type.TryDate(value, out parsed)) { continue; }
+                string converted = SerialDate(value, type.Format);
+                if (converted != null) { table.Cells[row][type.Field] = converted; }
+            }
+        }
+    }
+
+    // Excel's serial day: 1 = 1900-01-01, and day 60 is the 1900-02-29 that
+    // never existed, so days from 61 on sit one day later than a plain count.
+    // A time fraction is dropped; a value outside Excel's range is not a date.
+    private static string SerialDate(string value, string format)
+    {
+        decimal serial;
+        if (!decimal.TryParse(value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out serial)) { return null; }
+        if (serial < 1 || serial > 2958465) { return null; }
+        int days = (int)decimal.Truncate(serial);
+        DateTime date = (days >= 61) ? new DateTime(1899, 12, 30).AddDays(days) : new DateTime(1899, 12, 31).AddDays(days);
+        return date.ToString(format, CultureInfo.InvariantCulture);
     }
 
     // Called before the window opens and again when an update re-reads the
@@ -1259,6 +1357,13 @@ public sealed class Rdv3Data
     {
         return new Rdv3DataError(Rdv3Text.DataNoColumn.Replace("{file}", t.File).Replace("{row}", "1")
             .Replace("{name}", column) + " (data." + where + ")");
+    }
+
+    private Rdv3DataError MissingRef(int tableOrd, string owner, string column, string where)
+    {
+        if (tableOrd >= 0) { return Missing(Tables[tableOrd], column, where); }
+        return new Rdv3DataError(Rdv3Text.DataNoDerivedColumn.Replace("{name}", owner + "." + column)
+            .Replace("{where}", "data." + where));
     }
 
     private static int FieldOf(string[] head, string name)
