@@ -6,6 +6,17 @@ CSV / XLSXを表として読み、結合・集計・抽出等から作った共�
 
 設定を作る人は、このREADME、コメント入りの`settings.json`、対象データ、実現したい操作の説明から始められます。ソースコードを読む必要はありません。**出荷設定を少し変える場合は、下の最小例へ入れ替えず、既存の表示項目・状態・ジョブを残して編集してください。** 最小例は新規作成の出発点です。
 
+**設定の作成と検査は、書く人の仕事です。検査を「受け渡し先で今後実施」として終えないでください。** アプリが使える環境では、提出前に次の2本を自分で実行し、結果の行・値・未一致数まで業務フローと照合します。パスは実際の配置に直し、2本目の出力は未使用の名前にします。
+
+```powershell
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File C:/app/src/ReaderDataViewer.ps1 -ValidateOnly -Config C:/trial/settings.json -DataDir C:/trial/data
+powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File C:/app/src/ReaderDataViewer.ps1 -RunUpdate -Config C:/trial/settings.json -DataDir C:/trial/data -Output C:/trial/result-01.json
+```
+
+失敗したら`%LOCALAPPDATA%/ReaderDataViewer/logs/feedback.log`（書けない場合は`%TEMP%/ReaderDataViewer/logs/feedback.log`）を読み、直して再実行します。`FAIL`の件数、`STOP`、`NOT CHECKED`を確認してください。[検査と結果JSONの読み方](#verify)、[ログの詳細](#feedback-log)へ続きます。アプリを実行できない環境なら、その事実と未検証範囲を明記し、「正しく動くことを確認済み」とは書きません。要件を表せないと判明した場合は、できない理由を返し、実運用用の設定ファイルを提出しません。
+
+まず読む順は、[最小設定](#quick-start) → [入力とキー](#inputs) → [結合の単位](#join-grain) → [4表の完成例](#four-tables) → [実行検査](#verify)です。**表名はtablesのlabel、列と中間結果名はdata.labels、台帳は`data.labels.ledger`に名前が必要です。** 最小例の`"ledger":"台帳"`を削らないでください。
+
 <a id="quick-start"></a>
 
 次は、UTF-8の`data/rows.csv`に`id,name`という見出しがある場合の、そのまま読める設定です。`id`は一意な文字列、`name`は表示する値です。先頭ゼロを保ちます。状態は「未確認 ↔ 確認済」、外部ウィンドウ監視は無効です。
@@ -355,6 +366,8 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 同じ意味の列が`A.id`と`B.number`という異なる名前でも、結合・抽出の`keys`に両方を書けば対応づけられます。CSVを加工して見出しを揃える必要はありません。`data.labels`は人向けの別名であり、元CSVの列名を書き換えるものではありません。
 
 **表そのものの名前は`data.tables.B.label`に書きます。`data.labels.B`は書けません。** `label`を省略しても表IDの`B`が登録されるため、同じ名前を`data.labels`で再定義できません。同じ表示名を両方へ書いた場合もエラーです。列の名前`B.id`、新しい中間結果名`joined_AB`、台帳名`ledger`は`data.labels`に書きます。
+
+**`ledger`は組込みの行き先ですが、画面向けの名前は自動登録されません。** `data.labels`へ`"ledger":"台帳"`を入れてください。`ledger has no screen label`が出たときの修正箇所もここです。`tables.ledger`を作る方法ではありません。
 
 ```json
 "tables": {"B": {"label":"表B", "file":"B.csv", "key":"id"}},
