@@ -501,16 +501,17 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 `calculate`で作る派生列は後段の計算・結合・抽出に使えます。ただし、`data.ledger.columns.source`に宣言できるのは**登録表に実在する見出し**です。計算結果を保存するには、元の値を使わない入力列を選び、その列名へ結果を置きます。入力ファイル自体は書き換えず、処理中の値だけを置き換えます。
 
-例えば表Aの入力見出しが`id,quantity,completed,unitValue,note,extra`で、noteとextraの元の値をどこでも使わない場合は、mergeの前に次の2段を置けます。`output:"A"`と既存列の名前を使うことで、保存参照を`A.note`、`A.extra`に揃えます。
+例えば表Aの入力見出しが`id,name,quantity,completed,unitValue,note,extra`で、noteとextraの元の値をどこでも使わない場合は、mergeの前に次の3段を置けます。まずselectで残す列を列挙し、未使用の2列を処理中の表から外します。その後`output:"A"`と元の列名を使うことで、保存参照を`A.note`、`A.extra`に揃えます。**calculateは同名列を上書きしません。selectを省くと`calculate would duplicate column`で止まります。**
 
 ```json
 [
+  {"operation":"select","target1":"A","columns":[{"column":"A.id"},{"column":"A.name"},{"column":"A.quantity"},{"column":"A.completed"},{"column":"A.unitValue"}],"output":"A"},
   {"operation":"calculate","target1":"A","column":"note","expression":"A.quantity - A.completed","output":"A"},
   {"operation":"calculate","target1":"A","column":"extra","expression":"A.quantity * A.unitValue","output":"A"}
 ]
 ```
 
-`ledger.columns.source`には`A.id`等の必要列と`A.note`、`A.extra`を含めます。`data.labels`に各参照の表示名を置き、例えば`"A.note":"数量差"`、`"A.extra":"積"`とします。計算元の3列はnumber、置換前のnoteとextraは元データに合う型にします。入力の型検査は計算より先なので、元の文字列へnumberを宣言してはいけません。quantity=10、completed=4、unitValue=25なら保存結果は6と250です。RunUpdateの`columns`と`rows`で答え合わせします。
+`ledger.columns.source`には`A.id`等の必要列と`A.note`、`A.extra`を含めます。selectには、この後の処理や台帳で必要な元の列をすべて残してください。`data.labels`に各参照の表示名を置き、例えば`"A.note":"数量差"`、`"A.extra":"積"`とします。計算元の3列はnumber、置換前のnoteとextraは元データに合う型にします。入力の型検査は計算より先なので、元の文字列へnumberを宣言してはいけません。quantity=10、completed=4、unitValue=25なら保存結果は6と250です。RunUpdateの`columns`と`rows`で答え合わせします。
 
 **元の値を残す必要がある列や、参照する重複見出しは保存先に使えません。** 借りられる列が足りない場合は、この方法では要件を表せません。派生名をsourceへ追加したり、必要な値を捨てて通したりせず、その理由を返してください。集計値を既存列へ置く例は[複数の行を単位ごとに合計する](#aggregate)にもあります。
 
