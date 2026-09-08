@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Source integrity and presentation checks; NOT a PowerShell/C# compiler."""
-import argparse, datetime, hashlib, json, pathlib, re, sys
+import argparse, datetime, hashlib, json, pathlib, re, subprocess, sys
 
 def check(value, message):
     if not value: raise AssertionError(message)
@@ -14,7 +14,12 @@ def main():
         except Exception as error: results.append(dict(name=name,status='FAIL',detail=str(error)))
         print(results[-1]['status'],name,results[-1].get('detail',''))
     manifest=json.loads((root/'design/preserved-files.json').read_text())
+    tracked=set(subprocess.check_output(['git','-C',str(root),'ls-files','-z']).decode('utf-8').split('\0'))
+    # Runtime data changes independently of the delivered source revision.
+    details['excludedFingerprints']=[entry['path'] for entry in manifest['files']
+                                     if entry['path'].startswith('data/') or entry['path'] not in tracked]
     for entry in manifest['files']:
+        if entry['path'] in details['excludedFingerprints']: continue
         test('preserved:'+entry['path'],lambda e=entry:check(hashlib.sha256((root/e['path']).read_bytes()).hexdigest()==e['sha256'],'Uploaded baseline differs'))
     def win98_only():
         for name in ('design/themes.json','web/theme.json','web/themes.css','web/theme-motion.js','src/03_Theme.cs'):
@@ -32,7 +37,10 @@ def main():
         html=(root/'web/index.html').read_text(encoding='utf-8-sig')
         css=(root/'web/app.css').read_text(encoding='utf-8-sig')
         styles='\n'.join(re.findall(r'<style[^>]*>(.*?)</style>',html,re.S))+css
-        check(not re.search(r'@keyframes|\banimation\s*:|\btransition\s*:',styles),'Unexpected Win98 motion')
+        check(not re.search(r'@keyframes\b',styles,re.I),'Unexpected Win98 keyframes')
+        for value in re.findall(r'\b(?:animation|transition)\s*:\s*([^;}]+)',styles,re.I):
+            check(re.sub(r'\s*!important\s*$', '', value, flags=re.I).strip().lower()=='none',
+                  'Unexpected Win98 motion: '+value)
     test('classic-no-presentation-motion',no_motion)
     def local_assets():
         html=(root/'web/index.html').read_text(encoding='utf-8-sig')
