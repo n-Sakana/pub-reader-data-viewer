@@ -1,0 +1,55 @@
+{
+  "scope": "Native WPF/WebView2 window operated from separate Windows PowerShell MTA processes using UI Automation. Limited sample workflow, not full native acceptance.",
+  "localDate": "2026-09-09",
+  "timeZone": "Asia/Tokyo",
+  "startLocal": "01:13:46",
+  "endLocal": "01:22:49",
+  "package": "build-20260909-011150-45bc1e13",
+  "monitor": {
+    "model": "EV2740S",
+    "edidSerial": "26025105",
+    "dpiForWindow": 144
+  },
+  "inputs": "Packaged synthetic CSV files in an isolated work directory",
+  "observed": {
+    "ledgerRows": 990,
+    "searchKey": "00000001",
+    "candidateCount": 5,
+    "selectedIdentity": "00000711",
+    "storedAfterFirstSend": "TRUE",
+    "storedAfterSecondSend": "FALSE",
+    "pendingAfterEachSend": 0,
+    "applicationExited": true,
+    "ledgerLockRemaining": false
+  },
+  "verification": "UIA tree snapshots, application log, independent ZIP/XML readback of the XLSX after both sends, PrintWindow screenshot inspected.",
+  "evidenceRoot": "work/tobe-native-20260909-0112",
+  "evidenceFiles": [
+    "app/data/ReaderDataViewer.log",
+    "uia-before.json",
+    "uia-after-create.json",
+    "uia-search.json",
+    "uia-send-confirm.json",
+    "native-done.png",
+    "Launch.ps1",
+    "NativeHost.cs",
+    "NativeCapture.cs",
+    "SearchStep.ps1",
+    "Action.ps1",
+    "Drive.ps1"
+  ],
+  "exploratoryLimitations": [
+    "Drive.ps1 target enumeration returned zero matches in three attempted ID actions. Those attempts were not counted as successful operations. Direct UIA PropertyCondition lookup was used for the completed operations.",
+    "The first send request arrived before the state confirmation had completed and was declined with count=0. A subsequent send was verified by pending=0 and XLSX contents. UIA dispatch return is not operation completion."
+  ],
+  "unverified": [
+    "Real Japanese IME",
+    "Actual field CSV",
+    "Production share",
+    "Multiple PCs",
+    "Other DPI settings",
+    "All dialogs and keyboard paths",
+    "Formal performance comparison"
+  ],
+  "cleanup": "WindowPattern.Close requested, host process 41016 absent, application exit log completed, XLSX lock absent."
+}

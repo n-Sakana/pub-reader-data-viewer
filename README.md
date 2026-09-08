@@ -67,7 +67,7 @@ JSONで変更できる範囲と注意点は [docs/settings.md](docs/settings.md)
 ```text
 ReaderDataViewer.cmd / .vbs   起動入口
 settings.json                 設定（JSONC、schema 3）
-src/                          アプリC# 27ファイルと起動PowerShell
+src/                          アプリC# 30ファイルと起動PowerShell
 web/                          HTML、JavaScript、CSS
 lib/                          元ZIPのWebView2 DLL・表示文書
 data/                         元ZIPの入力CSVとログ（内容維持）
