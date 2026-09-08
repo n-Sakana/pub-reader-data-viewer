@@ -1,0 +1,61 @@
+{
+    "scope":  "PowerShell packaging integration; native only with -Native",
+    "powershell":  "5.1.26100.9168",
+    "utc":  "2026-09-08T14:20:29.5372356Z",
+    "tests":  [
+                  {
+                      "name":  "powershell-parser",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "package-win98-with-explicit-skip",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "metadata-hashes-data-and-zip",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "repeat-build-never-overwrites",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "no-samples-folder-only",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "zip-only-output",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "reject-unknown-theme",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "default-win98",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "reject-retired-theme",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "reject-all-plus-theme",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "reject-test-plus-skip",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "reject-output-in-input-tree",
+                      "status":  "PASS"
+                  },
+                  {
+                      "name":  "staging-cleaned",
+                      "status":  "PASS"
+                  }
+              ],
+    "failed":  0,
+    "nativeRequested":  false
+}
