@@ -1,18 +1,18 @@
-2026-09-09 05:48:05.564	pid=52156	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\settings.json data= output= validate=True update=False
-2026-09-09 05:48:05.599	pid=52156	PHASE	loading assemblies and compiling application sources
-2026-09-09 05:48:06.299	pid=52156	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\settings.json data= output= validate=True update=False
-2026-09-09 05:48:06.311	pid=52156	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\settings.json
-2026-09-09 05:48:06.386	pid=52156	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\data\tableA.csv
-2026-09-09 05:48:06.402	pid=52156	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\data\tableB.csv
-2026-09-09 05:48:06.415	pid=52156	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\data\tableC.csv
-2026-09-09 05:48:06.425	pid=52156	VALIDATION	FAIL 1 errors
-  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\settings.json: tableA.csv の 2 行目、列 1: 必要なのは「セル全体を囲む二重引用符と閉じ引用符」、実際は「EOF」です。CSV の各行を見出しと同じ列数にしてください。セル内のカンマ・改行はセル全体を二重引用符で囲み、セル内の二重引用符は2個重ねます。区切り文字はカンマです。
+2026-09-09 07:11:49.204	pid=38864	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\settings.json data= output= validate=True update=False
+2026-09-09 07:11:49.236	pid=38864	PHASE	loading assemblies and compiling application sources
+2026-09-09 07:11:49.929	pid=38864	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\settings.json data= output= validate=True update=False
+2026-09-09 07:11:49.942	pid=38864	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\settings.json
+2026-09-09 07:11:50.011	pid=38864	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\data\tableA.csv
+2026-09-09 07:11:50.028	pid=38864	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\data\tableB.csv
+2026-09-09 07:11:50.041	pid=38864	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\data\tableC.csv
+2026-09-09 07:11:50.051	pid=38864	VALIDATION	FAIL 1 errors
+  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\settings.json: tableA.csv の 2 行目、列 1: 必要なのは「セル全体を囲む二重引用符と閉じ引用符」、実際は「EOF」です。CSV の各行を見出しと同じ列数にしてください。セル内のカンマ・改行はセル全体を二重引用符で囲み、セル内の二重引用符は2個重ねます。区切り文字はカンマです。
 STOP input files
 NOT CHECKED remaining checks within input A (tableA.csv) after the reported error
 NOT CHECKED input columns/types and job preparation
 
-2026-09-09 05:48:06.429	pid=52156	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
+2026-09-09 07:11:50.054	pid=38864	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
    at Rdv3Validation.Finish(String stage, String next)
    at Rdv3Headless.Evaluate(Rdv3Config cfg, String appDir, String dataDir, Boolean execute, String baselinePath)
    at Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
-2026-09-09 05:48:06.435	pid=52156	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\broken-csv\data\tableC.csv
+2026-09-09 07:11:50.060	pid=38864	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\broken-csv\data\tableC.csv
