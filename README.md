@@ -324,7 +324,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 | `summary.baselineRows` | 比較のために読み込んだ既存台帳の行数 |
 | `summary.resetRows`、`resetRows` | 内容変更によって初期状態へ戻った行の件数と内容。取消という特定の値を自動判定した件数ではない |
 | `values` | 操作の結果名ごとの種類、件数、列、行内容。抽出した行集合も答え合わせできる。同じ名前を再使用すると最後の値になる |
-| `warnings` | 列不足行・空行・未参照の重複列・空キー・完全重複の除外、0件の入力等の説明。ファイルログと画面の入力検証・処理後の警告にも出す |
+| `warnings` | 列不足行・空行・未参照の重複列・空キー・完全重複の除外、`headerRow`で読み飛ばした行数、0件の入力等の説明。ファイルログと画面の入力検証・処理後の警告にも出す |
 
 結合が複数あると、同じ元行が複数段で未一致になることがあります。`unmatchedLeft`を全段合計して「未一致のユニーク行数」としないでください。左に相手が複数ある場合は1対多で行が増えます。`extract`で選んだ件数は`values.<出力名>.count`で確認します。処理が0件でも、0件になった段階と除外・未一致の件数を見られます。
 
@@ -541,6 +541,35 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 4表の完成例では、Bの入力キーはid+part、集計・結合の単位はidです。照合用の計算列を使う場合も、その同じ単位で集計のgroupByと結合keysを揃えます。
 
+<a id="detail-only"></a>
+
+### 明細ファイルだけから伝票単位の台帳を作る
+
+明細しか出力できないシステムから、伝票ごとに1行の台帳を作る例です。`data/出荷実績.csv`の見出しは`伝票番号,行番号,出荷日,得意先,数量,単価`で、伝票番号＋行番号で一意、出荷日と得意先は同じ伝票の明細行ですべて同じです。台帳は伝票番号ごとに1行で、合計金額＝Σ数量×単価を持ちます。
+
+入力表の`key`は各行を識別する`["伝票番号","行番号"]`にします。`calculate`で明細金額を作り、`aggregate`の`groupBy`に伝票番号と、伝票の中で同じ値の列（出荷日、得意先）を並べると、伝票ごとに1行の表`T`になります。`groupBy`の列は元の参照（`L.伝票番号`など）のまま残り、集計列は`T.合計金額`と`T.明細数`になります。台帳の`identity`は集計後のグループ列`L.伝票番号`です。入力表の`key`と一致している必要はなく、更新のたびに一意で空欄が無いことを確かめます。
+
+```jsonc
+{
+  "tables": {"L": {"label":"出荷明細", "file":"出荷実績.csv", "key":["伝票番号","行番号"], "keyValidation":{"length":"variable"}}},
+  "types": {"L.出荷日":{"type":"date","format":"yyyy/MM/dd"}, "L.数量":{"type":"number"}, "L.単価":{"type":"number"}, "T.合計金額":{"type":"number"}},
+  "labels": {"L.伝票番号":"伝票番号", "L.行番号":"行番号", "L.出荷日":"出荷日", "L.得意先":"得意先", "L.数量":"数量", "L.単価":"単価",
+             "L.金額":"明細金額", "T":"伝票集計", "T.合計金額":"合計金額", "T.明細数":"明細数", "ledger":"台帳"},
+  "jobs": [{"id":"update", "kind":"update", "inputs":[{"table":"L"}], "steps":[
+    {"operation":"calculate", "target1":"L", "column":"金額", "expression":"L.数量 * L.単価", "output":"L"},
+    {"operation":"aggregate", "target1":"L", "groupBy":["L.伝票番号","L.出荷日","L.得意先"],
+     "aggregates":[{"function":"sum","column":"L.金額","as":"合計金額"},{"function":"count","as":"明細数"}], "output":"T"},
+    {"operation":"merge", "target1":"T", "target2":"ledger", "keys":["L.伝票番号","L.伝票番号"],
+     "sourceOnly":"add", "both":"update", "targetOnly":"keep", "output":"ledger"}
+  ]}],
+  "ledger": {"identity":"L.伝票番号", "search":{"columns":["L.伝票番号"],"match":"exact"},
+             "columns":{"source":["L.伝票番号","L.出荷日","L.得意先","T.合計金額","T.明細数"],
+                        "application":[{"name":"workState","onSourceChange":"reset"}]}}
+}
+```
+
+これは`data`の中身の例です。画面の`field`や出力の`defaultFields`にも同じ参照（`T.合計金額`）を書きます。伝票の中で値が違う列（商品コードなど）を`groupBy`に入れると伝票が複数行に割れるので、台帳に要らない列は`groupBy`に入れません。単価に`"1,250"`のようなカンマ入りの表記があっても、`number`の宣言で数値として計算します。
+
 <a id="leading-zero"></a>
 
 ### 先頭ゼロが消えた番号を扱う範囲
@@ -610,9 +639,42 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 `sum`は`column`必須、`count`は`{"function":"count","as":"count"}`としcolumnを書きません。複数集計を並べられます。集計結果は`output.as`という列参照になります。上例の`output:B`、`as:amount`は既存の`B.amount`へ結果を置き、台帳へ保存できる形にしています。
 
-**台帳のsourceに書ける参照は、登録表の実在する見出しです。** 任意に作った`total.sum`等をそのまま新しい台帳列として保存できるとは仮定しないでください。派生列は後段の計算・結合・抽出に使えますが、保存時は宣言済み列への対応を揃えます。上例のように既存の列へ集計結果を置く方法を使えます。[計算結果を台帳へ保存する](#calculation-storage)に条件と手順をまとめています。
+集計結果は`output`と`as`で決まる参照で台帳の`source`に書けます。上例なら`B.amount`で、`as`を`total`にすれば`B.total`です。既存の見出しと同じ名前へ置いても、新しい名前でも構いません。新しい名前には`data.labels`で表示名を付けます。結果名を入力表と別の名前（`output:"totals"`）にした場合は、`groupBy`の列は元の参照（`B.id`）のまま、集計列は`totals.amount`になります。[計算結果を台帳へ保存する](#calculation-storage)に条件をまとめています。
 
 例えば同じidの`"¥66,131"`と`(500)`の合計は65631、別idの`２５０`は250。Aにだけあるidの合計欄は空です。完全重複の再送行は入力時点で除かれるので、再送を二重加算する動作にはなりません。
+
+<a id="append-files"></a>
+
+### 複数ファイルを縦に足す
+
+月ごとに出力される同じ列構成のファイルを1つの台帳にまとめる例です。`受注_4月.csv`と`受注_5月.csv`の見出しはどちらも`受注番号,受注日,得意先,金額,状態`で、5月のファイルには4月の受注が再掲されることがあり、再掲された行は5月の内容が最新です。状態が`取消`の受注は台帳に載せません。
+
+手順は4段です。`append`で縦に足し、`distinct`で受注番号の重複を除き、`extract`の`where`で取消の行を選んで`delete`で除き、`merge`で台帳へ書きます。`append`の出力は左の表の参照（`A.受注番号`など）を使うので、**最新のファイルを左（`target1`）に置き**、`distinct`は先に現れた行を残します。台帳の`identity`は左の表のキー`A.受注番号`です。
+
+```jsonc
+{
+  "tables": {
+    "A": {"label":"受注（5月）", "file":"受注_5月.csv", "key":"受注番号"},
+    "B": {"label":"受注（4月）", "file":"受注_4月.csv", "key":"受注番号"}
+  },
+  "labels": {"A.受注番号":"受注番号", "A.受注日":"受注日", "A.得意先":"得意先", "A.金額":"金額", "A.状態":"状態",
+             "B.受注番号":"受注番号", "B.受注日":"受注日", "B.得意先":"得意先", "B.金額":"金額", "B.状態":"状態",
+             "all":"4月と5月", "uniq":"重複を除いた行", "cancelled":"取消の行", "kept":"取消を除いた行", "ledger":"台帳"},
+  "jobs": [{"id":"update", "kind":"update", "inputs":[{"table":"A"},{"table":"B"}], "steps":[
+    {"operation":"append", "target1":"A", "target2":"B", "output":"all"},
+    {"operation":"distinct", "target1":"all", "columns":["A.受注番号"], "output":"uniq"},
+    {"operation":"extract", "target1":"uniq", "where":{"column":"A.状態","operator":"equals","value":"取消"}, "output":"cancelled"},
+    {"operation":"delete", "target1":"uniq", "target2":"cancelled", "output":"kept"},
+    {"operation":"merge", "target1":"kept", "target2":"ledger", "keys":["A.受注番号","A.受注番号"],
+     "sourceOnly":"add", "both":"update", "targetOnly":"keep", "output":"ledger"}
+  ]}],
+  "ledger": {"identity":"A.受注番号", "search":{"columns":["A.受注番号"],"match":"exact"},
+             "columns":{"source":["A.受注番号","A.受注日","A.得意先","A.金額","A.状態"],
+                        "application":[{"name":"workState","onSourceChange":"reset"}]}}
+}
+```
+
+`extract`と`delete`は同じ表の値（ここでは`uniq`）に対して使います。`distinct`の前の`all`から選んだ行集合を`uniq`から`delete`することはできません。RunUpdateの`summary.rows`が「4月の件数＋5月だけの件数－取消の件数」になることを確かめてください。`join`でまとめると片方のファイルにしか無い受注が台帳に入りません。
 
 <a id="four-tables"></a>
 
@@ -826,8 +888,9 @@ R02,1
 - 任意SQL/C#、任意の関数、データベース接続、CSV到着を合図にした自動更新。
 - 取消の列だけを特別扱いする状態リセット。source内容の変更に対するreset/preserveを使います。
 - 日付形式やBOMなし文字コードの自動選択、同じ列で複数日付形式を試す機能。読取り失敗時のUTF-16候補表示は案内だけで、自動切替はしません。
-- 登録表にない派生列を、その名前のまま任意の台帳列へ増設すること。既存の未使用入力列へ結果を置く方法は[計算結果の保存](#calculation-storage)を参照してください。
-- 任意シート選択、Excel数式の再計算、識別規則の不明な先頭ゼロの推測復元、ブックの装飾の保存。識別規則が既知の番号には上記の計算列を使えます。
+- 更新ジョブが作らない列を台帳に増設すること。保存できるのは入力表の列と、calculate / aggregate / select が作った列だけです（[計算結果の保存](#calculation-storage)）。
+- 任意シート選択、Excel数式の再計算、識別規則の不明な先頭ゼロの推測復元、ブックの装飾の保存。識別規則が既知の番号には上記の計算列を使えます。XLSXの日付セルは`data.types`でdateを宣言した列だけ変換し、宣言のない列はシリアル値の数字のままです。
+- 見出し行の自動判定。表題行のあるファイルは`headerRow`で見出しの行番号を指定します。
 - 実物のカードリーダー制御。責務は設定した外部ウィンドウをUIAで読み取るところまでです。
 
 CSV出力は現在このPCに見えている台帳と未送信の状態です。他PCの未送信分は含みません。出力は新規CSVのみ。数式として解釈される値を抑えるExcel向け設定は既定で有効ですが、Excelが番号や日付を自動変換することまでは防ぎません。機械向けに生の値を出すときは出力画面で数式無効化を解除します。
