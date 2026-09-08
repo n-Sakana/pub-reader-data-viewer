@@ -151,11 +151,13 @@ public sealed class Rdv3Json
         return (v == null) ? def : v.Str;
     }
 
-    // one of a fixed list of words (case-sensitive, as documented)
+    // Closed vocabularies accept casing/padding, while identifiers and cell
+    // literals remain exact strings through Need/StrOr.
     public string Word(string name, string def, params string[] allowed)
     {
-        string s = StrOr(name, def);
-        for (int i = 0; i < allowed.Length; i++) { if (allowed[i] == s) { return s; } }
+        string s = StrOr(name, def).Trim();
+        for (int i = 0; i < allowed.Length; i++)
+        { if (string.Equals(allowed[i], s, StringComparison.OrdinalIgnoreCase)) { return allowed[i]; } }
         throw FailAt(name, "must be one of " + string.Join(" / ", allowed) + ", not " + s);
     }
 
