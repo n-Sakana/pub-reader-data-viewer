@@ -323,7 +323,7 @@ public sealed class Rdv3Config
                 + "; the file says " + N(schema) + " (docs/settings.md)");
         }
 
-        Rdv3Json p = root.Obj("paths", true);
+        Rdv3Json p = OptionalObject(root, "paths");
         p.Only("dataDir", "ledger", "log");
         c.DataDir = p.StrOr("dataDir", c.DataDir);
         c.Ledger = p.StrOr("ledger", c.Ledger);
@@ -333,7 +333,7 @@ public sealed class Rdv3Config
         if (c.Log.Trim().Length == 0) { throw p.Member("log").Fail("must not be blank"); }
         c.pathsNode = p;
 
-        Rdv3Json s = root.Obj("search", true);
+        Rdv3Json s = OptionalObject(root, "search");
         s.Only("pattern", "candidateRowsShown");
         c.KeyPattern = s.StrOr("pattern", DefaultKeyPattern);
         string why = PatternError(c.KeyPattern);
@@ -341,7 +341,7 @@ public sealed class Rdv3Config
         c.CandidateRowsShown = s.IntOr("candidateRowsShown", c.CandidateRowsShown, 1, 1000);
         c.searchNode = s;
 
-        Rdv3Json w = root.Obj("watch", true);
+        Rdv3Json w = OptionalObject(root, "watch");
         w.Only("pollMs", "stableMs", "rebindMs", "preferFocusedWindow", "targets");
         c.PollMs = w.IntOr("pollMs", c.PollMs, 5, 5000);
         c.StableMs = w.IntOr("stableMs", c.StableMs, 0, 60000);
@@ -350,11 +350,11 @@ public sealed class Rdv3Config
         // the file decides what is watched -- down to "nothing" (an empty list).
         // A target the operator turned OFF is kept: it is still theirs, the
         // dialog still lists it, and the next save still writes it.
-        List<Rdv3Json> ts = w.Objs("targets", true);
+        List<Rdv3Json> ts = w.Objs("targets", false);
         for (int i = 0; i < ts.Count; i++) { c.Targets.Add(Rdv3Target.Read(ts[i])); }
         c.watchNode = w;
 
-        Rdv3Json j = root.Obj("jobs", true);
+        Rdv3Json j = OptionalObject(root, "jobs");
         j.Only("checkTimeoutMs", "searchTimeoutMs", "saveTimeoutMs", "markOverdueMs", "pumpMs", "lockRetryMs", "lockStaleMs", "markerPollMs");
         c.CheckTimeoutMs = j.IntOr("checkTimeoutMs", c.CheckTimeoutMs, 1000, 3600000);
         c.SearchTimeoutMs = j.IntOr("searchTimeoutMs", c.SearchTimeoutMs, 1000, 3600000);
@@ -371,6 +371,16 @@ public sealed class Rdv3Config
         c.Screen.Check(c.Data);
         c.sourceDigest = Rdv3PendingStore.DigestOf(text);
         return c;
+    }
+
+    private static Rdv3Json OptionalObject(Rdv3Json root, string name)
+    {
+        Rdv3Json value = root.Obj(name, false);
+        if (value != null) { return value; }
+        value = Rdv3Json.Parse("{}");
+        value.Path = name;
+        value.Start = value.End = -1;
+        return value;
     }
 
     // the compiled rule behind KeyPattern, rebuilt when the pattern changes
@@ -433,6 +443,13 @@ public sealed class Rdv3Config
             string[] bodies = { PathsJson(IndentOf(text, now.pathsNode), nl),
                                 SearchJson(),
                                 WatchJson(IndentOf(text, now.watchNode), nl) };
+            string[] names = { "paths", "search", "watch" };
+            StringBuilder missing = new StringBuilder();
+            for (int i = 0; i < nodes.Length; i++)
+            {
+                if (nodes[i].Start < 0)
+                { missing.Append(nl).Append("  ").Append(Q(names[i])).Append(": ").Append(bodies[i]).Append(','); }
+            }
             for (int a = 0; a < nodes.Length; a++)
             {
                 for (int b = a + 1; b < nodes.Length; b++)
@@ -446,7 +463,15 @@ public sealed class Rdv3Config
             }
             for (int i = 0; i < nodes.Length; i++)
             {
+                if (nodes[i].Start < 0) { continue; }
                 text = text.Substring(0, nodes[i].Start) + bodies[i] + text.Substring(nodes[i].End);
+            }
+            if (missing.Length > 0)
+            {
+                // Insert before the first member, so either trailing-comma
+                // convention and comments elsewhere survive a settings save.
+                int start = Rdv3Json.Parse(text).Start + 1;
+                text = text.Insert(start, missing.ToString() + nl);
             }
             // the result has to load too, or it is not written
             Parse(text);
@@ -464,6 +489,7 @@ public sealed class Rdv3Config
     // the whitespace that opens the line the member's name is on
     private static string IndentOf(string text, Rdv3Json node)
     {
+        if (node.Start < 0) { return "  "; }
         int at = (node.KeyStart >= 0) ? node.KeyStart : node.Start;
         int ls = at;
         while (ls > 0 && text[ls - 1] != '\n') { ls--; }

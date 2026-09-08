@@ -284,7 +284,7 @@ public sealed class Rdv3Data
             to.Only("label", "file", "key", "keyValidation");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
-            t.Label = to.Need("label");
+            t.Label = to.StrOr("label", id);
             t.File = to.Need("file");
             t.Key = to.Need("key");
             t.KeyValidation = ReadKeyValidation(to);
@@ -440,7 +440,7 @@ public sealed class Rdv3Data
         o.Only("id", "name", "kind", "inputs", "steps");
         Rdv3ProcessJobDef job = new Rdv3ProcessJobDef();
         job.Id = o.Need("id");
-        job.Name = o.Need("name");
+        job.Name = o.StrOr("name", job.Id);
         job.Kind = o.Word("kind", "", "update", "delete");
         job.Line = o.Line;
 
@@ -469,7 +469,7 @@ public sealed class Rdv3Data
             {
                 io.Only("id", "label", "file", "column", "key", "keyValidation");
                 input.Id = io.Need("id");
-                input.Label = io.Need("label");
+                input.Label = io.StrOr("label", input.Id);
                 input.File = io.Need("file");
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");
