@@ -1,7 +1,7 @@
 {
   "scope": "Chromium with synthetic WebView bridge, not native C#/WPF/SMB",
   "browser": "145.0.7632.6",
-  "utc": "2026-09-08T16:40:19.602841+00:00",
+  "utc": "2026-09-08T17:22:48.541079+00:00",
   "tests": [
     {
       "name": "win98:input-normalization",

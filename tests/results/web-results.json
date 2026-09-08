@@ -1,7 +1,7 @@
 {
   "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
   "baseline_reproduction": false,
-  "utc": "2026-09-08T16:39:02.310202+00:00",
+  "utc": "2026-09-08T17:21:39.406105+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
   "tests": [
     {
