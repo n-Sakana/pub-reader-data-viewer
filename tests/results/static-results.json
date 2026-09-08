@@ -1,13 +1,13 @@
 {
   "scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
-  "utc": "2026-09-08T14:34:13.205436+00:00",
+  "utc": "2026-09-08T15:30:18.977522+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
   "passed": 30,
   "failed": 0,
   "details": {
     "text_reference_count": 168,
     "node_version": "v24.12.0",
-    "native_test_cases_provided_not_executed": 50,
+    "native_test_cases_provided_not_executed": 51,
     "sample_data": {
       "A": {
         "source_rows": 1000,

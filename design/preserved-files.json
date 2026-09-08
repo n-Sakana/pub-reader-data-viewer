@@ -1,5 +1,5 @@
 {
-  "scope": "Unmodified business code, runtime dependencies, launchers, settings, data and original tests from the uploaded archive.",
+  "scope": "Expected source, runtime dependencies, launchers, settings, fixtures and tests after Win98 simplification. Intentionally changed files retain their uploaded-archive hash in baselineSha256.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -69,11 +69,13 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
+      "sha256": "e3d9db8911137942e56238a348207ac8cf8b97e720eda1b719b92a2305b00f86",
+      "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
       "path": "src/Rdv3Config.cs",
-      "sha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f"
+      "sha256": "b5900efc852795bfff681d347af0433fc4ede5395e798bd767a71aa1c2176d3b",
+      "baselineSha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f"
     },
     {
       "path": "src/Rdv3Core.cs",
@@ -101,7 +103,8 @@
     },
     {
       "path": "src/Rdv3Json.cs",
-      "sha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8"
+      "sha256": "140e528f00f9e2473f736cd7fa762772eafe284a475f814fa4dff6c47b19ac97",
+      "baselineSha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8"
     },
     {
       "path": "src/Rdv3Ledger.cs",
@@ -133,7 +136,8 @@
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
+      "sha256": "1cc4922f6c0ee8e21b7cff7fe14ad2f05d08a9954577cacf801368f345abde20",
+      "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
     },
     {
       "path": "src/Rdv3Uia.cs",
@@ -157,7 +161,8 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
+      "sha256": "4e34f4d692d03f26f7b822743acace23a9bab1067bf42fd0e8f7125d7db4636f",
+      "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
       "path": "tests/fixtures/data/delete.csv",
@@ -193,7 +198,8 @@
     },
     {
       "path": "web/app.js",
-      "sha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
+      "sha256": "40cdaea78d3192d9dffe048c8979f9aef592166ce2247a7b0362ab404a721ae0",
+      "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
     }
   ]
 }
