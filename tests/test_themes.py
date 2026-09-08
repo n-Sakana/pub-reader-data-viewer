@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Six-theme browser regression matrix. Synthetic bridge; NOT native Windows UI."""
+"""Win98 browser regression matrix. Synthetic bridge; NOT native Windows UI."""
 import argparse
 import copy
 import datetime
@@ -31,11 +31,9 @@ def main():
     ap.add_argument('--original',type=pathlib.Path)
     ap.add_argument('--chromium',default='/usr/bin/chromium')
     ap.add_argument('--screenshots',action='store_true')
-    ap.add_argument('--theme',choices=['win98','apple','material','fluent','carbon','spectrum'])
+    ap.add_argument('--theme',choices=['win98'])
     args=ap.parse_args(); root=args.root.resolve()
-    catalog=json.loads((root/'design/themes.json').read_text())['themes']
     screen,state=full_fixture(root)
-    if args.theme: catalog=[t for t in catalog if t['id']==args.theme]
     results=[]
     def test(name,callback):
         try:
@@ -50,7 +48,7 @@ def main():
             page.set_default_timeout(2500)
             errors=[]; page.on('pageerror',lambda e:errors.append(str(e)))
             try:
-                load_page(page,root,theme,motion,dialog,screen if full else old.SCREEN,state if full else old.STATE)
+                load_page(page,root,dialog,screen if full else old.SCREEN,state if full else old.STATE)
                 callback(page)
                 check(not errors,'Browser errors: '+str(errors))
             finally:
@@ -70,10 +68,6 @@ def main():
             old.clear(page)
             page.keyboard.press('Escape')
             check(len(old.messages(page,'modalResult'))==1,'Esc did not resolve exactly once')
-        def focus(page):
-            page.locator('#b-search').focus()
-            info=page.locator('#b-search').evaluate('e=>{let s=getComputedStyle(e);return {width:parseFloat(s.outlineWidth),style:s.outlineStyle};}')
-            check(info['width']>=2 and info['style']=='solid','Missing modern focus ring')
         def motion(page,expected):
             duration=page.locator('#b-search').evaluate('e=>getComputedStyle(e).transitionDuration')
             nums=[float(p.strip().rstrip('s')) for p in duration.split(',')]
@@ -84,17 +78,6 @@ def main():
             # Immediately after reveal: action is never animation-gated.
             page.locator('.veil.show [data-modal-default=true]').evaluate('e=>e.click()')
             check(len(old.messages(page,'modalResult'))==1,'Animation blocked confirmation')
-        def native_motion(page):
-            old.modal(page,'confirm',MODALS['confirm'])
-            before=page.locator('.veil.show .dlg').bounding_box()
-            page.evaluate("window.rdvDeliver({type:'surfaceShown'})")
-            info=page.evaluate("()=>document.querySelector('.veil.show .body').getAnimations().map(a=>a.effect.getTiming().duration)")
-            check(info and max(info)<=160,'Native presentation animation missing/excessive')
-            after=page.locator('.veil.show .dlg').bounding_box()
-            check(before==after,'Animation changed native dialog measurement')
-            page.emulate_media(reduced_motion='reduce')
-            page.wait_for_timeout(25)
-            check(page.locator('.veil.show .body').evaluate('e=>e.getAnimations().length')==0,'Running motion not cancelled by preference change')
         def candidates_keyboard(page):
             old.modal(page,'candidates',CANDIDATES)
             page.locator('.veil.show tbody tr').nth(0).focus()
@@ -102,7 +85,7 @@ def main():
             check(page.locator('.veil.show tbody tr').nth(1).get_attribute('aria-selected')=='true','Candidate selection changed')
             old.clear(page);page.keyboard.press('Enter')
             check(old.messages(page,'modalResult')[-1]['result']['index']==1,'Candidate index changed')
-        for theme in [t['id'] for t in catalog]:
+        for theme in ['win98']:
             for label,callback in REGRESSIONS:
                 test(theme+':'+label,lambda t=theme,c=callback:on_page(t,c))
             for width,height in [(818,636),(480,640),(1100,900)]:
@@ -110,15 +93,7 @@ def main():
             for kind,content in MODALS.items():
                 test(theme+':native-dialog-'+kind,lambda t=theme,k=kind,c=content:on_page(t,lambda p:dialog_check(p,k,c),width=1000,height=1000,dialog=True,full=True))
             test(theme+':candidate-keyboard',lambda t=theme:on_page(t,candidates_keyboard))
-            if theme!='win98':
-                test(theme+':focus-ring',lambda t=theme:on_page(t,focus))
-                test(theme+':short-motion',lambda t=theme:on_page(t,lambda p:motion(p,True)))
-                test(theme+':motion-off',lambda t=theme:on_page(t,lambda p:motion(p,False),motion='off'))
-                test(theme+':reduced-motion',lambda t=theme:on_page(t,lambda p:motion(p,False),reduced=True))
-                test(theme+':forced-colors',lambda t=theme:on_page(t,lambda p:motion(p,False),forced=True))
-                test(theme+':native-motion-no-resize',lambda t=theme:on_page(t,native_motion,dialog=True,full=True))
-            else:
-                test(theme+':no-motion',lambda t=theme:on_page(t,lambda p:motion(p,False)))
+            test(theme+':no-motion',lambda t=theme:on_page(t,lambda p:motion(p,False)))
             if args.screenshots:
                 preview=root/'docs/previews';preview.mkdir(parents=True,exist_ok=True)
                 def capture(page,t=theme):
@@ -134,7 +109,7 @@ def main():
                 for folder,original in [(args.original,True),(root,False)]:
                     page=browser.new_page(viewport={'width':920,'height':780})
                     try:
-                        load_page(page,folder,'win98','off',False,screen,state,original)
+                        load_page(page,folder,False,screen,state)
                         page.locator('#input').evaluate('e=>e.blur()')
                         page.wait_for_timeout(100)
                         shots.append(Image.open(io.BytesIO(page.screenshot())).convert('RGB'))

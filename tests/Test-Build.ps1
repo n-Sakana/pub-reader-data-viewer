@@ -34,22 +34,19 @@ try {
         }
     }
     $allOut = Join-Path $temp 'all'
-    Test 'package-all-six-with-explicit-skip' { Build @('package','-All','-SkipValidation','-OutputRoot',$allOut) }
+    Test 'package-win98-with-explicit-skip' { Build @('package','-Theme','win98','-SkipValidation','-OutputRoot',$allOut) }
     Test 'metadata-hashes-data-and-zip' {
         $published = OnlyBuild $allOut
-        $ids = @('win98','apple','material','fluent','carbon','spectrum')
+        $ids = @('win98')
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         foreach ($id in $ids) {
             $package = Join-Path $published ('ReaderDataViewer-' + $id)
             $manifest = Get-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-            $theme = Get-Content -LiteralPath (Join-Path $package 'web/theme.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-            Assert ($theme.id -eq $id -and $manifest.theme -eq $id) ('Wrong theme: ' + $id)
-            $motion='auto'; if ($id -eq 'win98') { $motion='off' }
-            Assert ($theme.motion -eq $motion) 'Wrong effective motion'
+            Assert ($manifest.theme -eq $id -and $manifest.motion -eq 'off') 'Wrong Win98 metadata'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $package 'web/theme.json'))) 'Retired theme config was packaged'
             Assert ($manifest.validation.nativeCompile -eq 'not_run_explicit_skip') 'Skip must not be reported as a pass'
             $html = Get-Content -LiteralPath (Join-Path $package 'web/index.html') -Raw -Encoding UTF8
-            Assert ($html.Contains('data-rdv-theme="' + $id + '"')) 'HTML/native theme mismatch'
-            Assert ($html.Contains('data-rdv-motion="' + $motion + '"')) 'HTML/native motion mismatch'
+            Assert ($html -notmatch 'data-rdv-|themes\.css|theme-motion\.js') 'Retired theme asset was referenced'
             foreach ($file in $manifest.files) {
                 $actual = Get-FileHash -LiteralPath (Join-Path $package $file.path) -Algorithm SHA256
                 Assert ($actual.Hash.ToLowerInvariant() -eq $file.sha256) ('Hash mismatch: ' + $file.path)
@@ -77,28 +74,33 @@ try {
         Assert (@(Get-ChildItem -LiteralPath $allOut -Directory -Filter 'build-*').Count -eq 2) 'Second build overwrote first'
         Assert ((Get-FileHash -LiteralPath (Join-Path $first 'build-summary.json')).Hash -eq $before) 'First build changed'
     }
-    Test 'subset-motion-off-no-samples-folder-only' {
+    Test 'no-samples-folder-only' {
         $output=Join-Path $temp 'subset'
-        Build @('package','-Theme','apple,fluent','-Motion','off','-Data','none','-Format','folder','-SkipValidation','-OutputRoot',$output)
+        Build @('package','-Theme','win98','-Data','none','-Format','folder','-SkipValidation','-OutputRoot',$output)
         $published=OnlyBuild $output
-        Assert (@(Get-ChildItem -LiteralPath $published -Directory).Count -eq 2) 'Incorrect subset size'
+        Assert (@(Get-ChildItem -LiteralPath $published -Directory).Count -eq 1) 'Incorrect package count'
         Assert (@(Get-ChildItem -LiteralPath $published -Filter '*.zip').Count -eq 0) 'ZIP created for folder-only output'
-        foreach ($id in @('apple','fluent')) {
+        foreach ($id in @('win98')) {
             $dir=Join-Path $published ('ReaderDataViewer-'+$id)
-            $theme=Get-Content -LiteralPath (Join-Path $dir 'web/theme.json') -Raw -Encoding UTF8 | ConvertFrom-Json
-            Assert ($theme.motion -eq 'off') 'Motion off ignored'
+            $theme=Get-Content -LiteralPath (Join-Path $dir 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            Assert ($theme.motion -eq 'off') 'Win98 motion changed'
             Assert (@(Get-ChildItem -LiteralPath (Join-Path $dir 'data')).Count -eq 0) 'Data none ignored'
         }
     }
     Test 'zip-only-output' {
         $output=Join-Path $temp 'zip'
-        Build @('package','-Theme','spectrum','-Format','zip','-SkipValidation','-OutputRoot',$output)
+        Build @('package','-Theme','win98','-Format','zip','-SkipValidation','-OutputRoot',$output)
         $published=OnlyBuild $output
         Assert (@(Get-ChildItem -LiteralPath $published -Directory).Count -eq 0) 'ZIP-only left an application directory'
-        Assert ((Test-Path -LiteralPath (Join-Path $published 'ReaderDataViewer-spectrum.zip'))) 'ZIP missing'
+        Assert ((Test-Path -LiteralPath (Join-Path $published 'ReaderDataViewer-win98.zip'))) 'ZIP missing'
     }
     Test 'reject-unknown-theme' { Build @('package','-Theme','../invalid','-SkipValidation') 1 }
-    Test 'reject-empty-selection' { Build @('package','-SkipValidation') 1 }
+    Test 'default-win98' {
+        $output = Join-Path $temp 'default'
+        Build @('package','-SkipValidation','-Data','none','-Format','folder','-OutputRoot',$output)
+        Assert (Test-Path -LiteralPath (Join-Path (OnlyBuild $output) 'ReaderDataViewer-win98')) 'Default Win98 package missing'
+    }
+    Test 'reject-retired-theme' { Build @('package','-Theme','apple','-SkipValidation') 1 }
     Test 'reject-all-plus-theme' { Build @('package','-All','-Theme','win98','-SkipValidation') 1 }
     Test 'reject-test-plus-skip' { Build @('package','-All','-RunTests','-SkipValidation') 1 }
     Test 'reject-output-in-input-tree' { Build @('package','-All','-SkipValidation','-OutputRoot',(Join-Path $root 'web/should-not-exist')) 1 }

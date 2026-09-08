@@ -9,18 +9,15 @@ addEventListener:(name,h)=>window.rdvHandlers.push(h)};
 window.rdvDeliver=m=>window.rdvHandlers.forEach(h=>h({data:m}));"""
 
 
-def load_page(page, root, theme='win98', motion='auto', dialog=False, screen=None, state=None, original=False):
+def load_page(page, root, dialog=False, screen=None, state=None):
     """Load exact bundled CSS/JS without network or live WebView permissions."""
     html = (root / 'web/index.html').read_bytes().decode('utf-8-sig')
     html = re.sub(r'<script\b[^>]*\bsrc=[^>]*>\s*</script>', '', html, flags=re.I)
     html = re.sub(r'<link\b[^>]*\brel=["\']stylesheet["\'][^>]*>', '', html, flags=re.I)
     page.set_content(html)
     page.evaluate(BRIDGE)
-    page.evaluate("([t,m,d])=>{let r=document.documentElement;r.setAttribute('data-rdv-theme',t);r.setAttribute('data-rdv-modern',String(t!=='win98'));r.setAttribute('data-rdv-motion',t==='win98'?'off':m);location.hash=d?'dialog':'';}", [theme, motion, dialog])
+    page.evaluate("d=>location.hash=d?'dialog':''", dialog)
     page.add_style_tag(content=(root / 'web/app.css').read_text(encoding='utf-8-sig'))
-    if not original:
-        page.add_style_tag(content=(root / 'web/themes.css').read_text())
-        page.add_script_tag(content=(root / 'web/theme-motion.js').read_text())
     page.add_script_tag(content=(root / 'web/app.js').read_text(encoding='utf-8-sig'))
     page.wait_for_function('!!window.rdvBridge')
     if screen is not None:

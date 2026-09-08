@@ -1,19 +1,9 @@
 #!/usr/bin/env python3
 """Source integrity and presentation checks; NOT a PowerShell/C# compiler."""
-import argparse, datetime, hashlib, json, pathlib, re, subprocess, sys
+import argparse, datetime, hashlib, json, pathlib, re, sys
 
 def check(value, message):
     if not value: raise AssertionError(message)
-
-def luminance(colour):
-    text=colour.lstrip('#')
-    if len(text)==3: text=''.join(x*2 for x in text)
-    channels=[int(text[i:i+2],16)/255 for i in (0,2,4)]
-    return sum((x/12.92 if x<=.04045 else ((x+.055)/1.055)**2.4)*w for x,w in zip(channels,(.2126,.7152,.0722)))
-
-def contrast(a,b):
-    low,high=sorted((luminance(a),luminance(b)))
-    return (high+.05)/(low+.05)
 
 def main():
     ap=argparse.ArgumentParser(description=__doc__)
@@ -26,47 +16,31 @@ def main():
     manifest=json.loads((root/'design/preserved-files.json').read_text())
     for entry in manifest['files']:
         test('preserved:'+entry['path'],lambda e=entry:check(hashlib.sha256((root/e['path']).read_bytes()).hexdigest()==e['sha256'],'Uploaded baseline differs'))
-    catalog=json.loads((root/'design/themes.json').read_text())
-    ids=['win98','apple','material','fluent','carbon','spectrum']
-    def catalog_check():
-        check(catalog['schema']==1,'catalog schema')
-        check([x['id'] for x in catalog['themes']]==ids,'exact six design IDs/order')
-        for item in catalog['themes']:
-            check(item['modern']==(item['id']!='win98'),'mode mismatch')
-            for key in ('background','caption','captionText','border'): check(re.fullmatch('#[a-fA-F0-9]{6}',item[key]),'invalid colour')
-    test('six-theme-catalog',catalog_check)
-    def defaults():
-        html=(root/'web/index.html').read_text(); cfg=json.loads((root/'web/theme.json').read_text())
-        check(cfg['id']=='win98' and cfg['motion']=='off','classic default config')
-        for key,value in [('theme','win98'),('modern','false'),('motion','off')]:
-            check(re.findall('data-rdv-'+key+'="([^"]+)"',html)==[value],'theme marker mismatch')
-        check('<link rel="stylesheet" href="themes.css">' in html,'CSS not loaded')
-        check('src="theme-motion.js"' in html,'motion not loaded')
-    test('classic-default-theme-markers',defaults)
-    css=(root/'web/themes.css').read_text()
-    base=dict(re.findall(r'(--ui-[\w-]+):([^;]+)',css.split('}')[0]))
-    def colours(theme):
-        m=re.search(r'html\[data-rdv-theme="'+theme+r'"\] \{([^}]+)',css)
-        values=base|dict(re.findall(r'(--ui-[\w-]+):([^;]+)',m[1] if m else ''))
-        def resolve(key):
-            value=values[key]
-            return resolve(value[4:-1]) if value.startswith('var(') else value
-        pairs=[('body','--ui-ink','--ui-surface'),('muted','--ui-muted','--ui-subtle'),('primary','--ui-on-accent','--ui-accent'),('selected-label','--ui-accent-text','--ui-tint')]
-        ratios={label:round(contrast(resolve(a),resolve(b)),3) for label,a,b in pairs}
-        check(all(n>=4.5 for n in ratios.values()),str(ratios))
-        details[theme+'-sampled-text-contrast']=ratios
-    for theme in ids[1:]: test(theme+':sampled-text-contrast',lambda t=theme:colours(t))
-    def motion_source():
-        source=(root/'web/theme-motion.js').read_text()
-        run=subprocess.run(['node','--check',str(root/'web/theme-motion.js')],capture_output=True,text=True,timeout=15)
-        check(run.returncode==0,run.stderr)
-        check(not re.search(r'\b(setTimeout|setInterval|fetch|XMLHttpRequest|postMessage)\s*\(',source),'motion contains a business/network/timer side effect')
-        check('prefers-reduced-motion' in source and 'forced-colors' in source,'preference hooks missing')
-        check('Math.min(160' in source,'duration bound missing')
-    test('presentation-script-syntax-and-boundaries',motion_source)
+    def win98_only():
+        for name in ('design/themes.json','web/theme.json','web/themes.css','web/theme-motion.js','src/03_Theme.cs'):
+            check(not (root/name).exists(),'Retired presentation file remains: '+name)
+        html=(root/'web/index.html').read_text(encoding='utf-8-sig')
+        check(not re.search(r'data-rdv-(?:theme|modern|motion)|themes\\.css|theme-motion\\.js',html),'Retired presentation asset referenced')
+        native=(root/'src/03_Win98.cs').read_text()
+        check('Color.FromArgb(212, 208, 200)' in native,'Win98 background changed')
+        for colour in ('Caption = 0x501b08','CaptionText = 0xffffff','Border = 0x808080'):
+            check(colour in native,'Win98 caption colour changed: '+colour)
+        host=(root/'src/02_MainWindow.cs').read_text()
+        check('RdvTheme' not in host and 'surfaceShown' not in host,'Theme branch remains in native host')
+    test('win98-only-presentation',win98_only)
+    def no_motion():
+        html=(root/'web/index.html').read_text(encoding='utf-8-sig')
+        css=(root/'web/app.css').read_text(encoding='utf-8-sig')
+        styles='\n'.join(re.findall(r'<style[^>]*>(.*?)</style>',html,re.S))+css
+        check(not re.search(r'@keyframes|\\banimation\\s*:|\\btransition\\s*:',styles),'Unexpected Win98 motion')
+    test('classic-no-presentation-motion',no_motion)
     def local_assets():
+        html=(root/'web/index.html').read_text(encoding='utf-8-sig')
+        css='\n'.join(re.findall(r'<style[^>]*>(.*?)</style>',html,re.S))+(root/'web/app.css').read_text(encoding='utf-8-sig')
         check('@import' not in css,'external style import')
-        for url in re.findall(r'url\((.*?)\)',css): check(url.strip('"\'').startswith('data:'),'non-local theme asset')
+        for url in re.findall(r'url\\((.*?)\\)',css): check(url.strip('"\\\'').startswith('data:'),'non-local style asset')
+        for url in re.findall(r'<(?:script|link)\\b[^>]*(?:src|href)=["\\\']([^"\\\']+)',html,re.I):
+            check(not re.match(r'(?:[a-z]+:)?//',url,re.I),'non-local script or stylesheet')
     test('no-new-network-assets',local_assets)
     def scripts():
         for name in ('tools/Build.ps1','tests/Test-Build.ps1'):
@@ -76,7 +50,7 @@ def main():
         batch=(root/'build.bat').read_bytes();batch.decode('ascii')
         check(b'\n' not in batch.replace(b'\r\n',b''),'batch line endings')
     test('windows-script-encodings',scripts)
-    report={'scope':'Source fingerprints, configuration, sampled contrast and JS syntax. Not native execution or a full accessibility audit.','utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'details':details,'tests':results,'passed':sum(x['status']=='PASS' for x in results),'failed':sum(x['status']=='FAIL' for x in results)}
+    report={'scope':'Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.','utc':datetime.datetime.now(datetime.timezone.utc).isoformat(),'details':details,'tests':results,'passed':sum(x['status']=='PASS' for x in results),'failed':sum(x['status']=='FAIL' for x in results)}
     (root/'tests/results/theme-static-results.json').write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(report['passed'],'passed;',report['failed'],'failed')
     return bool(report['failed'])
