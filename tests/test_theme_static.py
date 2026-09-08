@@ -20,7 +20,7 @@ def main():
         for name in ('design/themes.json','web/theme.json','web/themes.css','web/theme-motion.js','src/03_Theme.cs'):
             check(not (root/name).exists(),'Retired presentation file remains: '+name)
         html=(root/'web/index.html').read_text(encoding='utf-8-sig')
-        check(not re.search(r'data-rdv-(?:theme|modern|motion)|themes\\.css|theme-motion\\.js',html),'Retired presentation asset referenced')
+        check(not any(name in html for name in ('data-rdv-', 'themes.css', 'theme-motion.js')),'Retired presentation asset referenced')
         native=(root/'src/03_Win98.cs').read_text()
         check('Color.FromArgb(212, 208, 200)' in native,'Win98 background changed')
         for colour in ('Caption = 0x501b08','CaptionText = 0xffffff','Border = 0x808080'):
@@ -32,14 +32,14 @@ def main():
         html=(root/'web/index.html').read_text(encoding='utf-8-sig')
         css=(root/'web/app.css').read_text(encoding='utf-8-sig')
         styles='\n'.join(re.findall(r'<style[^>]*>(.*?)</style>',html,re.S))+css
-        check(not re.search(r'@keyframes|\\banimation\\s*:|\\btransition\\s*:',styles),'Unexpected Win98 motion')
+        check(not re.search(r'@keyframes|\banimation\s*:|\btransition\s*:',styles),'Unexpected Win98 motion')
     test('classic-no-presentation-motion',no_motion)
     def local_assets():
         html=(root/'web/index.html').read_text(encoding='utf-8-sig')
         css='\n'.join(re.findall(r'<style[^>]*>(.*?)</style>',html,re.S))+(root/'web/app.css').read_text(encoding='utf-8-sig')
         check('@import' not in css,'external style import')
-        for url in re.findall(r'url\\((.*?)\\)',css): check(url.strip('"\\\'').startswith('data:'),'non-local style asset')
-        for url in re.findall(r'<(?:script|link)\\b[^>]*(?:src|href)=["\\\']([^"\\\']+)',html,re.I):
+        for url in re.findall(r'url\((.*?)\)',css): check(url.strip("\"'").startswith('data:'),'non-local style asset')
+        for url in re.findall(r"""<(?:script|link)\b[^>]*(?:src|href)=["']([^"']+)""",html,re.I):
             check(not re.match(r'(?:[a-z]+:)?//',url,re.I),'non-local script or stylesheet')
     test('no-new-network-assets',local_assets)
     def scripts():
