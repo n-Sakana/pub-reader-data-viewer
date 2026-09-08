@@ -433,7 +433,7 @@
             "onSourceChange": "reset"
           }
         ],
-        // [K180] data.ledger.columns.source — 台帳に保存する列参照を順に列挙。identityの全列と、検索・表示・出力したい列を含めます。未保存列は画面から参照できません。
+        // [K180] data.ledger.columns.source — 台帳に保存する登録表の実在列を順に列挙。identityと検索・表示・出力する列を含めます。計算結果は既存の未使用列へ置いて保存できます（README「計算結果を台帳へ保存する」）。未保存列は画面から参照できません。
         "source": ["B.key1", "B.key2", "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note", "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo", "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"]
       }
     }

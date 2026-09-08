@@ -21,6 +21,7 @@ public static class Rdv3Text
     public const string SettingsFixTableLabel = " settings.json の data.tables[{id}].label に空でない画面名を設定してください。この表IDは予約済みなので、data.labels へ同じIDを追加できません。";
     public const string InputRowsSkipped = "{file}: キー列 {column} が空の {empty} 行と重複の {duplicate} 行を除き、{kept} 行を読みました。";
     public const string InputNoData = "{file}: 見出しだけを読みました。データ行は 0 件です。入力ファイルを確認してください。";
+    public const string InputNoKeptData = "{file}: 除外後のデータ行は 0 件です。入力ファイルと除外件数を確認してください。";
     public const string InputError = "{file} の {row} 行目、列 {column}: 必要なのは「{expected}」、実際は「{actual}」です。{fix}";
     public const string InputExpectKey = "空でないキー";
     public const string InputExpectWidth = "最初の有効行と同じ {n} 文字のキー";

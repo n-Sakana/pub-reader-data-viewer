@@ -579,6 +579,8 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
  "condition":"exclude", "output":"missing"}
 ```
 
+<a id="aggregate"></a>
+
 ### 複数の行を単位ごとに合計する
 
 例：`A.csv`は1行1IDの`id`列、`B.csv`は`id,part,amount`。Bのキーは`["id","part"]`とし、同じidの異なるpartを失わずに読ませます。`data.labels`には`A.id/B.id/B.part/B.amount/joined/ledger`、台帳のidentityは`A.id`、sourceは`["A.id","B.amount"]`を指定します。次が更新ジョブの全stepsです。
@@ -1035,7 +1037,7 @@ OSがPowerShellの開始を拒む場合、スクリプト自体の構文・引�
 | <a id="k177"></a>K177 `data.ledger.columns.application` | アプリが持つ列の規則。現在はworkStateの1種類。sourceへ同じ状態列を混ぜません。 |
 | <a id="k178"></a>K178 `data.ledger.columns.application[0].name` | 内部の列種別名。workState固定。利用者へ出す名前やExcel見出しはscreen.workState側で変更します。 |
 | <a id="k179"></a>K179 `data.ledger.columns.application[0].onSourceChange` | resetは保存する入力内容が変わった行の状態をinitialへ戻し通知、preserveは保持。特定の列の変更だけを選ぶ規則ではありません。 |
-| <a id="k180"></a>K180 `data.ledger.columns.source` | 台帳に保存する列参照を順に列挙。identityの全列と、検索・表示・出力したい列を含めます。未保存列は画面から参照できません。 |
+| <a id="k180"></a>K180 `data.ledger.columns.source` | 台帳に保存する登録表の実在列を順に列挙。identityと検索・表示・出力する列を含めます。計算結果は既存の未使用列へ置いて保存できます（README「計算結果を台帳へ保存する」）。未保存列は画面から参照できません。 |
 | <a id="k181"></a>K181 `screen` | 部品と表示値の定義。業務の表示項目を決めます。見た目はWin98のみ。必須。 |
 | <a id="k182"></a>K182 `screen.card` | 窓全体の書体・起動寸法・隙間。省略可。大きな文字や長いラベルに変えたら行の高さと列幅も実窓で確認。 |
 | <a id="k183"></a>K183 `screen.card.width` | 互換項目。現在の窓幅とレイアウトには使いません。窓の起動寸法はstartSizeを変更。省略可。 |
