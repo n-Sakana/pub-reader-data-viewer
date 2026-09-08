@@ -115,7 +115,7 @@ public static class Rdv3Xlsx
                         }
                         if (head == null)
                         {
-                            head = CheckTableHead(values, file);
+                            head = CheckTableHead(values, file, rowNumber);
                             if (headOnly) { break; }
                             continue;
                         }
@@ -140,21 +140,20 @@ public static class Rdv3Xlsx
         rows = result.ToArray();
     }
 
-    private static string[] CheckTableHead(string[] values, string file)
+    private static string[] CheckTableHead(string[] values, string file, int row)
     {
         for (int i = 0; i < values.Length; i++)
         {
             values[i] = values[i].Trim();
             if (values[i].Length == 0)
             {
-                throw new Rdv3DataError(Rdv3Text.DataBlankHeader.Replace("{file}", file).Replace("{row}", "1"));
+                throw Rdv3Input.Error(file, row, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, values[i], Rdv3Text.InputFixHeader);
             }
             for (int k = 0; k < i; k++)
             {
                 if (string.Equals(values[k], values[i], StringComparison.Ordinal))
                 {
-                    throw new Rdv3DataError(Rdv3Text.DataDupHeader.Replace("{file}", file)
-                        .Replace("{row}", "1").Replace("{name}", values[i]));
+                    throw Rdv3Input.Error(file, row, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, values[i], Rdv3Text.InputFixHeader);
                 }
             }
         }

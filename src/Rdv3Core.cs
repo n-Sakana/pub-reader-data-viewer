@@ -140,13 +140,14 @@ public sealed class Rdv3Table
         for (int i = 0; i < h.Length; i++)
         {
             h[i] = h[i].Trim();
-            if (h[i].Length == 0) { throw new Rdv3DataError(Fmt(Rdv3Text.DataBlankHeader, file, 1)); }
+            if (h[i].Length == 0)
+            { throw Rdv3Input.Error(file, 1, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, h[i], Rdv3Text.InputFixHeader); }
             if (h[i][0] == '"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, 1)); }
             for (int k = 0; k < i; k++)
             {
                 if (string.Equals(h[k], h[i], StringComparison.Ordinal))
                 {
-                    throw new Rdv3DataError(Fmt(Rdv3Text.DataDupHeader, file, 1).Replace("{name}", h[i]));
+                    throw Rdv3Input.Error(file, 1, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, h[i], Rdv3Text.InputFixHeader);
                 }
             }
         }
