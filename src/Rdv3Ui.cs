@@ -323,6 +323,7 @@ public sealed class Rdv3Form
 
     public void Fatal(string title, string body)
     {
+        Rdv3Log.Feedback("UI FATAL", title + ": " + body);
         Rdv3ConfirmForm.Tell(this, title, body);
         host.WindowCommand("close");
     }
@@ -515,6 +516,7 @@ public sealed class Rdv3Form
         }
         catch (Exception exception)
         {
+            Rdv3Log.Error("web message", exception);
             Error(exception.Message);
         }
     }

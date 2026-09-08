@@ -38,15 +38,15 @@ public static class Rdv3Headless
             Console.WriteLine("PASS " + (execute ? "RunUpdate " : "ValidateOnly ") + configPath);
             Rdv3Json summary = parsed.Member("summary");
             foreach (string key in summary.Order)
-            { Console.WriteLine(key + "=" + (summary.Member(key).Kind == Rdv3Json.TNull ? "not-run" : summary.Member(key).Num.ToString(CultureInfo.InvariantCulture))); }
+            { Report(key + "=" + (summary.Member(key).Kind == Rdv3Json.TNull ? "not-run" : summary.Member(key).Num.ToString(CultureInfo.InvariantCulture))); }
             foreach (Rdv3Json join in parsed.Member("joins").Items)
             {
-                Console.WriteLine("JOIN " + join.Member("output").Str
+                Report("JOIN " + join.Member("output").Str
                     + " unmatchedLeft=" + join.Member("unmatchedLeft").Num.ToString(CultureInfo.InvariantCulture)
                     + " unmatchedRight=" + join.Member("unmatchedRight").Num.ToString(CultureInfo.InvariantCulture));
             }
-            foreach (Rdv3Json warning in parsed.Member("warnings").Items) { Console.WriteLine("WARNING " + warning.Str); }
-            if (execute) { Console.WriteLine("OUTPUT " + outputPath); }
+            foreach (Rdv3Json warning in parsed.Member("warnings").Items) { Report("WARNING " + warning.Str); }
+            if (execute) { Report("OUTPUT " + outputPath); }
             return 0;
         }
         catch (Exception error)
@@ -183,6 +183,12 @@ public static class Rdv3Headless
             sb.Append('}');
         }
         return sb.Append('}').ToString();
+    }
+
+    private static void Report(string text)
+    {
+        Rdv3Log.Feedback("RESULT", text);
+        Console.WriteLine(text);
     }
 
     private static string N(int value) { return value.ToString(CultureInfo.InvariantCulture); }
