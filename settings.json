@@ -1,394 +1,1080 @@
-// ============================================================================
-// Reader Data Viewer — 設定ファイル
-//
-// ReaderDataViewer.cmd がプログラム本体で、このファイルがそれ以外の設定を
-// すべて持ちます。.cmd と同じフォルダーに置き、起動時に読み込みます。
-// 内容は次の六つです。
-//
-//   paths     入力表、統合台帳、実行ログの場所
-//   search    番号の形式と、候補一覧に表示する最大件数
-//   watch     番号を読み取る外部ウィンドウ（UI Automation）
-//   jobs      バックグラウンド処理の制限時間と確認間隔
-//   data      入力表、列、処理手順、統合台帳の定義
-//   screen    画面に置く部品、値、判定、作業状態、候補一覧の定義
-//
-// このファイルは厳格に読みます。プログラムが知らないメンバー（入力ミス）、
-// 種類や範囲が違う値、存在しない表・列・状態などを参照する名前が一つでも
-// あれば、該当行と理由を示して起動を止めます。黙って無視したり、既定値へ
-// 差し替えたりはしません。設定したつもりの値が効かないまま動くことを防ぐためです。
-//
-//   - // の行コメントと /* ... */ のブロックコメントを使用できます。
-//   - 相対パスは ReaderDataViewer.cmd のあるフォルダーを基準にします。
-//   - 画面の「設定」ボタンが書き戻すのは paths / search / watch だけです。
-//     それ以外と、この冒頭コメントはそのまま残ります。三つのメンバー内へ
-//     書いたコメントは保存時に残らないため、三つの説明はここにまとめています。
-//
-// paths の書き方:
-//   dataDir   CSV / Excel の入力表を置くフォルダー
-//   ledger    統合台帳（.xlsx）のファイル
-//   log       実行ログのファイル
-//   paths の変更は次回起動から有効です。
-//
-// search の書き方:
-//   pattern               入力値全体に一致させる正規表現
-//   candidateRowsShown    候補一覧へ表示する最大行数（総件数は別に表示）
-//   search の変更は「設定」の保存直後から有効です。
-//
-// watch の書き方:
-//   pollMs / stableMs / rebindMs は、順に監視間隔、値を確定するまでの安定時間、
-//   未接続の対象を探し直す間隔（いずれもミリ秒）です。
-//   preferFocusedWindow が true なら、同じ条件の窓が複数あるとき前面を優先します。
-//   targets には同時に監視する対象を並べます。enabled が false の対象は保持だけし、
-//   監視しません。空の配列なら何も監視しません。
-//
-//   一つの対象は window -> path[0] -> path[1] -> field の順にたどります。
-//   各段は UI Automation が公開する次の属性で絞ります。
-//     automationId   アプリが付けた安定した識別子（あれば最優先）
-//     className      ウィンドウまたはコントロールのクラス名
-//     name           表示名の完全一致
-//     nameLike       * と ? を使える表示名
-//     processName    .exe を除いた実行ファイル名
-//     controlTypes   Edit / Document / DataGrid / Pane / Custom など
-//     index          複数一致したときの番号（0 が先頭）
-//     scope          descendants（既定）または children
-//   read は値の読み方で、value（通常）/ text（文書）/ name（表示名）から選びます。
-//
-//   対象を手で書く場合の例:
-//   { "enabled": false,
-//     "name": "在庫照会",
-//     "window": { "processName": "LobApp", "nameLike": "在庫照会*", "scope": "children" },
-//     "path": [ { "automationId": "tabMain" }, { "automationId": "pnlSearch" } ],
-//     "field": { "automationId": "txtBarcode", "controlTypes": ["Edit"] },
-//     "read": "value" }
-//   画面の「画面から選ぶ」を使えば、対象欄へカーソルを合わせて Ctrl + Shift を
-// 押すだけで、この定義を UI Automation の実物から作れます。
-//
-// 全メンバーの説明は docs/settings.md、screen の詳しい書き方は
-// docs/ui-spec.md にあります。どちらも配布物に同梱されます。
-//
-// 下の data と screen は出荷用の脱色したサンプルです。表A / 表B / 表C と
-// SAMPLE-A-0000001 のような値を使っています。現地では data と screen を
-// 実際の入力表と画面へ置き換えます。
-// ============================================================================
+// Reader Data Viewer 設定（JSONC）。使い始めはREADME.mdの最小例から。
+// // と /* ... */ のコメント、末尾カンマを使用可。UTF-8で保存。
+// K番号はREADMEの全項目索引と対応します。コメントのための追加キーは書きません。
+// paths/search/watchを画面から保存すると、その領域内のコメントは再生成で消えます。
+// その他のコメントは残ります。設定を委託するときは本ファイルの控えとREADMEを渡してください。
+// 通常は再起動して設定を適用。共有台帳の列・キー・保存状態を変える場合は全PCの移行を揃えます。
+// 表別のencoding、複合key、aggregateの例と3段の検査はREADMEに載っています。
 {
+  // [K001] schema — 設定形式の版。必須で3。この数字は調整しません。
   "schema": 3,
-
+  // [K002] paths — 配置を決める領域。全体を省略すると入力data、台帳data/ReaderDataViewer-Ledger.xlsx、ログdata/ReaderDataViewer.log。変更は再起動後。
   "paths": {
+    // [K003] paths.dataDir — 入力フォルダー。相対パスはアプリ一式のフォルダーが基準。入力のfileはこの中を探します。省略data。
     "dataDir": "data",
+    // [K004] paths.ledger — 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。
     "ledger": "data/ReaderDataViewer-Ledger.xlsx",
+    // [K005] paths.log — このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略data/ReaderDataViewer.log。
     "log": "data/ReaderDataViewer.log"
   },
-
-  "search": { "pattern": "^[0-9]{8}$", "candidateRowsShown": 100 },
-
+  // [K006] search — 検索入力の形式と候補数。テーブルのキー検証とは別で、設定画面の保存後から効きます。
+  "search": {
+    // [K007] search.pattern — 入力全体に一致させる正規表現。省略は数字8桁。英字等を使う入力なら例 [A-Z0-9-]+ へ。台帳の検索対象列はdata.ledger.search.columns。
+    "pattern": "^[0-9]{8}$",
+    // [K008] search.candidateRowsShown — 候補一覧へ載せる上限1～1000、省略100。小さくすると一覧から選べる行も減るので、検索条件を絞れることを確認。
+    "candidateRowsShown": 100
+  },
+  // [K009] watch — 外部ウィンドウの値を監視して検索する設定。省略すると監視対象なし。CSV到着の監視ではありません。
   "watch": {
-    "pollMs": 40, "stableMs": 120, "rebindMs": 400, "preferFocusedWindow": true,
+    // [K010] watch.pollMs — 値を読みに行く間隔、5～5000ms、省略40。短くすると反応が速くなり対象アプリへの問い合わせが増えます。
+    "pollMs": 40,
+    // [K011] watch.stableMs — 値が変わらず続いたら検索へ渡すまでの時間、0～60000ms、省略120。短すぎると入力途中の値を拾います。
+    "stableMs": 120,
+    // [K012] watch.rebindMs — 未接続の窓を探し直す間隔、50～60000ms、省略400。長くすると窓を開いた後の接続が遅れます。
+    "rebindMs": 400,
+    // [K013] watch.preferFocusedWindow — 一致する窓が複数あるとき前面を優先するか。省略true。別窓を拾わないようwindowも絞ってください。
+    "preferFocusedWindow": true,
+    // [K014] watch.targets — 監視先の配列。複数指定可、[]または省略なら監視しません。各対象はwindow→pathの順→fieldをたどります。
     "targets": [
       {
+        // [K015] watch.targets[0].enabled — この監視先を使うか。falseでも定義は保存されます。
         "enabled": true,
+        // [K016] watch.targets[0].name — 監視先を人が見分ける表示名。窓を探す条件はwindowの中へ。
         "name": "メモ帳",
-        "window": { "className": "Progman", "processName": "explorer", "scope": "children" },
+        // [K017] watch.targets[0].window — 対象のトップレベル窓を絞る条件。別のアプリを拾わないようprocessName等を指定。
+        "window": {
+          // [K018] watch.targets[0].window.className — UI Automationが公開するクラス名。省略ならこの属性で絞りません。
+          "className": "Progman",
+          // [K019] watch.targets[0].window.processName — 対象プロセス名、.exeなし。省略ならこの属性で絞りません。
+          "processName": "explorer",
+          // [K020] watch.targets[0].window.scope — 互換項目。トップレベルの窓だけを探すため、この位置のscopeは動作に影響しません。省略可。path/fieldのscopeは有効。
+          "scope": "children"
+        },
+        // [K021] watch.targets[0].path — 窓から対象欄の親までの経路。[]ならwindowから直接fieldを探します。
         "path": [],
-        "field": { "automationId": "1", "controlTypes": ["List"], "scope": "descendants" },
+        // [K022] watch.targets[0].field — 値を読む対象欄の条件。設定画面の選択機能で実際の属性を取得できます。
+        "field": {
+          // [K023] watch.targets[0].field.automationId — UI Automationの識別子。省略ならこの属性で絞りません。
+          "automationId": "1",
+          // [K024] watch.targets[0].field.controlTypes — UIAの種類、例Edit/Document/List。[]または省略なら種類を限定しません。
+          "controlTypes": ["List"],
+          // [K025] watch.targets[0].field.scope — descendants（省略時）は子孫全部、childrenは直接の子だけ。深い欄をchildrenにすると見つかりません。
+          "scope": "descendants"
+        },
+        // [K026] watch.targets[0].read — valueはValuePattern、textはTextPattern、nameは表示名を読みます。対象欄が提供する方式を選択。
         "read": "name"
       }
     ]
   },
-
-  // バックグラウンド処理の時間はすべてミリ秒です。
-  // checkTimeoutMs / searchTimeoutMs / saveTimeoutMs は、更新確認・検索・保存の上限。
-  // markOverdueMs は保存が長引いていると知らせるまで、pumpMs は画面側の確認間隔。
-  // lockRetryMs は共有ロックの再試行間隔、lockStaleMs は停止した端末の古いロックを
-  // 解除するまで、markerPollMs は他端末からの更新通知を確認する間隔です。
+  // [K027] jobs — 処理時間の監視と共有ファイルの再確認間隔。単位ms。OSのI/Oを強制終了する設定ではありません。省略可。
   "jobs": {
+    // [K028] jobs.checkTimeoutMs — 更新確認が遅れたと判定する時間、1000～3600000ms、省略180000。完了前に結果を成功扱いしません。
     "checkTimeoutMs": 180000,
+    // [K029] jobs.searchTimeoutMs — 検索が遅れたと判定する時間、1000～3600000ms、省略30000。遅れた検索結果の採用を防ぐための期限。
     "searchTimeoutMs": 30000,
+    // [K030] jobs.saveTimeoutMs — 保存が遅れたと判定する時間、1000～3600000ms、省略60000。期限で保存済みとは決めず、実際の完了を待ちます。
     "saveTimeoutMs": 60000,
+    // [K031] jobs.markOverdueMs — 保存待ちの長期化を知らせる時間、1000～3600000ms、省略180000。過ぎても未確定の書込みがある間は終了を保留します。
     "markOverdueMs": 180000,
+    // [K032] jobs.pumpMs — 画面側の処理状況確認間隔、100～60000ms、省略1000。長いと完了や遅延の表示が遅れます。
     "pumpMs": 1000,
+    // [K033] jobs.lockRetryMs — 共有ロック取得を再試行する間隔、50～5000ms、省略250。短いと共有先へのアクセスが増えます。
     "lockRetryMs": 250,
+    // [K034] jobs.lockStaleMs — 古いロックか調べる経過時間、60000～86400000ms、省略600000。生きている書込みを時刻だけで解除する設定ではありません。
     "lockStaleMs": 600000,
+    // [K035] jobs.markerPollMs — 他PCの更新通知を確認する間隔、500～60000ms、省略3000。長いと最新台帳への切替に気づくのが遅れます。
     "markerPollMs": 3000
   },
-
-  // 入力表と統合台帳の定義。
-  //
-  // tables は paths.dataDir 内の CSV / Excel を短い ID で定義します。
-  // label は画面向けの表名、file はファイル名、key は一行を特定する一意列です。
-  // labels は処理内容とテーブル出力に出す画面向けの名前です。
-  // jobs は更新・削除ボタンから呼ぶ入力と操作を実行順に並べます。利用者が
-  // ジョブを選ぶ画面はありません。各操作の output は後段の対象名にできます。
-  // ledger.columns は入力側が持つ source 列と、アプリが持つ application 列を分けます。
-  // ledger.search は検索対象の一列以上と exact（完全一致）/ contains（部分一致）です。
-  //
-  // 列名は CSV / Excel の先頭行そのものです。窓を開く前に、ここで使う列名を
-  // 実ファイルの見出しと照合します。encoding は CSV だけに使う文字コードで、
-  // utf-8（既定）や shift_jis など Windows が知る名前を書けます。Excel には使いません。
-  //
-  // keyValidation は tables の各表と、jobs.inputs で直接読む外部ファイルに書けます。
-  // 省略時は従来どおり ASCII・固定長・重複エラー・空欄エラーです。照合条件の
-  // 値一覧として読む場合は、次のように Unicode・可変長を許し、重複は最初の
-  // 1行だけを残し、キーが空の行を除外できます。
-  //   "keyValidation": {
-  //     "characters": "unicode", "length": "variable",
-  //     "duplicates": "distinct", "empty": "skip"
-  //   }
-  // 同じファイルを jobs.inputs に複数回書き、column だけを変えれば、複数列を
-  // それぞれ別の照合条件として使えます。
-  //
-  // types は日付・数値として扱う列だけを書く任意メンバーです。書かない列は文字列です。
-  // 日付には実データの書式を format で必ず指定します。書き方は次のとおりです。
-  // この出荷サンプルの実際の宣言は、tables のすぐ下にあります。
-  //   "types": {
-  //     "B.b_date": { "type": "date", "format": "yyyyMMdd" },
-  //     "B.b_qty": { "type": "number" }
-  //   },
-  //
-  // calculate の expression と update の set.expression では、列の一部を新しい列にできます。
-  // 文字列と正規表現・区切り文字はシングルクォートで囲み、位置は 0 を先頭とします。
-  //   regexExtract(B.b_ref, '[A-Z]+[0-9]+')  最初に一致した文字列
-  //   splitPart(B.b_ref, '-', 1)              - で分けた 2 番目
-  //   substring(B.b_ref, 0, 6)                先頭から 6 文字
-  // 空の入力、一致なし、存在しない位置、空の抽出結果は処理エラーになります。
-  // 作った列は output.column の名前で、後続の結合・抽出・更新・削除に使えます。
+  // [K036] data — 入力表と操作順、台帳の列を定義します。画面の判定や作業状態とは別の領域です。必須。
   "data": {
+    // [K037] data.encoding — CSVの既定文字コード、省略utf-8。各tables.<ID>.encodingで上書き可。BOMは自動切替ではなく一致確認に使います。XLSXには適用しません。
     "encoding": "utf-8",
+    // [K038] data.tables — 入力表を短いIDで登録。1表以上必須。IDにドットや空白は使わず、ledgerは予約名。ここに登録した全表を起動時に確認します。
     "tables": {
-      "A": { "label": "表A", "file": "tableA.csv", "key": "key1" },
-      "B": { "label": "表B", "file": "tableB.csv", "key": "key2", "keyValidation": { "empty": "skip" } },
-      "C": { "label": "表C", "file": "tableC.csv", "key": "key2" }
+      // [K039] data.tables.A — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      "A": {
+        // [K040] data.tables.A.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        "label": "表A",
+        // [K041] data.tables.A.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
+        "file": "tableA.csv",
+        // [K042] data.tables.A.key — 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。
+        "key": "key1"
+      },
+      // [K043] data.tables.B — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      "B": {
+        // [K044] data.tables.B.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        "label": "表B",
+        // [K045] data.tables.B.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
+        "file": "tableB.csv",
+        // [K046] data.tables.B.key — 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。
+        "key": "key2",
+        // [K047] data.tables.B.keyValidation — キーの検証規則。省略はASCII・列ごとの固定長・内容が違う重複をエラー・空キーは除外。文字列を整形して別のキーを作る指定ではありません。
+        "keyValidation": {
+          // [K048] data.tables.B.keyValidation.empty — skip（省略時）は空キーを含む行を除外して件数を通知、errorはそのファイルと行・列を示して停止。複合キーではどれか1列が空なら対象。
+          "empty": "skip"
+        }
+      },
+      // [K049] data.tables.C — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      "C": {
+        // [K050] data.tables.C.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        "label": "表C",
+        // [K051] data.tables.C.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
+        "file": "tableC.csv",
+        // [K052] data.tables.C.key — 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。
+        "key": "key2"
+      }
     },
+    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。
     "types": {
-      "A.a_date": { "type": "date", "format": "yyyyMMdd" },
-      "B.b_date": { "type": "date", "format": "yyyyMMdd" },
-      "C.c_exp": { "type": "date", "format": "yyyyMMdd" },
-      "A.a_rate": { "type": "number" },
-      "A.a_amount": { "type": "number" },
-      "B.b_qty": { "type": "number" },
-      "B.b_total": { "type": "number" },
-      "C.c_price": { "type": "number" },
-      "C.c_stock": { "type": "number" }
+      // [K054] data.types["A.a_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "A.a_date": {
+        // [K055] data.types["A.a_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "date",
+        // [K056] data.types["A.a_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        "format": "yyyyMMdd"
+      },
+      // [K057] data.types["B.b_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "B.b_date": {
+        // [K058] data.types["B.b_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "date",
+        // [K059] data.types["B.b_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        "format": "yyyyMMdd"
+      },
+      // [K060] data.types["C.c_exp"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "C.c_exp": {
+        // [K061] data.types["C.c_exp"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "date",
+        // [K062] data.types["C.c_exp"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        "format": "yyyyMMdd"
+      },
+      // [K063] data.types["A.a_rate"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "A.a_rate": {
+        // [K064] data.types["A.a_rate"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      },
+      // [K065] data.types["A.a_amount"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "A.a_amount": {
+        // [K066] data.types["A.a_amount"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      },
+      // [K067] data.types["B.b_qty"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "B.b_qty": {
+        // [K068] data.types["B.b_qty"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      },
+      // [K069] data.types["B.b_total"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "B.b_total": {
+        // [K070] data.types["B.b_total"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      },
+      // [K071] data.types["C.c_price"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "C.c_price": {
+        // [K072] data.types["C.c_price"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      },
+      // [K073] data.types["C.c_stock"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
+      "C.c_stock": {
+        // [K074] data.types["C.c_stock"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        "type": "number"
+      }
     },
+    // [K075] data.labels — 内部参照から画面向け表示名への対応。手順の出力名、キー、集計列にも必要。表自体のラベルはtables側に書きます。
     "labels": {
+      // [K076] data.labels["B.key1"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.key1": "番号1",
+      // [K077] data.labels["B.key2"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.key2": "番号2",
+      // [K078] data.labels["B.b_line"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_line": "行番号",
+      // [K079] data.labels["B.b_ref"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_ref": "参照番号",
+      // [K080] data.labels["B.b_date"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_date": "日付",
+      // [K081] data.labels["B.b_qty"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_qty": "数量",
+      // [K082] data.labels["B.b_unit"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_unit": "単位",
+      // [K083] data.labels["B.b_total"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_total": "合計",
+      // [K084] data.labels["B.b_status"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_status": "状態",
+      // [K085] data.labels["B.b_memo"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "B.b_memo": "メモ",
+      // [K086] data.labels["A.a_name"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.a_name": "名称",
+      // [K087] data.labels["A.a_code"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.a_code": "コード",
+      // [K088] data.labels["A.a_grade"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.a_grade": "区分",
+      // [K089] data.labels["A.a_dept"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.a_dept": "部門",
+      // [K090] data.labels["A.a_amount"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.a_amount": "金額",
+      // [K091] data.labels["C.c_code"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.c_code": "コード",
+      // [K092] data.labels["C.c_name"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.c_name": "名称",
+      // [K093] data.labels["C.c_cat"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.c_cat": "分類",
+      // [K094] data.labels["C.c_price"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.c_price": "単価",
+      // [K095] data.labels["C.c_stock"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.c_stock": "在庫",
+      // [K096] data.labels["A.key1"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "A.key1": "番号1",
+      // [K097] data.labels["C.key2"] — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "C.key2": "番号2",
+      // [K098] data.labels.ledger — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "ledger": "統合台帳",
+      // [K099] data.labels.middle1 — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "middle1": "中間1",
+      // [K100] data.labels.middle2 — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "middle2": "中間2",
+      // [K101] data.labels.target1 — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "target1": "対象1",
+      // [K102] data.labels.target2 — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "target2": "対象2",
+      // [K103] data.labels.target — この内部参照を処理内容・出力一覧で見せる名前。変えてもCSVの見出しや値は変わりません。空文字は不可。
       "target": "対象"
     },
+    // [K104] data.jobs — 操作を実行順に並べたジョブ。1件以上必須。最初のkind:updateが起動時と-RunUpdateの仕事で、最後はledgerを作る必要があります。
     "jobs": [
       {
+        // [K105] data.jobs[0].id — ボタンから指定するジョブID。全ジョブで一意。必須。
         "id": "merge-ledger",
+        // [K106] data.jobs[0].name — 画面で読むジョブ名、省略id。自然文で処理を別に定義せず、stepsが実処理と説明の共通の元です。
         "name": "3表を統合して台帳へマージする",
+        // [K107] data.jobs[0].kind — updateまたはdelete。最初のupdateが自動更新。操作の固定順序を選ぶ値ではありません。
         "kind": "update",
+        // [K108] data.jobs[0].inputs — このジョブが読む表または外部の値一覧。[]も可。table形式とfile/column形式を混ぜられます。
         "inputs": [
-          { "table": "A" },
-          { "table": "B" },
-          { "table": "C" }
+          {
+            // [K109] data.jobs[0].inputs[0].table — data.tablesのIDを参照。列・キー・文字コードをその表から引き継ぐため、この入力オブジェクトにはtableだけ書きます。
+            "table": "A"
+          },
+          {
+            // [K110] data.jobs[0].inputs[1].table — data.tablesのIDを参照。列・キー・文字コードをその表から引き継ぐため、この入力オブジェクトにはtableだけ書きます。
+            "table": "B"
+          },
+          {
+            // [K111] data.jobs[0].inputs[2].table — data.tablesのIDを参照。列・キー・文字コードをその表から引き継ぐため、この入力オブジェクトにはtableだけ書きます。
+            "table": "C"
+          }
         ],
+        // [K112] data.jobs[0].steps — 操作を上から実行、1段以上必須。行集合はそれを選んだ同じ表へdelete/updateで適用します。
         "steps": [
-          { "operation": "join", "target1": "B", "target2": "A", "keys": ["B.key1", "A.key1"], "condition": "left", "output": "middle1" },
-          { "operation": "join", "target1": "middle1", "target2": "C", "keys": ["B.key2", "C.key2"], "condition": "left", "output": "middle2" },
-          { "operation": "merge", "target1": "middle2", "target2": "ledger", "keys": ["B.key2", "B.key2"], "condition": "", "output": "ledger",
-            "sourceOnly": "add", "both": "update", "targetOnly": "keep" }
+          {
+            // [K113] data.jobs[0].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "join",
+            // [K114] data.jobs[0].steps[0].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "B",
+            // [K115] data.jobs[0].steps[0].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "A",
+            // [K116] data.jobs[0].steps[0].keys — 左と右の対応列。単一は["A.id","B.id"]、複合は[["A.id","A.part"],["B.id","B.part"]]。左右同じ個数・対応順。
+            "keys": ["B.key1", "A.key1"],
+            // [K117] data.jobs[0].steps[0].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "left",
+            // [K118] data.jobs[0].steps[0].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "middle1"
+          },
+          {
+            // [K119] data.jobs[0].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "join",
+            // [K120] data.jobs[0].steps[1].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "middle1",
+            // [K121] data.jobs[0].steps[1].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "C",
+            // [K122] data.jobs[0].steps[1].keys — 左と右の対応列。単一は["A.id","B.id"]、複合は[["A.id","A.part"],["B.id","B.part"]]。左右同じ個数・対応順。
+            "keys": ["B.key2", "C.key2"],
+            // [K123] data.jobs[0].steps[1].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "left",
+            // [K124] data.jobs[0].steps[1].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "middle2"
+          },
+          {
+            // [K125] data.jobs[0].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "merge",
+            // [K126] data.jobs[0].steps[2].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "middle2",
+            // [K127] data.jobs[0].steps[2].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "ledger",
+            // [K128] data.jobs[0].steps[2].keys — 左と右の対応列。単一は["A.id","B.id"]、複合は[["A.id","A.part"],["B.id","B.part"]]。左右同じ個数・対応順。
+            "keys": ["B.key2", "B.key2"],
+            // [K129] data.jobs[0].steps[2].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "",
+            // [K130] data.jobs[0].steps[2].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "ledger",
+            // [K131] data.jobs[0].steps[2].sourceOnly — 入力にだけある行をadd（追加）またはignore（無視）。mergeでは必須。
+            "sourceOnly": "add",
+            // [K132] data.jobs[0].steps[2].both — 両方にある行をupdate（source列更新）またはkeep（保持）。mergeでは必須。
+            "both": "update",
+            // [K133] data.jobs[0].steps[2].targetOnly — 台帳にだけある行をkeep（省略時は保持）またはdelete（削除）。keepなら月を追加して台帳を育てられます。
+            "targetOnly": "keep"
+          }
         ]
       },
       {
+        // [K134] data.jobs[1].id — ボタンから指定するジョブID。全ジョブで一意。必須。
         "id": "delete-listed-records",
+        // [K135] data.jobs[1].name — 画面で読むジョブ名、省略id。自然文で処理を別に定義せず、stepsが実処理と説明の共通の元です。
         "name": "指定ファイルに一致するレコードを削除",
+        // [K136] data.jobs[1].kind — updateまたはdelete。最初のupdateが自動更新。操作の固定順序を選ぶ値ではありません。
         "kind": "delete",
+        // [K137] data.jobs[1].inputs — このジョブが読む表または外部の値一覧。[]も可。table形式とfile/column形式を混ぜられます。
         "inputs": [
-          { "id": "D1", "label": "delete.csv", "file": "delete.csv", "column": "key2", "key": "B.key2" },
-          { "id": "D2", "label": "delete.csv", "file": "delete.csv", "column": "b_ref", "key": "B.b_ref" }
+          {
+            // [K138] data.jobs[1].inputs[0].id — 外部の値一覧につけるID。ジョブ内で一意、ledger不可。後段のtarget2から参照します。
+            "id": "D1",
+            // [K139] data.jobs[1].inputs[0].label — 外部入力の画面向け名、省略id。同じIDを別の場所に使う場合は同じ表示名にします。
+            "label": "delete.csv",
+            // [K140] data.jobs[1].inputs[0].file — 値一覧のCSV/XLSX。相対名はpaths.dataDir基準。この入力にもencodingを追加して既定文字コードを上書きできます。
+            "file": "delete.csv",
+            // [K141] data.jobs[1].inputs[0].column — 値一覧から読む1列の実見出し。keyとは別です。同じファイルを異なるcolumnで複数回定義できます。
+            "column": "key2",
+            // [K142] data.jobs[1].inputs[0].key — 読み取った値を比較するときの論理列参照。例B.id。元CSVの見出しはcolumnに書きます。
+            "key": "B.key2"
+          },
+          {
+            // [K143] data.jobs[1].inputs[1].id — 外部の値一覧につけるID。ジョブ内で一意、ledger不可。後段のtarget2から参照します。
+            "id": "D2",
+            // [K144] data.jobs[1].inputs[1].label — 外部入力の画面向け名、省略id。同じIDを別の場所に使う場合は同じ表示名にします。
+            "label": "delete.csv",
+            // [K145] data.jobs[1].inputs[1].file — 値一覧のCSV/XLSX。相対名はpaths.dataDir基準。この入力にもencodingを追加して既定文字コードを上書きできます。
+            "file": "delete.csv",
+            // [K146] data.jobs[1].inputs[1].column — 値一覧から読む1列の実見出し。keyとは別です。同じファイルを異なるcolumnで複数回定義できます。
+            "column": "b_ref",
+            // [K147] data.jobs[1].inputs[1].key — 読み取った値を比較するときの論理列参照。例B.id。元CSVの見出しはcolumnに書きます。
+            "key": "B.b_ref"
+          }
         ],
+        // [K148] data.jobs[1].steps — 操作を上から実行、1段以上必須。行集合はそれを選んだ同じ表へdelete/updateで適用します。
         "steps": [
-          { "operation": "extract", "target1": "ledger", "target2": "D1", "keys": ["B.key2", "B.key2"], "condition": "match", "output": "target1" },
-          { "operation": "extract", "target1": "ledger", "target2": "D2", "keys": ["B.b_ref", "B.b_ref"], "condition": "match", "output": "target2" },
-          { "operation": "extract", "target1": "target1", "target2": "target2", "condition": "both", "output": "target" },
-          { "operation": "delete", "target1": "ledger", "target2": "target", "condition": "", "output": "ledger" }
+          {
+            // [K149] data.jobs[1].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "extract",
+            // [K150] data.jobs[1].steps[0].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "ledger",
+            // [K151] data.jobs[1].steps[0].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "D1",
+            // [K152] data.jobs[1].steps[0].keys — 左と右の対応列。単一は["A.id","B.id"]、複合は[["A.id","A.part"],["B.id","B.part"]]。左右同じ個数・対応順。
+            "keys": ["B.key2", "B.key2"],
+            // [K153] data.jobs[1].steps[0].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "match",
+            // [K154] data.jobs[1].steps[0].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "target1"
+          },
+          {
+            // [K155] data.jobs[1].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "extract",
+            // [K156] data.jobs[1].steps[1].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "ledger",
+            // [K157] data.jobs[1].steps[1].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "D2",
+            // [K158] data.jobs[1].steps[1].keys — 左と右の対応列。単一は["A.id","B.id"]、複合は[["A.id","A.part"],["B.id","B.part"]]。左右同じ個数・対応順。
+            "keys": ["B.b_ref", "B.b_ref"],
+            // [K159] data.jobs[1].steps[1].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "match",
+            // [K160] data.jobs[1].steps[1].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "target2"
+          },
+          {
+            // [K161] data.jobs[1].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "extract",
+            // [K162] data.jobs[1].steps[2].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "target1",
+            // [K163] data.jobs[1].steps[2].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "target2",
+            // [K164] data.jobs[1].steps[2].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "both",
+            // [K165] data.jobs[1].steps[2].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "target"
+          },
+          {
+            // [K166] data.jobs[1].steps[3].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            "operation": "delete",
+            // [K167] data.jobs[1].steps[3].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
+            "target1": "ledger",
+            // [K168] data.jobs[1].steps[3].target2 — 結合する相手、比較対象、選んだ行集合、または保存先ledger。1対象の操作には書きません。
+            "target2": "target",
+            // [K169] data.jobs[1].steps[3].condition — joinはmatch/left/full、2表のextractはmatch/exclude、行集合のextractはboth/either/exclude。merge/deleteの空文字は互換項目で省略可。
+            "condition": "",
+            // [K170] data.jobs[1].steps[3].output — この操作の結果名。次のtargetに使えます。初出ならdata.labelsにも表示名を記入。台帳書込みの結果名はledger。
+            "output": "ledger"
+          }
         ]
       }
     ],
+    // [K171] data.ledger — 共有台帳の契約。識別・検索・保存列を指定。変更する際は全PCを止めて控えを取り、既存台帳との移行を確認します。
     "ledger": {
+      // [K172] data.ledger.identity — 台帳の各行を識別する列参照。1列の文字列または配列。ある表のkey全列と同じ順で指定し、sourceにも全部残します。一意で空欄なし。
       "identity": "B.key2",
-      "search": { "columns": ["B.key1"], "match": "exact" },
+      // [K173] data.ledger.search — 検索する列と一致方法。identityと別の列でも可。複数該当は人が候補を選ぶまで状態を変更しません。
+      "search": {
+        // [K174] data.ledger.search.columns — 検索する台帳列参照の配列、1列以上。いずれか1列が合えば候補。配列の値を連結した複合検索ではありません。
+        "columns": ["B.key1"],
+        // [K175] data.ledger.search.match — exact（省略時）は各列の完全一致、containsは部分一致。部分一致は全行を調べるため件数が増えるほど時間がかかります。
+        "match": "exact"
+      },
+      // [K176] data.ledger.columns — 入力が持つsourceとアプリが持つapplicationを分離。作業状態をCSVの列で上書きしないための境界。
       "columns": {
+        // [K177] data.ledger.columns.application — アプリが持つ列の規則。現在はworkStateの1種類。sourceへ同じ状態列を混ぜません。
         "application": [
-          { "name": "workState", "onSourceChange": "reset" }
+          {
+            // [K178] data.ledger.columns.application[0].name — 内部の列種別名。workState固定。利用者へ出す名前やExcel見出しはscreen.workState側で変更します。
+            "name": "workState",
+            // [K179] data.ledger.columns.application[0].onSourceChange — resetは保存する入力内容が変わった行の状態をinitialへ戻し通知、preserveは保持。特定の列の変更だけを選ぶ規則ではありません。
+            "onSourceChange": "reset"
+          }
         ],
-        "source": [
-        "B.key1", "B.key2",
-        "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note",
-        "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo",
-        "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"
-        ]
+        // [K180] data.ledger.columns.source — 台帳に保存する列参照を順に列挙。identityの全列と、検索・表示・出力したい列を含めます。未保存列は画面から参照できません。
+        "source": ["B.key1", "B.key2", "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note", "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo", "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"]
       }
     }
   },
-
-  // 画面の定義。
-  //
-  // value の書き方:
-  //   { "field": "A.a_name" }                              台帳の一列
-  //   { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " } 複数列を連結
-  //   { "state": "searchKey" }                            アプリの状態値
-  //   "format": { "kind": "number", "group": true }     数値の表示書式
-  //   "format": { "kind": "date", "from": "yyyyMMdd", "to": "yyyy-MM-dd" } 日付書式
-  //   "empty": "N/A"                                      空値の代わりに出す文字
-  //
-  // judgments の rules は上から順に試します。equals は完全一致の一覧、pattern は
-  // 正規表現、empty は空かどうかです。どれにも一致しなければ undefined、元の値を
-  // 読めなければ error です。どちらも OK へ読み替えず、そのまま画面に出します。
-  //
-  // workState の stored は store.column に保存する文字列、initial は新規または変更後の
-  // 初期状態です。transitions はボタンを押したときの遷移を定義します。確認文の
-  // {B.key2} や {state} は、表示中の値に置き換わります。
-  //
-  // export.defaultFields は、テーブル出力を開いたときに選ぶ列を表示順に並べます。
-  //
-  // card.width は下の寸法の基準幅、startSize は起動時のクライアント領域の大きさ
-  //（CSS px）です。ウィンドウを伸縮すると、画面もその大きさに合わせて組み直します。
-  // card.gap は枠どうし、枠と中身、下部ボタンの上下に共通する間隔です。
-  // card.padding は画面外周と最初の部品との余白です。
-  //
-  // sections は titleBar / keyPanel / columns / fieldList / textBox / statusBand /
-  // sendBar / statusBar を表示順に並べます。寸法は CSS px で、Windows の表示倍率に
-  // 合わせて拡大・縮小します。詳細と各メンバーの一覧は docs/ui-spec.md を参照してください。
+  // [K181] screen — 部品と表示値の定義。業務の表示項目を決めます。見た目はWin98のみ。必須。
   "screen": {
-    "card": { "width": 780, "startSize": [818, 636], "gap": 8, "padding": [8], "font": "Meiryo UI", "fontSize": 10, "keyValueFontSize": 15, "judgmentFontSize": 15, "unsearchedFontSize": 12 },
+    // [K182] screen.card — 窓全体の書体・起動寸法・隙間。省略可。大きな文字や長いラベルに変えたら行の高さと列幅も実窓で確認。
+    "card": {
+      // [K183] screen.card.width — 互換項目。現在の窓幅とレイアウトには使いません。窓の起動寸法はstartSizeを変更。省略可。
+      "width": 780,
+      // [K184] screen.card.startSize — [幅,高さ]、窓内のCSS px。枠・影・DPIを掛けた画面上の画素数とは別。省略[840,830]、最低480×300。
+      "startSize": [818, 636],
+      // [K185] screen.card.gap — 枠間・内側等へ渡す共通の隙間、0～200 CSS px、省略17。狭めると文字やボタンが枠へ近づきます。
+      "gap": 8,
+      // [K186] screen.card.padding — 画面外周の余白、CSS px。[全辺] / [上下,左右] / [上,左右,下] / [上,右,下,左]。省略[14.3,14.3,14.2,14.3]。
+      "padding": [8],
+      // [K187] screen.card.font — 端末にある書体名、省略Yu Gothic UI。書体が変わると文字幅・必要な高さも変わるため長い値を確認。
+      "font": "Meiryo UI",
+      // [K188] screen.card.fontSize — 本文文字の大きさ、6～24pt、省略9。ptはCSS pxではありません。拡大時はラベル幅やボタンの収まりも確認。
+      "fontSize": 10,
+      // [K189] screen.card.keyValueFontSize — 主キー表示の文字、6～36pt、省略15。大きくすると必要な高さも増え、長い番号が横に収まりにくくなります。
+      "keyValueFontSize": 15,
+      // [K190] screen.card.judgmentFontSize — 判定文字の大きさ、6～36pt、省略15。文言を長くした場合は帯の高さ・窓幅も確認。
+      "judgmentFontSize": 15,
+      // [K191] screen.card.unsearchedFontSize — 未検索表示の文字、6～36pt、省略12。本文と独立しています。
+      "unsearchedFontSize": 12
+    },
+    // [K192] screen.judgments — 元の値を判定名へ変える定義。複数の判定を置けます。省略可。状態ボタンの遷移とは独立。
     "judgments": {
+      // [K193] screen.judgments.status1 — この名前の判定を定義。statusBand.judgmentから参照します。複数作って別の帯へ出せます。
       "status1": {
-        "source": { "field": "B.b_status" },
+        // [K194] screen.judgments.status1.source — 判定する値の出所。台帳列field等を1方式だけ指定。表示されたラベルでなく値を調べます。
+        "source": {
+          // [K195] screen.judgments.status1.source.field — 判定元の台帳列参照。data.ledger.columns.sourceへ保存した列だけ指定できます。
+          "field": "B.b_status"
+        },
+        // [K196] screen.judgments.status1.rules — 上から最初に当たる規則を採用。境界が重なる場合は順番が結果を変えます。
         "rules": [
-          { "equals": ["DONE", "OPEN"], "result": "ok" },
-          { "equals": ["HOLD", "VOID"], "result": "ng" }
+          {
+            // [K197] screen.judgments.status1.rules[0].equals — この配列のいずれかと完全一致なら当たり。pattern/emptyを併記するとOR。上から最初に当たった規則を採ります。
+            "equals": ["DONE", "OPEN"],
+            // [K198] screen.judgments.status1.rules[0].result — 当たったときのresults内のID。undefined/errorは予約結果なので規則の行先に指定しません。
+            "result": "ok"
+          },
+          {
+            // [K199] screen.judgments.status1.rules[1].equals — この配列のいずれかと完全一致なら当たり。pattern/emptyを併記するとOR。上から最初に当たった規則を採ります。
+            "equals": ["HOLD", "VOID"],
+            // [K200] screen.judgments.status1.rules[1].result — 当たったときのresults内のID。undefined/errorは予約結果なので規則の行先に指定しません。
+            "result": "ng"
+          }
         ],
+        // [K201] screen.judgments.status1.results — 規則のresult IDに対応する表示。undefined/errorの説明もここで業務に合う意味を記入できます。
         "results": {
-          "ok": { "text": "OK", "look": "ok", "icon": "check" },
-          "ng": { "text": "NG", "look": "ng" },
-          "undefined": { "text": "未定義", "look": "undefined" },
-          "error": { "text": "エラー", "look": "error" }
+          // [K202] screen.judgments.status1.results.ok — この判定結果の文言と見せ方。undefinedは規則不一致、errorは値を取得できない結果で、成功へ読み替えません。
+          "ok": {
+            // [K203] screen.judgments.status1.results.ok.text — この結果を人に伝える文言。未定義・要確認等の意味を保ち、長くする際は判定帯の収まりを確認。
+            "text": "OK",
+            // [K204] screen.judgments.status1.results.ok.look — 判定の見せ方ok/ng/undefined/error。文言や状態変更の可否とは独立。色だけでなくtextにも意味を書きます。
+            "look": "ok",
+            // [K205] screen.judgments.status1.results.ok.icon — 互換項目。現在の判定帯ではアイコンを描かないため省略可。
+            "icon": "check"
+          },
+          // [K206] screen.judgments.status1.results.ng — この判定結果の文言と見せ方。undefinedは規則不一致、errorは値を取得できない結果で、成功へ読み替えません。
+          "ng": {
+            // [K207] screen.judgments.status1.results.ng.text — この結果を人に伝える文言。未定義・要確認等の意味を保ち、長くする際は判定帯の収まりを確認。
+            "text": "NG",
+            // [K208] screen.judgments.status1.results.ng.look — 判定の見せ方ok/ng/undefined/error。文言や状態変更の可否とは独立。色だけでなくtextにも意味を書きます。
+            "look": "ng"
+          },
+          // [K209] screen.judgments.status1.results.undefined — この判定結果の文言と見せ方。undefinedは規則不一致、errorは値を取得できない結果で、成功へ読み替えません。
+          "undefined": {
+            // [K210] screen.judgments.status1.results.undefined.text — この結果を人に伝える文言。未定義・要確認等の意味を保ち、長くする際は判定帯の収まりを確認。
+            "text": "未定義",
+            // [K211] screen.judgments.status1.results.undefined.look — 判定の見せ方ok/ng/undefined/error。文言や状態変更の可否とは独立。色だけでなくtextにも意味を書きます。
+            "look": "undefined"
+          },
+          // [K212] screen.judgments.status1.results.error — この判定結果の文言と見せ方。undefinedは規則不一致、errorは値を取得できない結果で、成功へ読み替えません。
+          "error": {
+            // [K213] screen.judgments.status1.results.error.text — この結果を人に伝える文言。未定義・要確認等の意味を保ち、長くする際は判定帯の収まりを確認。
+            "text": "エラー",
+            // [K214] screen.judgments.status1.results.error.look — 判定の見せ方ok/ng/undefined/error。文言や状態変更の可否とは独立。色だけでなくtextにも意味を書きます。
+            "look": "error"
+          }
         }
       }
     },
-
+    // [K215] screen.workState — 人が行ごとに付ける状態の保存値・表示名・遷移。2状態に限定せず3状態以上も指定できます。必須。
     "workState": {
-      // manual: 監視による検索だけでは作業状態を変更しません。automatic で旧動作。
+      // [K216] screen.workState.trigger — manual（省略時）はボタンで状態変更。automaticは監視入力の検索で対象を確定したとき初期状態を進めます。手入力検索を自動確定する指定ではありません。
       "trigger": "manual",
-      "store": { "column": "処理済み" },
+      // [K217] screen.workState.store — 状態の保存先見出し。台帳に既にある場合は変更前に移行が必要。
+      "store": {
+        // [K218] screen.workState.store.column — Excel台帳で状態を保存する見出し。必須。source列の見出しと同じにしません。
+        "column": "処理済み"
+      },
+      // [K219] screen.workState.states — 状態を列挙。idとstoredはそれぞれ一意。どちらも運用途中で意味を変えると既存台帳・未送信変更に影響します。
       "states": [
-        { "id": "todo", "text": "未処理", "short": "未", "look": "neutral", "stored": "FALSE" },
-        { "id": "done", "text": "処理済", "short": "済", "look": "accent", "stored": "TRUE" }
+        {
+          // [K220] screen.workState.states[0].id — 状態を参照する内部ID。initial、transitionsのfrom/toからこのIDを使います。必須・一意。
+          "id": "todo",
+          // [K221] screen.workState.states[0].text — 状態の表示名、省略id。人に伝える意味を変えないように決めます。
+          "text": "未処理",
+          // [K222] screen.workState.states[0].short — 狭い欄での短い状態名、省略text。省略しすぎて別状態と区別できなくしないこと。
+          "short": "未",
+          // [K223] screen.workState.states[0].look — 状態の見せ方neutral/accent/outline/faded/error、省略neutral。保存値とは別。
+          "look": "neutral",
+          // [K224] screen.workState.states[0].stored — 台帳と未送信データに保存する文字列、省略id。空文字・重複・制御文字不可。変更には既存データの移行が必要。
+          "stored": "FALSE"
+        },
+        {
+          // [K225] screen.workState.states[1].id — 状態を参照する内部ID。initial、transitionsのfrom/toからこのIDを使います。必須・一意。
+          "id": "done",
+          // [K226] screen.workState.states[1].text — 状態の表示名、省略id。人に伝える意味を変えないように決めます。
+          "text": "処理済",
+          // [K227] screen.workState.states[1].short — 狭い欄での短い状態名、省略text。省略しすぎて別状態と区別できなくしないこと。
+          "short": "済",
+          // [K228] screen.workState.states[1].look — 状態の見せ方neutral/accent/outline/faded/error、省略neutral。保存値とは別。
+          "look": "accent",
+          // [K229] screen.workState.states[1].stored — 台帳と未送信データに保存する文字列、省略id。空文字・重複・制御文字不可。変更には既存データの移行が必要。
+          "stored": "TRUE"
+        }
       ],
+      // [K230] screen.workState.initial — 新規行とreset対象行に付ける状態のid。必須。textやstoredではなくstatesのidを書きます。
       "initial": "todo",
+      // [K231] screen.workState.transitions — ボタンを押したときのfrom→to。省略なら遷移なし。1つのfromにつき行先は1つ。未処理へ戻す遷移も明記します。
       "transitions": [
-        { "from": "todo", "to": "done",
+        {
+          // [K232] screen.workState.transitions[0].from — 変更前の状態ID。statesで定義した値。同じfromから複数の行先は作れません。
+          "from": "todo",
+          // [K233] screen.workState.transitions[0].to — 変更後の状態ID。statesで定義した値。未処理へ戻す操作もこの遷移で表します。
+          "to": "done",
+          // [K234] screen.workState.transitions[0].confirm — 変更前に人へ確認する文。省略または空文字なら確認なし。{state}/{key}/{A.id}等を利用可。
           "confirm": "表示中のレコード (番号2 = {B.key2}) を処理済にします。よろしいですか?",
-          "done": "処理済の保存が完了しました" },
-        { "from": "done", "to": "todo",
-          "done": "未処理に戻しました" }
+          // [K235] screen.workState.transitions[0].done — 変更後の通知文。省略または空文字なら空。{state}/{key}/{A.id}等を利用可。
+          "done": "処理済の保存が完了しました"
+        },
+        {
+          // [K236] screen.workState.transitions[1].from — 変更前の状態ID。statesで定義した値。同じfromから複数の行先は作れません。
+          "from": "done",
+          // [K237] screen.workState.transitions[1].to — 変更後の状態ID。statesで定義した値。未処理へ戻す操作もこの遷移で表します。
+          "to": "todo",
+          // [K238] screen.workState.transitions[1].done — 変更後の通知文。省略または空文字なら空。{state}/{key}/{A.id}等を利用可。
+          "done": "未処理に戻しました"
+        }
       ],
-      "button": { "text": "{state}(&W)", "tip": "表示中のレコードの処理状態を切り替えます" }
+      // [K239] screen.workState.button — 状態ボタンの表示。省略すると現在の状態名を表示します。
+      "button": {
+        // [K240] screen.workState.button.text — 状態ボタンの文言、省略{state}。{state}は現在の状態表示、{key}は検索入力、{A.id}等は台帳値に置換。
+        "text": "{state}(&W)",
+        // [K241] screen.workState.button.tip — 互換項目。現在の状態ボタンにはこの説明は表示されません。省略可。
+        "tip": "表示中のレコードの処理状態を切り替えます"
+      }
     },
-
+    // [K242] screen.export — テーブル出力を開いたときの列選択。保存先パスはJSON設定ではなく出力時に選びます。
     "export": {
+      // [K243] screen.export.defaultFields — 初期選択の台帳列参照、表示順、1列以上。$workは状態の保存値。出力画面で追加・削除・並べ替えできます。
       "defaultFields": ["B.key1", "B.key2", "A.a_name", "B.b_status", "$work"]
     },
-
+    // [K244] screen.sections — 表示する部品の配列、1個以上。列の一覧・判定・送信・ステータスの内容をここで決めます。8種類の部品の記法はREADMEへ。
     "sections": [
-      { "type": "keyPanel", "title": "検索",
-        "figure": { "label": "現在の番号（番号1）:", "value": { "state": "searchKey" } },
-        "input": { "label": "番号1(&N):", "placeholder": "", "width": 150, "maxLength": 64 },
+      {
+        // [K245] screen.sections[0].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "keyPanel",
+        // [K246] screen.sections[0].title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+        "title": "検索",
+        // [K247] screen.sections[0].figure — 検索欄の横に大きく表示する値とラベル。入力そのものと選択中のレコード値を混同しないように指定。
+        "figure": {
+          // [K248] screen.sections[0].figure.label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+          "label": "現在の番号（番号1）:",
+          // [K249] screen.sections[0].figure.value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K250] screen.sections[0].figure.value.state — 表示するアプリ値 searchKey。利用可能な状態名と意味はREADMEの「表示値」。
+            "state": "searchKey"
+          }
+        },
+        // [K251] screen.sections[0].input — 手入力の検索欄。見た目と最大入力長。検索を許す形式はsearch.patternで別に設定します。
+        "input": {
+          // [K252] screen.sections[0].input.label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+          "label": "番号1(&N):",
+          // [K253] screen.sections[0].input.placeholder — 互換項目。現在の検索入力にはこの値を表示しません。省略可。
+          "placeholder": "",
+          // [K254] screen.sections[0].input.width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 150,
+          // [K255] screen.sections[0].input.maxLength — 手入力欄の最大文字数1～256、省略64。これを超えるキーを入れられなくなるため、最長の検索値以上にします。
+          "maxLength": 64
+        },
+        // [K256] screen.sections[0].buttons — この領域から実行するボタンの配列。actionで役割、jobでジョブを指定。送信帯はsendChangesを1つ。
         "buttons": [
-          { "action": "search", "text": "検索(&S)", "primary": true, "tip": "入力した番号1 で統合台帳を検索します" },
-          { "action": "clear", "text": "クリア(&C)", "tip": "入力と結果表示を消します (台帳と処理済は消えません)" },
-          { "action": "workState" }
-        ] },
-
-      { "type": "columns", "weights": [1, 1], "gap": 8,
+          {
+            // [K257] screen.sections[0].buttons[0].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "search",
+            // [K258] screen.sections[0].buttons[0].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "検索(&S)",
+            // [K259] screen.sections[0].buttons[0].primary — 主な操作として強調するか、省略false。実行内容や確認の有無は変わりません。
+            "primary": true,
+            // [K260] screen.sections[0].buttons[0].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "入力した番号1 で統合台帳を検索します"
+          },
+          {
+            // [K261] screen.sections[0].buttons[1].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "clear",
+            // [K262] screen.sections[0].buttons[1].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "クリア(&C)",
+            // [K263] screen.sections[0].buttons[1].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "入力と結果表示を消します (台帳と処理済は消えません)"
+          },
+          {
+            // [K264] screen.sections[0].buttons[2].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "workState"
+          }
+        ]
+      },
+      {
+        // [K265] screen.sections[1].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "columns",
+        // [K266] screen.sections[1].weights — 横並び各部品へ配る幅の比率。省略は全部1。個数はitemsと同じ、正の数。長いラベルがある側の幅も確保します。
+        "weights": [1, 1],
+        // [K267] screen.sections[1].gap — 横並び部品間の隙間、0～200 CSS px。縮めると枠や文字が密集します。
+        "gap": 8,
+        // [K268] screen.sections[1].items — 横並びに置くfieldList/textBoxの配列。1個以上、weightsの個数と揃えます。
         "items": [
-          { "type": "fieldList", "title": "番号", "labelWidth": 64, "rowHeight": 24,
+          {
+            // [K269] screen.sections[1].items[0].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+            "type": "fieldList",
+            // [K270] screen.sections[1].items[0].title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+            "title": "番号",
+            // [K271] screen.sections[1].items[0].labelWidth — 項目名の幅、20～1000 CSS px、省略104。増やすと値側が狭くなり、減らすと長い項目名が収まりません。
+            "labelWidth": 64,
+            // [K272] screen.sections[1].items[0].rowHeight — 一覧の1行の高さ、20～200 CSS px。文字の大きさと改行が収まる値へ。省略はfieldList44、候補46。
+            "rowHeight": 24,
+            // [K273] screen.sections[1].items[0].rows — 項目名labelと表示値valueを上から並べる配列。1行以上。列の保存順とは独立。
             "rows": [
-              { "label": "番号1", "value": { "field": "B.key1" } },
-              { "label": "番号2", "value": { "field": "B.key2" } },
-              { "label": "行番号", "value": { "field": "B.b_line" } }
-            ] },
-          { "type": "fieldList", "title": "表A の項目", "labelWidth": 78, "rowHeight": 24,
+              {
+                // [K274] screen.sections[1].items[0].rows[0].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "番号1",
+                // [K275] screen.sections[1].items[0].rows[0].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K276] screen.sections[1].items[0].rows[0].value.field — 表示する台帳列 B.key1。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "B.key1"
+                }
+              },
+              {
+                // [K277] screen.sections[1].items[0].rows[1].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "番号2",
+                // [K278] screen.sections[1].items[0].rows[1].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K279] screen.sections[1].items[0].rows[1].value.field — 表示する台帳列 B.key2。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "B.key2"
+                }
+              },
+              {
+                // [K280] screen.sections[1].items[0].rows[2].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "行番号",
+                // [K281] screen.sections[1].items[0].rows[2].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K282] screen.sections[1].items[0].rows[2].value.field — 表示する台帳列 B.b_line。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "B.b_line"
+                }
+              }
+            ]
+          },
+          {
+            // [K283] screen.sections[1].items[1].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+            "type": "fieldList",
+            // [K284] screen.sections[1].items[1].title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+            "title": "表A の項目",
+            // [K285] screen.sections[1].items[1].labelWidth — 項目名の幅、20～1000 CSS px、省略104。増やすと値側が狭くなり、減らすと長い項目名が収まりません。
+            "labelWidth": 78,
+            // [K286] screen.sections[1].items[1].rowHeight — 一覧の1行の高さ、20～200 CSS px。文字の大きさと改行が収まる値へ。省略はfieldList44、候補46。
+            "rowHeight": 24,
+            // [K287] screen.sections[1].items[1].rows — 項目名labelと表示値valueを上から並べる配列。1行以上。列の保存順とは独立。
             "rows": [
-              { "label": "名称", "value": { "field": "A.a_name" } },
-              { "label": "コード", "value": { "field": "A.a_code" } },
-              { "label": "区分", "value": { "field": "A.a_grade" } },
-              { "label": "部門", "value": { "field": "A.a_dept" } },
-              { "label": "日付", "value": { "field": "A.a_date" } },
-              { "label": "金額", "value": { "field": "A.a_amount" } },
-              { "label": "率 ・ フラグ", "value": { "fields": ["A.a_rate", "A.a_flag"], "joiner": " ・ " } }
-            ] }
-        ] },
-
-      { "type": "textBox", "title": "メモ（表B: b_memo）", "lines": 4, "value": { "field": "B.b_memo" } },
-      { "type": "textBox", "title": "備考（表C: c_remark）", "lines": 2, "value": { "field": "C.c_remark" } },
-
-      { "type": "statusBand", "label": "ステータス１", "judgment": "status1", "height": 46,
-        "sub": [ { "field": "B.b_status" }, { "state": "workState" } ], "joiner": " ・ " },
-
-      { "type": "sendBar", "height": 31, "value": { "state": "pendingCount" },
-        "buttons": [
-          { "action": "sendChanges", "text": "送信(&U)", "primary": true, "tip": "未送信の処理状態を共有台帳へ送信します" }
-        ] },
-
-      { "type": "statusBar", "height": 20,
-        "segments": [
-          { "value": { "state": "appState" }, "bold": true },
-          { "prefix": "", "value": { "state": "watchLabel" } },
-          { "prefix": "台帳 ", "value": { "state": "ledgerFile" } },
-          { "prefix": "", "value": { "state": "clock" } }
+              {
+                // [K288] screen.sections[1].items[1].rows[0].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "名称",
+                // [K289] screen.sections[1].items[1].rows[0].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K290] screen.sections[1].items[1].rows[0].value.field — 表示する台帳列 A.a_name。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_name"
+                }
+              },
+              {
+                // [K291] screen.sections[1].items[1].rows[1].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "コード",
+                // [K292] screen.sections[1].items[1].rows[1].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K293] screen.sections[1].items[1].rows[1].value.field — 表示する台帳列 A.a_code。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_code"
+                }
+              },
+              {
+                // [K294] screen.sections[1].items[1].rows[2].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "区分",
+                // [K295] screen.sections[1].items[1].rows[2].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K296] screen.sections[1].items[1].rows[2].value.field — 表示する台帳列 A.a_grade。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_grade"
+                }
+              },
+              {
+                // [K297] screen.sections[1].items[1].rows[3].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "部門",
+                // [K298] screen.sections[1].items[1].rows[3].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K299] screen.sections[1].items[1].rows[3].value.field — 表示する台帳列 A.a_dept。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_dept"
+                }
+              },
+              {
+                // [K300] screen.sections[1].items[1].rows[4].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "日付",
+                // [K301] screen.sections[1].items[1].rows[4].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K302] screen.sections[1].items[1].rows[4].value.field — 表示する台帳列 A.a_date。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_date"
+                }
+              },
+              {
+                // [K303] screen.sections[1].items[1].rows[5].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "金額",
+                // [K304] screen.sections[1].items[1].rows[5].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K305] screen.sections[1].items[1].rows[5].value.field — 表示する台帳列 A.a_amount。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+                  "field": "A.a_amount"
+                }
+              },
+              {
+                // [K306] screen.sections[1].items[1].rows[6].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+                "label": "率 ・ フラグ",
+                // [K307] screen.sections[1].items[1].rows[6].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+                "value": {
+                  // [K308] screen.sections[1].items[1].rows[6].value.fields — 複数の台帳列をこの順で表示。すべてsourceへの保存が必要。
+                  "fields": ["A.a_rate", "A.a_flag"],
+                  // [K309] screen.sections[1].items[1].rows[6].value.joiner — 複数列の間に挟む文字。省略は中点。長くすると表示欄で使える文字幅が減ります。
+                  "joiner": " ・ "
+                }
+              }
+            ]
+          }
+        ]
+      },
+      {
+        // [K310] screen.sections[2].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "textBox",
+        // [K311] screen.sections[2].title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+        "title": "メモ（表B: b_memo）",
+        // [K312] screen.sections[2].lines — テキスト枠に割り当てる行数1～60、必須。内容が長い場合の読める範囲を決めます。
+        "lines": 4,
+        // [K313] screen.sections[2].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+        "value": {
+          // [K314] screen.sections[2].value.field — 表示する台帳列 B.b_memo。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+          "field": "B.b_memo"
+        }
+      },
+      {
+        // [K315] screen.sections[3].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "textBox",
+        // [K316] screen.sections[3].title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+        "title": "備考（表C: c_remark）",
+        // [K317] screen.sections[3].lines — テキスト枠に割り当てる行数1～60、必須。内容が長い場合の読める範囲を決めます。
+        "lines": 2,
+        // [K318] screen.sections[3].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+        "value": {
+          // [K319] screen.sections[3].value.field — 表示する台帳列 C.c_remark。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+          "field": "C.c_remark"
+        }
+      },
+      {
+        // [K320] screen.sections[4].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "statusBand",
+        // [K321] screen.sections[4].label — 人に表示する欄名。省略は空文字。labelWidthや窓幅に収まる言葉にします。
+        "label": "ステータス１",
+        // [K322] screen.sections[4].judgment — この帯へ出すscreen.judgmentsのID。未定義の名前はエラー。別の帯で別の判定も表示できます。
+        "judgment": "status1",
+        // [K323] screen.sections[4].height — この帯の高さ、CSS px。statusBandは30～500、sendBarは24～200、statusBarは20～200。大きな文字や複数行が収まるか確認。
+        "height": 46,
+        // [K324] screen.sections[4].sub — 判定に添える値の配列。保存列fieldかアプリstateをそれぞれ指定。省略なら補足なし。
+        "sub": [
+          {
+            // [K325] screen.sections[4].sub[0].field — 表示する台帳列 B.b_status。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_status"
+          },
+          {
+            // [K326] screen.sections[4].sub[1].state — 表示するアプリ値 workState。利用可能な状態名と意味はREADMEの「表示値」。
+            "state": "workState"
+          }
         ],
+        // [K327] screen.sections[4].joiner — 補足の値をつなぐ文字。長くすると本文が使える幅を消費します。
+        "joiner": " ・ "
+      },
+      {
+        // [K328] screen.sections[5].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "sendBar",
+        // [K329] screen.sections[5].height — この帯の高さ、CSS px。statusBandは30～500、sendBarは24～200、statusBarは20～200。大きな文字や複数行が収まるか確認。
+        "height": 31,
+        // [K330] screen.sections[5].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+        "value": {
+          // [K331] screen.sections[5].value.state — 表示するアプリ値 pendingCount。利用可能な状態名と意味はREADMEの「表示値」。
+          "state": "pendingCount"
+        },
+        // [K332] screen.sections[5].buttons — この領域から実行するボタンの配列。actionで役割、jobでジョブを指定。送信帯はsendChangesを1つ。
         "buttons": [
-          { "action": "tableExport", "text": "テーブル出力(&T)...", "tip": "統合台帳を CSV に出力します" },
-          { "action": "updateRecords", "job": "merge-ledger", "text": "レコード更新(&R)...", "tip": "JSON に定義された更新ジョブを表示します" },
-          { "action": "deleteRecords", "job": "delete-listed-records", "text": "レコード削除(&D)...", "tip": "JSON に定義された削除ジョブを表示します" },
-          { "action": "settings", "text": "設定(&S)...", "tip": "監視対象や動作の設定を変更します" }
-        ] }
+          {
+            // [K333] screen.sections[5].buttons[0].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "sendChanges",
+            // [K334] screen.sections[5].buttons[0].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "送信(&U)",
+            // [K335] screen.sections[5].buttons[0].primary — 主な操作として強調するか、省略false。実行内容や確認の有無は変わりません。
+            "primary": true,
+            // [K336] screen.sections[5].buttons[0].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "未送信の処理状態を共有台帳へ送信します"
+          }
+        ]
+      },
+      {
+        // [K337] screen.sections[6].type — 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。
+        "type": "statusBar",
+        // [K338] screen.sections[6].height — この帯の高さ、CSS px。statusBandは30～500、sendBarは24～200、statusBarは20～200。大きな文字や複数行が収まるか確認。
+        "height": 20,
+        // [K339] screen.sections[6].segments — 下部ステータス欄の区画配列。数・順・表示値を選べます。4区画固定ではありません。
+        "segments": [
+          {
+            // [K340] screen.sections[6].segments[0].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+            "value": {
+              // [K341] screen.sections[6].segments[0].value.state — 表示するアプリ値 appState。利用可能な状態名と意味はREADMEの「表示値」。
+              "state": "appState"
+            },
+            // [K342] screen.sections[6].segments[0].bold — 互換項目。現在のWin98は共通の太字表示のため、この指定で太さは変わりません。省略可。
+            "bold": true
+          },
+          {
+            // [K343] screen.sections[6].segments[1].prefix — この区画の値の前に付ける文字、省略空文字。区画の意味が分かる短い名前にします。
+            "prefix": "",
+            // [K344] screen.sections[6].segments[1].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+            "value": {
+              // [K345] screen.sections[6].segments[1].value.state — 表示するアプリ値 watchLabel。利用可能な状態名と意味はREADMEの「表示値」。
+              "state": "watchLabel"
+            }
+          },
+          {
+            // [K346] screen.sections[6].segments[2].prefix — この区画の値の前に付ける文字、省略空文字。区画の意味が分かる短い名前にします。
+            "prefix": "台帳 ",
+            // [K347] screen.sections[6].segments[2].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+            "value": {
+              // [K348] screen.sections[6].segments[2].value.state — 表示するアプリ値 ledgerFile。利用可能な状態名と意味はREADMEの「表示値」。
+              "state": "ledgerFile"
+            }
+          },
+          {
+            // [K349] screen.sections[6].segments[3].prefix — この区画の値の前に付ける文字、省略空文字。区画の意味が分かる短い名前にします。
+            "prefix": "",
+            // [K350] screen.sections[6].segments[3].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+            "value": {
+              // [K351] screen.sections[6].segments[3].value.state — 表示するアプリ値 clock。利用可能な状態名と意味はREADMEの「表示値」。
+              "state": "clock"
+            }
+          }
+        ],
+        // [K352] screen.sections[6].buttons — この領域から実行するボタンの配列。actionで役割、jobでジョブを指定。送信帯はsendChangesを1つ。
+        "buttons": [
+          {
+            // [K353] screen.sections[6].buttons[0].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "tableExport",
+            // [K354] screen.sections[6].buttons[0].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "テーブル出力(&T)...",
+            // [K355] screen.sections[6].buttons[0].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "統合台帳を CSV に出力します"
+          },
+          {
+            // [K356] screen.sections[6].buttons[1].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "updateRecords",
+            // [K357] screen.sections[6].buttons[1].job — このボタンが実行するdata.jobsのid。updateRecordsはkind:update、deleteRecordsはkind:deleteを指定。
+            "job": "merge-ledger",
+            // [K358] screen.sections[6].buttons[1].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "レコード更新(&R)...",
+            // [K359] screen.sections[6].buttons[1].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "JSON に定義された更新ジョブを表示します"
+          },
+          {
+            // [K360] screen.sections[6].buttons[2].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "deleteRecords",
+            // [K361] screen.sections[6].buttons[2].job — このボタンが実行するdata.jobsのid。updateRecordsはkind:update、deleteRecordsはkind:deleteを指定。
+            "job": "delete-listed-records",
+            // [K362] screen.sections[6].buttons[2].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "レコード削除(&D)...",
+            // [K363] screen.sections[6].buttons[2].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "JSON に定義された削除ジョブを表示します"
+          },
+          {
+            // [K364] screen.sections[6].buttons[3].action — 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。
+            "action": "settings",
+            // [K365] screen.sections[6].buttons[3].text — 人に表示するボタン等の文言。長くすると必要幅が増えます。状態ボタン以外のボタンでは空文字不可。
+            "text": "設定(&S)...",
+            // [K366] screen.sections[6].buttons[3].tip — ボタンの補足説明。省略は空文字。見ただけで分からない操作の効き方を記入。
+            "tip": "監視対象や動作の設定を変更します"
+          }
+        ]
+      }
     ],
-
+    // [K367] screen.candidates — 複数該当したときに人が選ぶ一覧。キー以外の見分ける情報も載せます。必須。
     "candidates": {
-      "title": "候補一覧", "hint": "行をクリックするとレコード詳細を表示します",
-      "width": 744, "maxHeight": 168, "rowHeight": 20, "headerHeight": 20,
+      // [K368] screen.candidates.title — この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。
+      "title": "候補一覧",
+      // [K369] screen.candidates.hint — 一覧で選ぶ人への補足説明、省略空文字。何を見比べて選ぶかを短く書きます。
+      "hint": "行をクリックするとレコード詳細を表示します",
+      // [K370] screen.candidates.width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+      "width": 744,
+      // [K371] screen.candidates.maxHeight — 候補一覧本体の最大高さ、60～4000 CSS px、省略340。超えた分はスクロール。表示件数上限とは別。
+      "maxHeight": 168,
+      // [K372] screen.candidates.rowHeight — 一覧の1行の高さ、20～200 CSS px。文字の大きさと改行が収まる値へ。省略はfieldList44、候補46。
+      "rowHeight": 20,
+      // [K373] screen.candidates.headerHeight — 候補一覧の見出し行の高さ、16～200 CSS px、省略38。大きな文字を使う場合は高さも確認。
+      "headerHeight": 20,
+      // [K374] screen.candidates.columns — 候補一覧の列、1列以上。valueで台帳値またはアプリ状態を参照。行選択の判断に必要な情報を残します。
       "columns": [
-        { "header": "#", "width": 26, "align": "right", "value": { "state": "rowNumber" }, "muted": true },
-        { "header": "番号2", "width": 84, "value": { "field": "B.key2" }, "bold": true },
-        { "header": "行番号", "width": 54, "align": "right", "value": { "field": "B.b_line" } },
-        { "header": "参照番号", "width": 96, "value": { "field": "B.b_ref" } },
-        { "header": "日付", "width": 76, "value": { "field": "B.b_date" } },
-        { "header": "数量", "width": 50, "align": "right", "value": { "field": "B.b_qty" } },
-        { "header": "状態", "width": 64, "value": { "field": "B.b_status" }, "render": "tag",
-          "looks": { "DONE": "accent", "HOLD": "outline", "VOID": "faded", "*": "neutral" } },
-        { "header": "コード", "width": 72, "value": { "field": "C.c_code" } },
-        { "header": "名称", "width": 94, "value": { "field": "C.c_name" } },
-        { "header": "処理済", "value": { "state": "workStateShort" }, "render": "tag" }
+        {
+          // [K375] screen.candidates.columns[0].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "#",
+          // [K376] screen.candidates.columns[0].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 26,
+          // [K377] screen.candidates.columns[0].align — 列の文字寄せleft/right、省略left。数値を比較する列にはrightが使えます。
+          "align": "right",
+          // [K378] screen.candidates.columns[0].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K379] screen.candidates.columns[0].value.state — 表示するアプリ値 rowNumber。利用可能な状態名と意味はREADMEの「表示値」。
+            "state": "rowNumber"
+          },
+          // [K380] screen.candidates.columns[0].muted — 候補列を控えめに表示するか、省略false。読みにくくしないよう必要な識別情報には注意。
+          "muted": true
+        },
+        {
+          // [K381] screen.candidates.columns[1].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "番号2",
+          // [K382] screen.candidates.columns[1].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 84,
+          // [K383] screen.candidates.columns[1].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K384] screen.candidates.columns[1].value.field — 表示する台帳列 B.key2。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.key2"
+          },
+          // [K385] screen.candidates.columns[1].bold — 互換項目。現在のWin98は共通の太字表示のため、この指定で太さは変わりません。省略可。
+          "bold": true
+        },
+        {
+          // [K386] screen.candidates.columns[2].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "行番号",
+          // [K387] screen.candidates.columns[2].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 54,
+          // [K388] screen.candidates.columns[2].align — 列の文字寄せleft/right、省略left。数値を比較する列にはrightが使えます。
+          "align": "right",
+          // [K389] screen.candidates.columns[2].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K390] screen.candidates.columns[2].value.field — 表示する台帳列 B.b_line。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_line"
+          }
+        },
+        {
+          // [K391] screen.candidates.columns[3].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "参照番号",
+          // [K392] screen.candidates.columns[3].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 96,
+          // [K393] screen.candidates.columns[3].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K394] screen.candidates.columns[3].value.field — 表示する台帳列 B.b_ref。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_ref"
+          }
+        },
+        {
+          // [K395] screen.candidates.columns[4].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "日付",
+          // [K396] screen.candidates.columns[4].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 76,
+          // [K397] screen.candidates.columns[4].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K398] screen.candidates.columns[4].value.field — 表示する台帳列 B.b_date。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_date"
+          }
+        },
+        {
+          // [K399] screen.candidates.columns[5].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "数量",
+          // [K400] screen.candidates.columns[5].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 50,
+          // [K401] screen.candidates.columns[5].align — 列の文字寄せleft/right、省略left。数値を比較する列にはrightが使えます。
+          "align": "right",
+          // [K402] screen.candidates.columns[5].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K403] screen.candidates.columns[5].value.field — 表示する台帳列 B.b_qty。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_qty"
+          }
+        },
+        {
+          // [K404] screen.candidates.columns[6].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "状態",
+          // [K405] screen.candidates.columns[6].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 64,
+          // [K406] screen.candidates.columns[6].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K407] screen.candidates.columns[6].value.field — 表示する台帳列 B.b_status。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "B.b_status"
+          },
+          // [K408] screen.candidates.columns[6].render — 候補列の表示をtext（省略時）またはtagにする。tagの色はlooks、状態のlookと組み合わせます。
+          "render": "tag",
+          // [K409] screen.candidates.columns[6].looks — 値から見せ方への対応。render:tagで使います。*はどの値にも個別指定がない場合の見せ方。
+          "looks": {
+            // [K410] screen.candidates.columns[6].looks.DONE — この値のタグの見せ方。neutral/accent/outline/faded/error。*は既定。元の値や判定結果を変える指定ではありません。
+            "DONE": "accent",
+            // [K411] screen.candidates.columns[6].looks.HOLD — この値のタグの見せ方。neutral/accent/outline/faded/error。*は既定。元の値や判定結果を変える指定ではありません。
+            "HOLD": "outline",
+            // [K412] screen.candidates.columns[6].looks.VOID — この値のタグの見せ方。neutral/accent/outline/faded/error。*は既定。元の値や判定結果を変える指定ではありません。
+            "VOID": "faded",
+            // [K413] screen.candidates.columns[6].looks["*"] — この値のタグの見せ方。neutral/accent/outline/faded/error。*は既定。元の値や判定結果を変える指定ではありません。
+            "*": "neutral"
+          }
+        },
+        {
+          // [K414] screen.candidates.columns[7].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "コード",
+          // [K415] screen.candidates.columns[7].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 72,
+          // [K416] screen.candidates.columns[7].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K417] screen.candidates.columns[7].value.field — 表示する台帳列 C.c_code。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "C.c_code"
+          }
+        },
+        {
+          // [K418] screen.candidates.columns[8].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "名称",
+          // [K419] screen.candidates.columns[8].width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+          "width": 94,
+          // [K420] screen.candidates.columns[8].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K421] screen.candidates.columns[8].value.field — 表示する台帳列 C.c_name。sourceに保存した列だけ使用可。ラベルはこの参照ではなく別のlabel/headerで変更。
+            "field": "C.c_name"
+          }
+        },
+        {
+          // [K422] screen.candidates.columns[9].header — 候補一覧の列見出し。省略は空文字。幅を超える長い見出しにすると読みづらくなります。
+          "header": "処理済",
+          // [K423] screen.candidates.columns[9].value — 表示する値。field / fields / state の1方式を選択。値なし時の表示や書式はこのオブジェクト内で指定できます。
+          "value": {
+            // [K424] screen.candidates.columns[9].value.state — 表示するアプリ値 workStateShort。利用可能な状態名と意味はREADMEの「表示値」。
+            "state": "workStateShort"
+          },
+          // [K425] screen.candidates.columns[9].render — 候補列の表示をtext（省略時）またはtagにする。tagの色はlooks、状態のlookと組み合わせます。
+          "render": "tag"
+        }
       ]
     }
   }
