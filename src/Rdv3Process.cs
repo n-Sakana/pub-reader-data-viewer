@@ -26,6 +26,7 @@ public sealed class Rdv3ProcessValueResult
 
 public sealed class Rdv3ProcessResult
 {
+    public readonly List<string> Warnings = new List<string>();
     public string Kind = "";
     public string[] Columns = new string[0];
     public string[] Lines = new string[0];
@@ -81,6 +82,7 @@ internal sealed class Rdv3RowSelection
 
 internal sealed class Rdv3PreparedProcess
 {
+    public readonly List<string> Warnings = new List<string>();
     public Rdv3Data Data;
     public Rdv3ProcessJobDef Job;
     public Dictionary<string, object> Inputs = new Dictionary<string, object>(StringComparer.Ordinal);
@@ -118,6 +120,7 @@ public static class Rdv3Process
                 string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
                 table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column, input.KeyValidation);
                 new Rdv3Index(table);                    // enforce the configured duplicate rule
+                table.AddWarnings(prepared.Warnings);
             }
             prepared.Inputs.Add(input.Id, input.IsTable
                 ? RelationOfTable(input, table) : RelationOfValues(input, table));
@@ -169,6 +172,7 @@ public static class Rdv3Process
 
         object last = null;
         Rdv3ProcessResult result = new Rdv3ProcessResult();
+        result.Warnings.AddRange(prepared.Warnings);
         int directUpdated = 0;
         List<string> directReset = new List<string>();
         for (int i = 0; i < job.Steps.Count; i++)
@@ -490,8 +494,8 @@ public static class Rdv3Process
         if (value.Length == 0) { return false; }
         decimal left;
         decimal right;
-        if (!decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out left)
-            || !decimal.TryParse(where.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out right))
+        if (!Rdv3Input.TryNumber(value, out left)
+            || !Rdv3Input.TryNumber(where.Value, out right))
         {
             throw new InvalidDataException("numeric row condition received non-numeric text");
         }
@@ -671,8 +675,7 @@ public static class Rdv3Process
             {
                 if (fields[a] < 0) { continue; }
                 decimal number;
-                if (!decimal.TryParse(source.Rows[r][fields[a]], NumberStyles.Number,
-                                      CultureInfo.InvariantCulture, out number))
+                if (!Rdv3Input.TryNumber(source.Rows[r][fields[a]], out number))
                 {
                     throw new InvalidDataException("sum received non-numeric text in " + step.Aggregates[a].Column);
                 }
@@ -774,8 +777,8 @@ public static class Rdv3Process
         }
         decimal a;
         decimal b;
-        if (!decimal.TryParse(left, NumberStyles.Number, CultureInfo.InvariantCulture, out a)
-            || !decimal.TryParse(right, NumberStyles.Number, CultureInfo.InvariantCulture, out b))
+        if (!Rdv3Input.TryNumber(left, out a)
+            || !Rdv3Input.TryNumber(right, out b))
         {
             throw new InvalidDataException("numeric sort received non-numeric text");
         }

@@ -443,12 +443,21 @@ public sealed class Rdv3Table
 
     public string InputNotice()
     {
+        if (Rows == 0 && SkippedEmptyRows == 0 && SkippedDuplicateRows == 0)
+        { return Rdv3Text.InputNoData.Replace("{file}", System.IO.Path.GetFileName(Path)); }
         if (SkippedEmptyRows == 0 && SkippedDuplicateRows == 0) { return ""; }
         return Rdv3Text.InputRowsSkipped.Replace("{file}", System.IO.Path.GetFileName(Path))
             .Replace("{column}", Head[KeyCol])
             .Replace("{empty}", SkippedEmptyRows.ToString(CultureInfo.InvariantCulture))
             .Replace("{duplicate}", SkippedDuplicateRows.ToString(CultureInfo.InvariantCulture))
             .Replace("{kept}", Rows.ToString(CultureInfo.InvariantCulture));
+    }
+
+    public void AddWarnings(List<string> warnings)
+    {
+        if (ControlCharacterWarning.Length > 0) { warnings.Add(ControlCharacterWarning); }
+        string notice = InputNotice();
+        if (notice.Length > 0) { warnings.Add(notice); }
     }
 
     // A tab, a carriage return or any other control character, named by code.

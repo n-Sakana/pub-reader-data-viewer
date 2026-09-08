@@ -69,8 +69,8 @@ internal abstract class Rdv3Expression
             string b = right.Evaluate(row);
             decimal an;
             decimal bn;
-            bool aNumber = decimal.TryParse(a, NumberStyles.Number, CultureInfo.InvariantCulture, out an);
-            bool bNumber = decimal.TryParse(b, NumberStyles.Number, CultureInfo.InvariantCulture, out bn);
+            bool aNumber = Rdv3Input.TryNumber(a, out an);
+            bool bNumber = Rdv3Input.TryNumber(b, out bn);
             if (operation == '+' && (!aNumber || !bNumber)) { return a + b; }
             if (!aNumber || !bNumber) { throw new InvalidDataException("arithmetic expression received non-numeric text"); }
             decimal value;
@@ -141,7 +141,7 @@ internal abstract class Rdv3Expression
     private static decimal Number(string text)
     {
         decimal value;
-        if (!decimal.TryParse(text, NumberStyles.Number, CultureInfo.InvariantCulture, out value))
+        if (!Rdv3Input.TryNumber(text, out value))
         {
             throw new InvalidDataException("arithmetic expression received non-numeric text");
         }

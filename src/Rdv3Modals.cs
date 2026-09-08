@@ -196,10 +196,7 @@ public static class Rdv3ProcessForm
                             "{row}",
                             table.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture)));
                     }
-                    if (table.ControlCharacterWarning.Length > 0)
-                    {
-                        warnings.Add(table.ControlCharacterWarning);
-                    }
+                    table.AddWarnings(warnings);
                     validation = warnings.Count == 0
                         ? Rdv3Text.ValidationColumnsMatch
                         : string.Join(" / ", warnings.ToArray());

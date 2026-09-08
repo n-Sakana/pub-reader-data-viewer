@@ -83,7 +83,7 @@ public sealed class Rdv3Watch
         }
         int start = end;
         while (start > 0 && s[start - 1] != '\n' && s[start - 1] != '\r') { start--; }
-        return s.Substring(start, end - start).Trim();
+        return Rdv3Input.Cell(s.Substring(start, end - start).Trim());
     }
 
     // ---- binding -----------------------------------------------------------

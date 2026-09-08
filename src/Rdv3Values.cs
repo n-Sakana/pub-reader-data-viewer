@@ -204,7 +204,7 @@ public static class Rdv3Eval
         if (fmt.Kind == "number")
         {
             decimal d;
-            if (decimal.TryParse(raw.Trim(), NumberStyles.Number, CultureInfo.InvariantCulture, out d))
+            if (Rdv3Input.TryNumber(raw, out d))
             {
                 if (!fmt.Group) { return d.ToString(CultureInfo.InvariantCulture); }
                 int scale = Scale(raw.Trim());

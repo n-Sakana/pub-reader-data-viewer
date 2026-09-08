@@ -62,6 +62,7 @@ public sealed class Rdv3UpdateResult
 
 public sealed class Rdv3DeleteResult
 {
+    public readonly List<string> Warnings = new List<string>();
     public string[] Lines;
     public string[] States;
     public int Deleted;
@@ -101,7 +102,7 @@ public static class Rdv3Ledger
             long m = Rdv3Clock.Now();
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
                 d.Enc, d.Tables[t].Key, d.Tables[t].KeyValidation);
-            if (tables[t].ControlCharacterWarning.Length > 0) { r.Warnings.Add(tables[t].ControlCharacterWarning); }
+            tables[t].AddWarnings(r.Warnings);
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
         }
@@ -121,6 +122,7 @@ public static class Rdv3Ledger
             // the tables just read (and their keys just proved unique) are the
             // pipeline's table inputs; only a non-table input is read here
             r.Prepared = Rdv3Process.Prepare(d, job, dataDir, tables);
+            r.Warnings.AddRange(r.Prepared.Warnings);
             Rdv3ProcessResult process = Rdv3Process.Execute(r.Prepared, new string[0], new string[0], "", false);
             if (process.Kind != "ledger") { throw new InvalidDataException("automatic update job did not produce ledger"); }
             r.Head = d.Head;
@@ -447,6 +449,7 @@ public static class Rdv3Ledger
         result.Lines = run.Lines;
         result.States = run.States;
         result.Deleted = run.Deleted;
+        result.Warnings.AddRange(run.Warnings);
         return result;
     }
 

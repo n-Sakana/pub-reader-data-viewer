@@ -152,7 +152,7 @@ public sealed class Rdv3App
         form.OnSearch = ManualSearch;
         form.OnKeyChanged = delegate(string value)
         {
-            if (!string.Equals((value ?? "").Trim(), activeSearchKey, StringComparison.Ordinal)) { ClearShown(); }
+            if (!string.Equals(Rdv3Input.Cell((value ?? "").Trim()), activeSearchKey, StringComparison.Ordinal)) { ClearShown(); }
         };
         form.OnClear = DoClear;
         form.OnWorkState = DoWorkState;
@@ -344,7 +344,7 @@ public sealed class Rdv3App
         savedStates = oldStates;
         lastMergeMs = mr.MergeMs();
         form.SetTimes(lastMergeMs, -1);
-        if (mr.Warnings.Count > 0) { form.Error(mr.Warnings[0]); }
+        if (mr.Warnings.Count > 0) { form.Error(string.Join(Environment.NewLine, mr.Warnings.ToArray())); }
 
         if (oldLines == null)
         {
@@ -649,6 +649,7 @@ public sealed class Rdv3App
     // ---- search ------------------------------------------------------------
     private void ManualSearch(string key)
     {
+        key = Rdv3Input.Cell(key);
         long t0 = Rdv3Clock.Now();
         if (state != StReady)
         {
@@ -1220,6 +1221,7 @@ public sealed class Rdv3App
             t = Rdv3Clock.Now();
             result = Rdv3Ledger.ApplyDelete(dataDef, process, dataDir, latestLines, latestStates,
                                             work.InitialStored);
+            for (int i = 0; i < result.Warnings.Count; i++) { log.Write(tag, "warning", result.Warnings[i]); }
             string[] afterEffective = pending.Overlay(result.Lines, result.States, dataDef.IdentityCol);
             List<Rdv3CandRow> resetRows = ResetCandidates(resetNotice.ChangedRows(latestLines, beforeEffective,
                 result.Lines, afterEffective));
@@ -1253,6 +1255,7 @@ public sealed class Rdv3App
                 string note = Rdv3Text.NoteDeleteDone.Replace("{n}", deleted.ToString("N0", CultureInfo.InvariantCulture));
                 ReadyAfterShared(tag, note);
                 form.Notice(note);
+                if (result.Warnings.Count > 0) { form.Error(string.Join(Environment.NewLine, result.Warnings.ToArray())); }
                 if (resetRows.Count > 0) { form.TellResetRows(resetRows); }
             });
         }

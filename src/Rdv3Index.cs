@@ -106,7 +106,7 @@ public sealed class Rdv3Index
             List<string> seen = new List<string>(scanColumns.Length);
             for (int c = 0; c < scanColumns.Length; c++)
             {
-                string value = Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]);
+                string value = Rdv3Input.Cell(Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]));
                 if (seen.Contains(value)) { continue; }
                 seen.Add(value);
                 List<int> rows;
@@ -122,6 +122,7 @@ public sealed class Rdv3Index
 
     public List<int> Find(string key)
     {
+        key = Rdv3Input.Cell(key);
         if (contains)
         {
             List<int> hits = new List<int>();
@@ -129,7 +130,7 @@ public sealed class Rdv3Index
             {
                 for (int c = 0; c < scanColumns.Length; c++)
                 {
-                    string value = Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]);
+                    string value = Rdv3Input.Cell(Rdv3Ledger.FieldOf(scanLines[row], scanColumns[c]));
                     if (value.IndexOf(key, StringComparison.Ordinal) < 0) { continue; }
                     hits.Add(row);
                     break;
