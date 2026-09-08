@@ -69,6 +69,18 @@ try {
         $exitCode=2
         exit $exitCode
     }
+    # PowerShell 7 (pwsh) runs on .NET Core, where Add-Type cannot compile the
+    # WPF/WebView2 sources (System.Drawing.Color, PresentationFramework). Say so
+    # before compiling, instead of leaving a compiler error to explain it.
+    if ($PSVersionTable.PSEdition -eq 'Core') {
+        $detail='Windows PowerShell 5.1 (powershell.exe) is required. PowerShell ' + $PSVersionTable.PSVersion +
+            ' (pwsh) cannot compile the WPF/WebView2 sources. Run: powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File "' +
+            $PSCommandPath + '" ... / Windows PowerShell 5.1 (powershell.exe) で実行してください。pwsh では起動できません。'
+        Write-ReaderLauncherLog 'ERROR' $detail
+        [Console]::Error.WriteLine('Reader Data Viewer: ' + $detail)
+        $exitCode=3
+        exit $exitCode
+    }
     # This script lives in src\; the application root -- the folder holding
     # settings.json, src\, web\, lib\ and data\ -- is its parent.
     $baseDirectory = Split-Path -Parent $PSScriptRoot
