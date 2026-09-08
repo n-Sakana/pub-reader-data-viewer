@@ -1,8 +1,8 @@
 {
   "scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
-  "utc": "2026-09-08T15:30:18.977522+00:00",
+  "utc": "2026-09-08T15:37:40.219781+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
-  "passed": 30,
+  "passed": 33,
   "failed": 0,
   "details": {
     "text_reference_count": 168,
@@ -67,6 +67,10 @@
       "status": "PASS"
     },
     {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Expression.cs",
+      "status": "PASS"
+    },
+    {
       "name": "csharp-lexical-delimiters:src\\Rdv3Files.cs",
       "status": "PASS"
     },
@@ -87,11 +91,19 @@
       "status": "PASS"
     },
     {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Log.cs",
+      "status": "PASS"
+    },
+    {
       "name": "csharp-lexical-delimiters:src\\Rdv3Modals.cs",
       "status": "PASS"
     },
     {
       "name": "csharp-lexical-delimiters:src\\Rdv3Process.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3Program.cs",
       "status": "PASS"
     },
     {
