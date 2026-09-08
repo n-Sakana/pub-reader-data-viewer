@@ -1,4 +1,4 @@
-UTC 2026-09-08T21:41:42.1602846Z
+UTC 2026-09-08T22:08:02.0422579Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -28,6 +28,9 @@ PASS csv-cr-only
 PASS csv-declared-utf16
 PASS csv-invalid-encoding
 PASS csv-malformed-and-control-key
+PASS short-csv-counts-values-and-physical-rows
+PASS unused-header-projection-and-key-ambiguity
+PASS structural-exclusions-match-ledger-and-process-preview
 PASS csv-unicode-variable-keys
 PASS index-no-ascii-replacement-match
 PASS xlsx-roundtrip-whitespace-crlf-zero
@@ -91,4 +94,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=91 failed=0
+TOTAL passed=94 failed=0

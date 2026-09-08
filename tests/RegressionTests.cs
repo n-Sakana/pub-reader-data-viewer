@@ -225,6 +225,46 @@ public static class Rdv3RegressionTests
                 Throws<Rdv3DataError>(delegate { Table("id,note\n001\t,A\n"); });
                 Throws<Rdv3DataError>(delegate { Table("id,note\n001,A,B\n"); });
             });
+            Test("short-csv-counts-values-and-physical-rows", delegate {
+                foreach (bool quoted in new bool[] { false, true })
+                {
+                    Rdv3Table t = Table((quoted ? "\"id\",note\n" : "id,note\n") + "001,A\nshort\n\n002,B\n003,\n");
+                    Check(t.Rows == 3 && t.SourceRow(1) == 5 && t.Field(2, 1) == "", "record values or positions shifted");
+                    Check(t.InputCounts.ShortRows == 1 && t.InputCounts.BlankRows == 1, "exclusion counts");
+                    List<string> warnings = new List<string>(); t.AddWarnings(warnings);
+                    Check(warnings.Count == 1, "shape warning missing or duplicated");
+                }
+            });
+            Test("unused-header-projection-and-key-ambiguity", delegate {
+                HashSet<string> refs = new HashSet<string>(new string[] { "id", "note" }, StringComparer.Ordinal);
+                string path = Csv("unused,note,id,unused\nleft,A,001,right\nshort,B,002\nleft,C,003,right\n", Encoding.UTF8);
+                Rdv3Table t = Rdv3Table.Read(path, "T", Encoding.UTF8, "id", null, "data.encoding", refs);
+                Check(t.Rows == 2 && t.Key(1) == "003" && t.Field(1, 0) == "C", "projection lost field alignment");
+                Check(t.InputCounts.HeaderColumns == 2 && t.InputCounts.ShortRows == 1, "source width/counts");
+                Check(string.Join(",", Rdv3Table.ReadHead(path, Encoding.UTF8, "data.encoding", refs)) == "note,id", "startup head differs");
+                refs.Add("unused");
+                Throws<Rdv3DataError>(delegate { Rdv3Table.Read(path, "T", Encoding.UTF8, "id", null, "data.encoding", refs); });
+                refs.Remove("unused");
+                Throws<Rdv3DataError>(delegate { Rdv3Table.Read(path, "T", Encoding.UTF8, "unused", null, "data.encoding", refs); });
+            });
+            Test("structural-exclusions-match-ledger-and-process-preview", delegate {
+                CompositeFixture f = new CompositeFixture();
+                Rdv3MergeResult expected = Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir);
+                string path = Path.Combine(f.Dir, "T.csv");
+                string[] lines = File.ReadAllLines(path, Encoding.GetEncoding(932));
+                for (int i = 0; i < lines.Length; i++) { lines[i] += i == 0 ? ",unused,unused" : ",left,right"; }
+                File.WriteAllText(path, string.Join("\n", lines) + "\nshort\n\n", Encoding.GetEncoding(932));
+                Rdv3MergeResult actual = Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir);
+                Check(string.Join("\n", actual.Lines) == string.Join("\n", expected.Lines), "ledger values changed");
+                Check(actual.Warnings.Count >= 2, "ledger warnings missing");
+                object[] args = { f.Config.Data, f.Config.Data.UpdateJob, f.Dir, NewPath(".xlsx"), false };
+                string preview = (string)typeof(Rdv3ProcessForm).GetMethod("Build", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, args);
+                Check((bool)args[4] && preview.Contains("unused"), "preview refused or hid ignored columns");
+                Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, true, ""));
+                Check(report.Member("summary").Member("skippedShort").Num == 1
+                    && report.Member("summary").Member("skippedBlank").Num == 1
+                    && report.Member("summary").Member("skippedColumns").Num == 2, "headless summary differs");
+            });
             Test("csv-unicode-variable-keys", delegate {
                 Rdv3KeyValidation v = new Rdv3KeyValidation(); v.Ascii = false; v.FixedLength = false;
                 string path = Csv("id,note\n\u65e5,A\n\u65e5\u672c,B\n", Encoding.UTF8);
