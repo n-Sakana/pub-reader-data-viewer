@@ -8,7 +8,6 @@
   var currentToken = 0;
   var modalReturnFocus = null;
   var settingsContent = null;
-  var exportContent = null;
   var pendingSettings = null;
   var pendingFilter = null;
   var activeCalendar = null;
@@ -355,10 +354,8 @@
     return bar;
   }
 
-  function renderScreen(definition) {
-    actionCounts = {};
+  function applyCardStyle(card) {
     stage.classList.add('runtime');
-    var card = definition.card;
     stage.style.setProperty('--card-width', px(card.width));
     stage.style.setProperty('--card-gap', px(card.gap));
     var padding = card.padding || [0, 0, 0, 0];
@@ -382,6 +379,11 @@
     stage.style.setProperty('--calendar-cell', px(Math.max(
       controlHeight,
       Math.ceil(Number(card.fontSize) * 4 / 3) + Number(card.gap) * 2)));
+  }
+
+  function renderScreen(definition) {
+    actionCounts = {};
+    applyCardStyle(definition.card);
 
     var windowNode = stage.querySelector('.win');
     windowNode.textContent = '';
@@ -1146,7 +1148,6 @@
   }
 
   function openExport(content) {
-    exportContent = content;
     var shell = modalShell('v-out', content.title);
     shell.body.appendChild(element('div', 'hint', content.hint));
     var byRef = {};
