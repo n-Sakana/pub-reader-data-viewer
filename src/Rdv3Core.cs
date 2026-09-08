@@ -67,7 +67,8 @@ public sealed class Rdv3KeyValidation
     public bool Ascii = true;
     public bool FixedLength = true;
     public bool Unique = true;
-    public bool SkipEmpty;
+    public bool SkipEmpty = true;
+    public string SettingsPath = "";
 
     public bool UsesFixedAsciiPath { get { return Ascii && FixedLength; } }
 }
@@ -94,6 +95,8 @@ public sealed class Rdv3Table
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int InvalidEncodingRow;
     public string ControlCharacterWarning = "";
+    public int SkippedEmptyRows;
+    public int SkippedDuplicateRows;
     // Workbook sources have already been decoded into cells. CSV sources keep
     // their byte slices above so the common large-file path stays unchanged.
     public string[][] Cells;
@@ -266,10 +269,17 @@ public sealed class Rdv3Table
                     .Replace("{n}", field.ToString(CultureInfo.InvariantCulture))
                     .Replace("{cols}", cols.ToString(CultureInfo.InvariantCulture)));
             }
+            while (keyEnd > keyAt && b[keyEnd - 1] == (byte)' ') { keyEnd--; }
+            for (int k = keyAt; k < keyEnd; k++)
+            {
+                // Unicode digits occupy several bytes. Validate their normalized
+                // characters, rather than guessing widths from the encoded bytes.
+                if (b[k] > 127) { return ReadDecoded(path, name, enc, keyName, validation, false); }
+            }
             int klen = keyEnd - keyAt;
             if (klen <= 0)
             {
-                if (validation.SkipEmpty) { continue; }
+                if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
                 throw new Rdv3DataError(Fmt(Rdv3Text.DataEmptyKey, file, row).Replace("{name}", keyName));
             }
             if (validation.Ascii)
@@ -296,7 +306,7 @@ public sealed class Rdv3Table
                         .Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)));
                 }
             }
-            if (distinct != null && !distinct.Add(key)) { continue; }
+            if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
 
             int kept = t.Rows;
             t.Start[kept] = rs;
@@ -312,6 +322,7 @@ public sealed class Rdv3Table
         Array.Resize(ref t.KeyAt, t.Rows);
         if (t.KeyLengths != null) { Array.Resize(ref t.KeyLengths, t.Rows); }
         if (t.SourceRows != null) { Array.Resize(ref t.SourceRows, t.Rows); }
+        t.RemoveIdenticalRows();
         return t;
     }
 
@@ -342,6 +353,7 @@ public sealed class Rdv3Table
         string file = System.IO.Path.GetFileName(path);
         for (int i = 0; i < source.Length; i++)
         {
+            for (int c = 0; c < source[i].Length; c++) { source[i][c] = Rdv3Input.Cell(source[i][c]); }
             string key = source[i][t.KeyCol];
             int row = originalRows == null ? i + 2 : originalRows[i];
             for (int k = 0; k < key.Length; k++)
@@ -361,7 +373,7 @@ public sealed class Rdv3Table
             }
             if (key.Length == 0)
             {
-                if (validation.SkipEmpty) { continue; }
+                if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
                 throw new Rdv3DataError(Fmt(Rdv3Text.DataEmptyKey, file, row).Replace("{name}", keyName));
             }
             if (validation.Ascii)
@@ -384,7 +396,7 @@ public sealed class Rdv3Table
                         .Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)));
                 }
             }
-            if (distinct != null && !distinct.Add(key)) { continue; }
+            if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
             kept.Add(source[i]);
             if (sourceRows != null) { sourceRows.Add(row); }
         }
@@ -393,7 +405,50 @@ public sealed class Rdv3Table
         t.KeyAt = new int[t.Rows];
         t.SourceRows = (sourceRows == null) ? null : sourceRows.ToArray();
         t.KeyLen = validation.UsesFixedAsciiPath && fixedLength > 0 ? fixedLength : 0;
+        t.RemoveIdenticalRows();
         return t;
+    }
+
+    private void RemoveIdenticalRows()
+    {
+        if (!KeyValidation.Unique) { return; }
+        Dictionary<string, int> first = new Dictionary<string, int>(Rows, StringComparer.Ordinal);
+        int kept = 0;
+        for (int row = 0; row < Rows; row++)
+        {
+            string key = Key(row);
+            int prior;
+            bool same = first.TryGetValue(key, out prior);
+            if (same)
+            {
+                for (int c = 0; c < Head.Length; c++)
+                { if (Field(prior, c) != Field(row, c)) { same = false; break; } }
+            }
+            else { first.Add(key, kept); }
+            if (same) { SkippedDuplicateRows++; continue; }
+            // Conflicting rows remain for Rdv3Index to reject with both source
+            // row numbers. Only an identical retransmission can disappear here.
+            if (Cells != null) { Cells[kept] = Cells[row]; }
+            else { Start[kept] = Start[row]; End[kept] = End[row]; KeyAt[kept] = KeyAt[row]; }
+            if (KeyLengths != null) { KeyLengths[kept] = KeyLengths[row]; }
+            SourceRows[kept] = SourceRows[row];
+            kept++;
+        }
+        Rows = kept;
+        if (Cells != null) { Array.Resize(ref Cells, kept); }
+        else { Array.Resize(ref Start, kept); Array.Resize(ref End, kept); Array.Resize(ref KeyAt, kept); }
+        if (KeyLengths != null) { Array.Resize(ref KeyLengths, kept); }
+        Array.Resize(ref SourceRows, kept);
+    }
+
+    public string InputNotice()
+    {
+        if (SkippedEmptyRows == 0 && SkippedDuplicateRows == 0) { return ""; }
+        return Rdv3Text.InputRowsSkipped.Replace("{file}", System.IO.Path.GetFileName(Path))
+            .Replace("{column}", Head[KeyCol])
+            .Replace("{empty}", SkippedEmptyRows.ToString(CultureInfo.InvariantCulture))
+            .Replace("{duplicate}", SkippedDuplicateRows.ToString(CultureInfo.InvariantCulture))
+            .Replace("{kept}", Rows.ToString(CultureInfo.InvariantCulture));
     }
 
     // A tab, a carriage return or any other control character, named by code.
@@ -447,7 +502,7 @@ public sealed class Rdv3Table
         int len;
         int p = FieldAt(i, f, out len);
         if (p < 0 || len <= 0) { return ""; }
-        return Enc.GetString(Buf, p, len);
+        return Rdv3Input.Cell(Enc.GetString(Buf, p, len));
     }
 
     public string Key(int i)

@@ -58,13 +58,13 @@ public sealed class Rdv3ColumnTypeDef
 
     public bool TryDate(string value, out DateTime parsed)
     {
-        return DateTime.TryParseExact(value, Format, CultureInfo.InvariantCulture,
+        return DateTime.TryParseExact(Rdv3Input.Cell(value), Format, CultureInfo.InvariantCulture,
             DateTimeStyles.None, out parsed);
     }
 
     public bool TryNumber(string value, out decimal parsed)
     {
-        return decimal.TryParse(value, NumberStyles.Number, CultureInfo.InvariantCulture, out parsed);
+        return Rdv3Input.TryNumber(value, out parsed);
     }
 }
 
@@ -245,13 +245,14 @@ public sealed class Rdv3Data
     private static Rdv3KeyValidation ReadKeyValidation(Rdv3Json owner)
     {
         Rdv3KeyValidation result = new Rdv3KeyValidation();
+        result.SettingsPath = owner.Path + ".keyValidation";
         Rdv3Json rules = owner.Obj("keyValidation", false);
         if (rules == null) { return result; }
         rules.Only("characters", "length", "duplicates", "empty");
         result.Ascii = rules.Word("characters", "ascii", "ascii", "unicode") == "ascii";
         result.FixedLength = rules.Word("length", "fixed", "fixed", "variable") == "fixed";
         result.Unique = rules.Word("duplicates", "error", "error", "distinct") == "error";
-        result.SkipEmpty = rules.Word("empty", "error", "error", "skip") == "skip";
+        result.SkipEmpty = rules.Word("empty", "skip", "error", "skip") == "skip";
         return result;
     }
 

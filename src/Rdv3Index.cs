@@ -146,14 +146,14 @@ public sealed class Rdv3Index
     // tables decode the actual slice with the declared data encoding.
     public int FindBytes(byte[] buf, int off, int len, out List<int> rows)
     {
-        if (fixedAscii && len != keyLen) { rows = null; return 0; }
+        if (keyEncoding == null) { rows = null; return 0; }
+        string k = Rdv3Input.Cell(keyEncoding.GetString(buf, off, len));
+        if (fixedAscii && k.Length != keyLen) { rows = null; return 0; }
         if (fixedAscii)
         {
-            for (int i = off; i < off + len; i++)
-            { if (buf[i] > 127) { rows = null; return 0; } }
+            for (int i = 0; i < k.Length; i++)
+            { if (k[i] > 127) { rows = null; return 0; } }
         }
-        if (!fixedAscii && keyEncoding == null) { rows = null; return 0; }
-        string k = fixedAscii ? Encoding.ASCII.GetString(buf, off, len) : keyEncoding.GetString(buf, off, len);
         if (!map.TryGetValue(k, out rows)) { return 0; }
         return rows.Count;
     }

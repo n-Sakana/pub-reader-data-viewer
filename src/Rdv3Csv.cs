@@ -126,6 +126,7 @@ public static class Rdv3Csv
             }
             blank = false;
             if (ch == ',') { cells.Add(field.ToString()); field.Length = 0; afterQuote = false; continue; }
+            if (afterQuote && Rdv3Input.IsPadding(ch)) { continue; }
             if (afterQuote) { throw Error(path, recordLine, "unexpected text after closing quote"); }
             if (ch == '"')
             {
