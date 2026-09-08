@@ -19,7 +19,9 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File C:/app/src/ReaderDa
 
 **要件を受けられるか、最初に確認してください。** CSVの列不足行と空行は件数を警告して除外します。CSV/XLSXの重複見出しは、その名前を設定から参照しない場合だけ全列を除外します。**参照する重複見出しは、片方の全セルが空でも拒否します。** 値のある方を自動で選ぶ機能ではありません。[入力の除外と拒否の境界](#input-shape)と[提供しない機能](#limits)を先に確認します。
 
-**計算した差や積を保存したい場合は、[計算結果を台帳へ保存する](#calculation-storage)を読んでください。** 既存の未使用入力列に計算結果を置き、その列を台帳へ保存できます。元の値も必要な列には使えません。派生名での台帳列の増設はできないため、借りられる列がない要件は理由を返してください。
+**計算した差や積、集計した合計や件数は、作った名前のまま台帳へ保存できます。** `calculate`の`column`、`aggregate`の`as`、`select`の`as`で作った列を`<結果名>.<列名>`（例 `T.合計金額`）で`data.ledger.columns.source`に書きます。台帳の`identity`にも集計後のグループ列を使えるので、明細ファイルだけから伝票単位の台帳も作れます。[計算結果を台帳へ保存する](#calculation-storage)と[明細だけから伝票単位](#detail-only)を読んでください。
+
+**同じ列構成のファイルを1つの台帳にまとめるのは`append`（縦に足す）です。** `join`は別の表の列を横に付ける操作で、左の表に無い行は増えません。[複数ファイルを縦に足す](#append-files)に完成例があります。帳票の表題が見出しより前にあるCSV/XLSXは`headerRow`で見出しの行番号を指定します。XLSXの日付セルは`data.types`でdateを宣言した列だけ、その書式の文字列へ変換して保存します。
 
 <a id="quick-start"></a>
 
@@ -372,6 +374,12 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 
 判断材料を見るには、PowerShellで`Format-Hex -Path C:/input/table.csv | Select-Object -First 4`を実行できます。`FF FE`はUTF-16LE、`FE FF`はUTF-16BE、`EF BB BF`はUTF-8のBOMです。BOMなしでもASCIIの区切り等が`2C 00`・`0D 00 0A 00`ならLE、`00 2C`・`00 0D 00 0A`ならBEの手掛かりになります。単一のバイトだけで確定せず、正しい見出しが読めることも確認します。UTF-8とShift_JISを理由なく交互に指定し続けないでください。
 
+見出しより前に表題や出力日の行がある帳票CSVは、`data.tables.<ID>.headerRow`に見出しの行番号を書きます。それより前の行は読み飛ばし、飛ばした行数を`warnings`に出します。飛ばした行は列不足行・空行には数えません。XLSXも同じ指定で見出しより上の行を飛ばします。指定が無ければ1行目（XLSXは最初の行）が見出しです。ジョブの外部入力（`file`/`column`形式）にも同じ`headerRow`を書けます。
+
+```json
+"R": { "file": "拠点別売上.csv", "key": "拠点コード", "headerRow": 3 }
+```
+
 <a id="process-labels"></a>
 
 ### 処理に使う名前と画面名
@@ -415,6 +423,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 | キー空の行 | `empty:skip`（省略値）で除外し、ファイル・キー列・除外件数・採用件数を通知。複合キーはどれか1列が空なら除外 |
 | 完全に同じ行の再送 | 正規化後に全セルが一致する同一キーの行は1行を採用し、除外件数を通知 |
 | 同じキーで内容が違う行 | 既定ではエラー。どちらを採るか、合算か、キーに足りない列がないかを確かめる |
+| 見出しより前の表題行・出力日の行 | `headerRow`に見出しの行番号を書いて読み飛ばす。指定が無ければ1行目を見出しとして読み、列数が合わない行で止まる |
 
 キー検証の省略値は`characters:ascii`、`length:fixed`、`duplicates:error`、`empty:skip`です。新しい表が可変長や日本語の識別子を持つ場合は、最小例のように`characters:unicode`、`length:variable`を指定します。複合キーでは**列ごとに**文字種と長さを検証し、**組合せ全体で**一意性を検証します。単純な文字連結ではなく組合せを保持するため、`["AB","C"]`と`["A","BC"]`は別のキーです。
 
@@ -447,7 +456,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 
 これらの日付書式を列ごとに指定できます。`yyyy年M月d日`なら`2026年9月9日`や`2026年12月31日`を日付として扱えます。`M`と`d`は1桁の月・日も許す指定です。固定2桁に限定する場合は`MM`と`dd`を使います。1列に指定できる書式は1つです。**同じ列に複数の日付書式が混在する場合の自動判別はありません。** `data.types`は検証と数値・日付の絞り込みのための宣言です。見せる形だけを変える`screen`の`value.format`とは別です。表示を変える例は`{"field":"D.localDate","format":{"kind":"date","from":"yyyy年M月d日","to":"yyyy-MM-dd"}}`です。
 
-XLSX入力は、ブックで最初に列挙されたワークシートを読みます。任意のシート名を指定する機能はありません。数式は保存済みの計算値を読み、未計算・エラーセルは拒否します。再計算、Excelの見た目の再現、日付シリアル値から任意書式への変換はしません。失われた先頭ゼロを入力時に自動復元もしません。識別規則が確定している場合の式による対応は[先頭ゼロの節](#leading-zero)を参照してください。
+XLSX入力は、ブックで最初に列挙されたワークシートを読みます。任意のシート名を指定する機能はありません。数式は保存済みの計算値を読み、未計算・エラーセルは拒否します。再計算やExcelの見た目の再現はしません。**日付セルはExcelの内部値（シリアル値、例 `46246`）で読みます。その列を`data.types`で`date`と`format`で宣言すると、シリアル値を宣言した書式の文字列（例 `2026/08/12`）へ変換して台帳に保存します。** 宣言しない列は数字のまま保存され、台帳は文字列で書くのでExcelの書式設定でも日付には戻りません。日付として台帳に持つ列は必ず宣言してください。文字列の日付セルは宣言した書式に合っていればそのまま読みます。時刻の部分は捨てます。失われた先頭ゼロを入力時に自動復元はしません。識別規則が確定している場合の式による対応は[先頭ゼロの節](#leading-zero)を参照してください。
 
 <a id="jobs"></a>
 
@@ -487,6 +496,8 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 | `merge` | 表とledger → ledger | `keys`、`sourceOnly:add/ignore`、`both:update/keep`、`targetOnly:keep/delete`。後者の省略はkeep |
 | `replace` | 表とledger → ledger | `keys`を指定。入力にない行まで除き、入力の順序に置換。初期化だけを目的に気軽に選ばない |
 
+**`join`と`append`の使い分け。** 別の表の列を横に付ける（受注に得意先名を付ける）のは`join`で、左の表の行数は減りません（`left`）が、相手にしか無い行は増えません。同じ列構成のファイルを縦に足す（4月分と5月分をまとめる）のは`append`です。月次ファイルを`join`でまとめると片方にしか無い受注が落ちるので、[複数ファイルを縦に足す](#append-files)の形にしてください。
+
 `where.operator`は`equals/notEquals/contains/startsWith/endsWith/empty/notEmpty/greater/atLeast/less/atMost`。前6種等の文字比較は値をそのまま比較し、大小4種は数値です。`empty/notEmpty`には`value`を書かず、それ以外には文字列の`value`を書きます。空欄と0は同じではありません。
 
 `expression`は列参照、数値、単一引用符の文字列、括弧、`+ - * /`、`substring(列,開始,長さ)`、`splitPart(列,'区切り',位置)`、`regexExtract(列,'正規表現')`です。開始位置は0。`'it''s'`のように単一引用符を重ねて文字自体を表します。`+`は両辺が数値なら加算、どちらかが数値でなければ文字列連結です。例えば`A.id + '-' + A.part`は区切り付きの文字列になりますが、数字だけの`A.id + A.part`は加算され得ます。行の識別には連結の代わりに複合キーを使ってください。
@@ -499,21 +510,21 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 ### 計算結果を台帳へ保存する
 
-`calculate`で作る派生列は後段の計算・結合・抽出に使えます。ただし、`data.ledger.columns.source`に宣言できるのは**登録表に実在する見出し**です。計算結果を保存するには、元の値を使わない入力列を選び、その列名へ結果を置きます。入力ファイル自体は書き換えず、処理中の値だけを置き換えます。
+`calculate`の`column`、`aggregate`の`as`、`select`の`as`で作った列は、後段の計算・結合・抽出に使えるだけでなく、**その名前のまま`data.ledger.columns.source`に書いて台帳へ保存できます。** 参照は`<結果名>.<列名>`です。結果名は手順の`output`に書いた名前で、入力表のIDへ上書きした（`output:"A"`）ならその表IDです。`data.labels`には結果名と各列の表示名を書きます。
 
-例えば表Aの入力見出しが`id,name,quantity,completed,unitValue,note,extra`で、noteとextraの元の値をどこでも使わない場合は、mergeの前に次の3段を置けます。まずselectで残す列を列挙し、未使用の2列を処理中の表から外します。その後`output:"A"`と元の列名を使うことで、保存参照を`A.note`、`A.extra`に揃えます。**calculateは同名列を上書きしません。selectを省くと`calculate would duplicate column`で止まります。**
+例えば表Aの入力見出しが`id,name,quantity,completed,unitValue`で、差と積を保存する更新ジョブの手順は次の3段です。
 
 ```json
 [
-  {"operation":"select","target1":"A","columns":[{"column":"A.id"},{"column":"A.name"},{"column":"A.quantity"},{"column":"A.completed"},{"column":"A.unitValue"}],"output":"A"},
-  {"operation":"calculate","target1":"A","column":"note","expression":"A.quantity - A.completed","output":"A"},
-  {"operation":"calculate","target1":"A","column":"extra","expression":"A.quantity * A.unitValue","output":"A"}
+  {"operation":"calculate","target1":"A","column":"diff","expression":"A.quantity - A.completed","output":"A"},
+  {"operation":"calculate","target1":"A","column":"product","expression":"A.quantity * A.unitValue","output":"A"},
+  {"operation":"merge","target1":"A","target2":"ledger","keys":["A.id","A.id"],"sourceOnly":"add","both":"update","targetOnly":"keep","output":"ledger"}
 ]
 ```
 
-`ledger.columns.source`には`A.id`等の必要列と`A.note`、`A.extra`を含めます。selectには、この後の処理や台帳で必要な元の列をすべて残してください。`data.labels`に各参照の表示名を置き、例えば`"A.note":"数量差"`、`"A.extra":"積"`とします。計算元の3列はnumber、置換前のnoteとextraは元データに合う型にします。入力の型検査は計算より先なので、元の文字列へnumberを宣言してはいけません。quantity=10、completed=4、unitValue=25なら保存結果は6と250です。RunUpdateの`columns`と`rows`で答え合わせします。
+`ledger.columns.source`は`["A.id","A.name","A.diff","A.product"]`、`data.labels`に`"A.diff":"数量差"`、`"A.product":"積"`を足します。計算元の3列は`number`を宣言します。`A.diff`や`A.product`にも`number`を宣言すると、出力の絞り込みで数値として扱えます（作った列の型は入力の検査対象ではありません）。quantity=10、completed=4、unitValue=25なら保存結果は6と250です。RunUpdateの`columns`と`rows`で答え合わせします。台帳（Excel）の見出しは列名の部分（`diff`、`product`）です。
 
-**元の値を残す必要がある列や、参照する重複見出しは保存先に使えません。** 借りられる列が足りない場合は、この方法では要件を表せません。派生名をsourceへ追加したり、必要な値を捨てて通したりせず、その理由を返してください。集計値を既存列へ置く例は[複数の行を単位ごとに合計する](#aggregate)にもあります。
+**保存する列は、更新ジョブの最後の書込み段（merge / replace）の入力に無ければなりません。** 結合していない表の列や、`select`で外した列、綴りの違う名前を`source`に書くと、`台帳の保存列 … は、更新ジョブの最後の書込み段 (…) の入力にありません`で止まります。無い列を空欄で通すことはしません。`calculate`は同名の列を上書きしないので、既存の見出しと同じ名前へ置くときは先に`select`で外します。従来どおり、元の値を使わない既存列へ`select`と同名の`calculate`で置く書き方も動きます。集計結果の保存は[複数の行を単位ごとに合計する](#aggregate)、集計後のキーを台帳の識別に使う例は[明細だけから伝票単位](#detail-only)にあります。
 
 <a id="join-grain"></a>
 
