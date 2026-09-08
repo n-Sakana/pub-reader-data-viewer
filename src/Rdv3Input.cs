@@ -5,6 +5,13 @@ using System.Globalization;
 // snapshots: changing those would invalidate their conflict baselines.
 public static class Rdv3Input
 {
+    public static Rdv3DataError Error(string file, int row, string column, string expected, string actual, string fix)
+    {
+        return new Rdv3DataError(Rdv3Text.InputError.Replace("{file}", System.IO.Path.GetFileName(file))
+            .Replace("{row}", row.ToString(CultureInfo.InvariantCulture)).Replace("{column}", column)
+            .Replace("{expected}", expected).Replace("{actual}", actual).Replace("{fix}", fix));
+    }
+
     public static bool IsPadding(char c)
     { return c == ' ' || c == '\u3000' || c == '\u00a0'; }
 

@@ -280,7 +280,7 @@ public sealed class Rdv3Table
             if (klen <= 0)
             {
                 if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
-                throw new Rdv3DataError(Fmt(Rdv3Text.DataEmptyKey, file, row).Replace("{name}", keyName));
+                throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip");
             }
             if (validation.Ascii)
             {
@@ -301,9 +301,8 @@ public sealed class Rdv3Table
                 if (fixedLength < 0) { fixedLength = logicalLength; }
                 else if (logicalLength != fixedLength)
                 {
-                    throw new Rdv3DataError(Fmt(Rdv3Text.DataKeyWidth, file, row)
-                        .Replace("{name}", keyName)
-                        .Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)));
+                    throw t.KeyError(row, enc.GetString(b, keyAt, klen),
+                        Rdv3Text.InputExpectWidth.Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)), "length", "variable");
                 }
             }
             if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
@@ -374,7 +373,7 @@ public sealed class Rdv3Table
             if (key.Length == 0)
             {
                 if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
-                throw new Rdv3DataError(Fmt(Rdv3Text.DataEmptyKey, file, row).Replace("{name}", keyName));
+                throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip");
             }
             if (validation.Ascii)
             {
@@ -382,7 +381,7 @@ public sealed class Rdv3Table
                 {
                     if (key[k] > 127)
                     {
-                        throw new Rdv3DataError(Fmt(Rdv3Text.DataKeyNotAscii, file, row).Replace("{name}", keyName));
+                        throw t.KeyError(row, key, "ASCII", "characters", "unicode");
                     }
                 }
             }
@@ -391,9 +390,8 @@ public sealed class Rdv3Table
                 if (fixedLength < 0) { fixedLength = key.Length; }
                 else if (key.Length != fixedLength)
                 {
-                    throw new Rdv3DataError(Fmt(Rdv3Text.DataKeyWidth, file, row)
-                        .Replace("{name}", keyName)
-                        .Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)));
+                    throw t.KeyError(row, key,
+                        Rdv3Text.InputExpectWidth.Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)), "length", "variable");
                 }
             }
             if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
@@ -458,6 +456,13 @@ public sealed class Rdv3Table
         if (ControlCharacterWarning.Length > 0) { warnings.Add(ControlCharacterWarning); }
         string notice = InputNotice();
         if (notice.Length > 0) { warnings.Add(notice); }
+    }
+
+    private Rdv3DataError KeyError(int row, string actual, string expected, string rule, string choice)
+    {
+        string path = KeyValidation.SettingsPath.Length == 0 ? "data.tables." + Name + ".keyValidation" : KeyValidation.SettingsPath;
+        return Rdv3Input.Error(Path, row, Head[KeyCol], expected, actual,
+            Rdv3Text.InputFixKey.Replace("{path}", path + "." + rule).Replace("{choice}", choice));
     }
 
     // A tab, a carriage return or any other control character, named by code.

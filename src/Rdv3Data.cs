@@ -605,7 +605,7 @@ public sealed class Rdv3Data
             || result.Operator == "less" || result.Operator == "atMost")
         {
             decimal number;
-            if (!decimal.TryParse(result.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out number))
+            if (!Rdv3Input.TryNumber(result.Value, out number))
             {
                 throw w.Member("value").Fail("must be a number for " + result.Operator);
             }
@@ -1107,7 +1107,8 @@ public sealed class Rdv3Data
                         .Replace("{row}", table.SourceRow(row).ToString(CultureInfo.InvariantCulture))
                         .Replace("{name}", type.Ref)
                         .Replace("{value}", value)
-                        .Replace("{type}", displayType));
+                        .Replace("{type}", displayType)
+                        + Rdv3Text.InputFixType.Replace("{ref}", type.Ref));
                 }
             }
         }

@@ -18,6 +18,12 @@ public static class Rdv3Text
 {
     public const string InputRowsSkipped = "{file}: キー列 {column} が空の {empty} 行と重複の {duplicate} 行を除き、{kept} 行を読みました。";
     public const string InputNoData = "{file}: 見出しだけを読みました。データ行は 0 件です。入力ファイルを確認してください。";
+    public const string InputError = "{file} の {row} 行目、列 {column}: 必要なのは「{expected}」、実際は「{actual}」です。{fix}";
+    public const string InputExpectKey = "空でないキー";
+    public const string InputExpectWidth = "最初の有効行と同じ {n} 文字のキー";
+    public const string InputFixKey = "入力値を直してください。この形を許す定義なら、settings.json の {path} を \"{choice}\" にします。";
+    public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。";
+    public const string InputFixType = " 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"{ref}\"].type を \"text\" にします。";
     public const string StorageContractMismatch = "\u3053\u306e\u53f0\u5e33\u3068\u8a2d\u5b9a\u306e\u5217\u30fb\u8b58\u5225\u30ad\u30fc\u30fb\u4f5c\u696d\u72b6\u614b\u306e\u5b9a\u7fa9\u304c\u4e00\u81f4\u3057\u307e\u305b\u3093\u3002\u540c\u3058\u53f0\u5e33\u3092\u4f7f\u3046\u5168PC\u306e\u5b9a\u7fa9\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
 
     public const string UpdateChangedDuringCheck = "\u78ba\u8a8d\u4e2d\u306b\u5171\u6709\u53f0\u5e33\u306e\u5185\u5bb9\u304c\u5909\u308f\u308a\u307e\u3057\u305f\u3002\u4e0a\u66f8\u304d\u305b\u305a\u4e2d\u6b62\u3057\u307e\u3057\u305f\u3002\u3082\u3046\u4e00\u5ea6\u300c\u66f4\u65b0\u300d\u3067\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";

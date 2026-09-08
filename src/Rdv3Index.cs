@@ -53,7 +53,9 @@ public sealed class Rdv3Index
                         .Replace("{name}", t.Head[t.KeyCol])
                         .Replace("{key}", k)
                         .Replace("{row1}", t.SourceRow(rows[0]).ToString(CultureInfo.InvariantCulture))
-                        .Replace("{row2}", t.SourceRow(i).ToString(CultureInfo.InvariantCulture)));
+                        .Replace("{row2}", t.SourceRow(i).ToString(CultureInfo.InvariantCulture))
+                        + Rdv3Text.InputFixConflict.Replace("{path}", t.KeyValidation.SettingsPath.Length == 0
+                            ? "data.tables." + t.Name : t.KeyValidation.SettingsPath.Replace(".keyValidation", "")));
                 }
                 continue;
             }
