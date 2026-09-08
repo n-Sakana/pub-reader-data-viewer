@@ -22,9 +22,12 @@ public static class Rdv3Csv
     }
 
     public static void Read(string path, Encoding encoding, bool headOnly,
-                            out string[] head, out string[][] rows, out int[] rowNumbers, string encodingSetting = "data.encoding")
+                            out string[] head, out string[][] rows, out int[] rowNumbers, string encodingSetting = "data.encoding",
+                            HashSet<string> references = null, Rdv3InputCounts counts = null)
     {
         head = null;
+        if (counts == null) { counts = new Rdv3InputCounts(); }
+        Rdv3InputColumns columns = null;
         List<string[]> data = new List<string[]>();
         List<int> numbers = new List<int>();
         Encoding strict = (Encoding)encoding.Clone();
@@ -62,28 +65,28 @@ public static class Rdv3Csv
                         throw;
                     }
                     if (cells == null) { break; }
-                    if (blank) { continue; }
+                    if (blank) { counts.BlankRows++; continue; }
                     if (head == null)
                     {
                         head = cells;
-                        HashSet<string> names = new HashSet<string>(StringComparer.Ordinal);
                         for (int i = 0; i < head.Length; i++)
                         {
                             head[i] = head[i].Trim();
-                            if (head[i].Length == 0 || !names.Add(head[i]))
-                            { throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); }
                             for (int k = 0; k < head[i].Length; k++)
                             { if (head[i][k] < ' ') { throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); } }
                         }
+                        columns = Rdv3InputColumns.Read(head, path, first, references, counts);
+                        head = columns.Head;
                         if (headOnly) { break; }
                     }
                     else
                     {
-                        if (cells.Length != head.Length)
-                        { throw Failure(path, first, Math.Min(cells.Length, head.Length) + 1,
-                            Rdv3Text.InputColumnCount.Replace("{n}", head.Length.ToString(CultureInfo.InvariantCulture)),
+                        if (cells.Length < columns.SourceCount) { counts.ShortRows++; continue; }
+                        if (cells.Length > columns.SourceCount)
+                        { throw Failure(path, first, columns.SourceCount + 1,
+                            Rdv3Text.InputColumnCount.Replace("{n}", columns.SourceCount.ToString(CultureInfo.InvariantCulture)),
                             Rdv3Text.InputColumnCount.Replace("{n}", cells.Length.ToString(CultureInfo.InvariantCulture)), Rdv3Text.InputFixCsv); }
-                        data.Add(cells);
+                        data.Add(columns.Project(cells));
                         numbers.Add(first);
                     }
                 }

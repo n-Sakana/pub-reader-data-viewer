@@ -11,7 +11,8 @@
 // default; a definition can opt into Unicode, variable width, distinct values
 // and skipped blank keys for condition-list inputs.
 //
-// Structural errors are refused: a wrong column count, malformed quoting,
+// Short CSV records and blank lines are counted and skipped. Extra columns,
+// referenced duplicate headers, malformed quoting,
 // an invalid encoding, or an unusable key. Quoted CSV uses Rdv3Csv. A control character inside a
 // field is different: refusing a whole input for one old byte is too broad.
 // The first occurrence is reported and each such byte is replaced with '?',
@@ -98,6 +99,7 @@ public sealed class Rdv3Table
     public string ControlCharacterWarning = "";
     public int SkippedEmptyRows;
     public int SkippedDuplicateRows;
+    public readonly Rdv3InputCounts InputCounts = new Rdv3InputCounts();
     // Workbook sources have already been decoded into cells. CSV sources keep
     // their byte slices above so the common large-file path stays unchanged.
     public string[][] Cells;
@@ -109,20 +111,21 @@ public sealed class Rdv3Table
 
     // the header row only (for the start-up check of the definition against
     // the data, before the full read in the worker)
-    public static string[] ReadHead(string path, Encoding enc, string encodingSetting = "data.encoding")
+    public static string[] ReadHead(string path, Encoding enc, string encodingSetting = "data.encoding",
+                                    HashSet<string> references = null)
     {
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return Rdv3Xlsx.ReadTableHead(path);
+            return Rdv3Xlsx.ReadTableHead(path, references);
         }
         string[] head;
         string[][] rows;
         int[] rowNumbers;
-        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers, encodingSetting);
+        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers, encodingSetting, references);
         return head;
     }
 
-    private static string[] SplitHead(string line, string file, out string warning)
+    private static string[] SplitHead(string line, string file, int row, out string warning)
     {
         warning = "";
         if (line.Length > 0 && line[0] == '\uFEFF') { line = line.Substring(1); }
@@ -131,7 +134,7 @@ public sealed class Rdv3Table
         for (int i = 0; i < line.Length; i++)
         {
             if (line[i] >= ' ') { continue; }
-            if (warning.Length == 0) { warning = ControlChar(file, 1, (int)line[i]); }
+            if (warning.Length == 0) { warning = ControlChar(file, row, (int)line[i]); }
             safe[i] = '?';
             changed = true;
         }
@@ -141,15 +144,8 @@ public sealed class Rdv3Table
         {
             h[i] = h[i].Trim();
             if (h[i].Length == 0)
-            { throw Rdv3Input.Error(file, 1, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, h[i], Rdv3Text.InputFixHeader); }
-            if (h[i][0] == '"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, 1)); }
-            for (int k = 0; k < i; k++)
-            {
-                if (string.Equals(h[k], h[i], StringComparison.Ordinal))
-                {
-                    throw Rdv3Input.Error(file, 1, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, h[i], Rdv3Text.InputFixHeader);
-                }
-            }
+            { throw Rdv3Input.Error(file, row, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, h[i], Rdv3Text.InputFixHeader); }
+            if (h[i][0] == '"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, row)); }
         }
         return h;
     }
@@ -161,12 +157,14 @@ public sealed class Rdv3Table
     }
 
     public static Rdv3Table Read(string path, string name, Encoding enc, string keyName,
-                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding")
+                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
+                                 HashSet<string> references = null)
     {
         if (validation == null) { validation = new Rdv3KeyValidation(); }
+        if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.Add(keyName); }
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting);
+            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting, references);
         }
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -174,7 +172,7 @@ public sealed class Rdv3Table
         t.Enc = enc;
         t.KeyValidation = validation;
         t.Buf = File.ReadAllBytes(path);
-        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting); }
+        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references); }
         Rdv3Input.ValidateEncoding(t.Buf, enc, path, encodingSetting);
         string file = System.IO.Path.GetFileName(path);
 
@@ -208,13 +206,18 @@ public sealed class Rdv3Table
                 en[rows] = e;
                 rows++;
             }
+            else { t.InputCounts.BlankRows++; }
             pos = nl + 1;
             physicalRow++;
         }
         if (rows < 1) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
 
         string headerWarning;
-        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, out headerWarning);
+        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, physicalRows[0], out headerWarning);
+        Rdv3InputColumns columns = Rdv3InputColumns.Read(t.Head, path, physicalRows[0], references, t.InputCounts);
+        if (t.InputCounts.HeaderColumns > 0)
+        { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references); }
+        t.Head = columns.Head;
         t.ControlCharacterWarning = headerWarning;
         int cols = t.Head.Length;
         t.KeyCol = -1;
@@ -242,6 +245,8 @@ public sealed class Rdv3Table
             int p = rs;
             int keyAt = -1;
             int keyEnd = -1;
+            bool controlKey = false;
+            int controlCode = -1;
             while (true)
             {
                 if (p < re && b[p] == (byte)'"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, row)); }
@@ -250,11 +255,8 @@ public sealed class Rdv3Table
                 {
                     if (b[q] < 0x20)
                     {
-                        if (field == t.KeyCol) { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); }
-                        if (t.ControlCharacterWarning.Length == 0)
-                        {
-                            t.ControlCharacterWarning = ControlChar(file, row, (int)b[q]);
-                        }
+                        if (field == t.KeyCol) { controlKey = true; }
+                        if (controlCode < 0) { controlCode = (int)b[q]; }
                         b[q] = (byte)'?';
                     }
                     q++;
@@ -264,18 +266,21 @@ public sealed class Rdv3Table
                 if (q >= re) { break; }
                 p = q + 1;
             }
-            if (field != cols)
+            if (field < cols) { t.InputCounts.ShortRows++; continue; }
+            if (field > cols)
             {
                 throw Rdv3Input.Error(path, row, (Math.Min(field, cols) + 1).ToString(CultureInfo.InvariantCulture),
                     Rdv3Text.InputColumnCount.Replace("{n}", cols.ToString(CultureInfo.InvariantCulture)),
                     Rdv3Text.InputColumnCount.Replace("{n}", field.ToString(CultureInfo.InvariantCulture)), Rdv3Text.InputFixCsv);
             }
+            if (controlKey) { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); }
+            if (controlCode >= 0 && t.ControlCharacterWarning.Length == 0) { t.ControlCharacterWarning = ControlChar(file, row, controlCode); }
             while (keyEnd > keyAt && b[keyEnd - 1] == (byte)' ') { keyEnd--; }
             for (int k = keyAt; k < keyEnd; k++)
             {
                 // Unicode digits occupy several bytes. Validate their normalized
                 // characters, rather than guessing widths from the encoded bytes.
-                if (b[k] > 127) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting); }
+                if (b[k] > 127) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references); }
             }
             int klen = keyEnd - keyAt;
             if (klen <= 0)
@@ -327,16 +332,19 @@ public sealed class Rdv3Table
     }
 
     public static Rdv3Table Read(string path, string name, Encoding enc, string[] keyNames,
-                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding")
+                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
+                                 HashSet<string> references = null)
     {
         if (keyNames == null || keyNames.Length == 0) { throw new ArgumentException("key names are empty"); }
-        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting); }
+        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting, references); }
+        if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.UnionWith(keyNames); }
         return ReadDecoded(path, name, enc, keyNames, validation ?? new Rdv3KeyValidation(),
-            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting);
+            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting, references);
     }
 
     private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string[] keyNames,
-                                          Rdv3KeyValidation validation, bool workbook, string encodingSetting)
+                                          Rdv3KeyValidation validation, bool workbook, string encodingSetting,
+                                          HashSet<string> references)
     {
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -345,8 +353,8 @@ public sealed class Rdv3Table
         t.KeyValidation = validation;
         string warning = "";
         int[] originalRows = null;
-        if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning); }
-        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting); }
+        if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts); }
+        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting, references, t.InputCounts); }
         t.ControlCharacterWarning = warning;
         t.KeyCols = new int[keyNames.Length];
         for (int k = 0; k < keyNames.Length; k++)
@@ -468,6 +476,7 @@ public sealed class Rdv3Table
 
     public void AddWarnings(List<string> warnings)
     {
+        InputCounts.AddWarnings(Path, warnings);
         if (ControlCharacterWarning.Length > 0) { warnings.Add(ControlCharacterWarning); }
         string notice = InputNotice();
         if (notice.Length > 0) { warnings.Add(notice); }
