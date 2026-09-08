@@ -1,18 +1,18 @@
-2026-09-09 05:28:46.140	pid=2288	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\settings.json data= output= validate=True update=False
-2026-09-09 05:28:46.180	pid=2288	PHASE	loading assemblies and compiling application sources
-2026-09-09 05:28:46.834	pid=2288	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\settings.json data= output= validate=True update=False
-2026-09-09 05:28:46.843	pid=2288	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\settings.json
-2026-09-09 05:28:46.908	pid=2288	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\data\tableA.csv
-2026-09-09 05:28:46.913	pid=2288	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\data\tableB.csv
-2026-09-09 05:28:46.923	pid=2288	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\data\tableC.csv
-2026-09-09 05:28:46.930	pid=2288	VALIDATION	FAIL 1 errors
-  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\settings.json: The process cannot access the file 'C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\data\tableA.csv' because it is being used by another process.
+2026-09-09 05:48:08.911	pid=25860	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\settings.json data= output= validate=True update=False
+2026-09-09 05:48:08.947	pid=25860	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:48:09.628	pid=25860	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\settings.json data= output= validate=True update=False
+2026-09-09 05:48:09.640	pid=25860	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\settings.json
+2026-09-09 05:48:09.716	pid=25860	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\data\tableA.csv
+2026-09-09 05:48:09.722	pid=25860	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\data\tableB.csv
+2026-09-09 05:48:09.737	pid=25860	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\data\tableC.csv
+2026-09-09 05:48:09.747	pid=25860	VALIDATION	FAIL 1 errors
+  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\settings.json: The process cannot access the file 'C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\data\tableA.csv' because it is being used by another process.
 STOP input files
 NOT CHECKED remaining checks within input A (tableA.csv) after the reported error
 NOT CHECKED input columns/types and job preparation
 
-2026-09-09 05:28:46.932	pid=2288	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
+2026-09-09 05:48:09.751	pid=25860	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
    at Rdv3Validation.Finish(String stage, String next)
    at Rdv3Headless.Evaluate(Rdv3Config cfg, String appDir, String dataDir, Boolean execute, String baselinePath)
    at Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
-2026-09-09 05:28:46.935	pid=2288	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\locked\data\tableC.csv
+2026-09-09 05:48:09.756	pid=25860	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\locked\data\tableC.csv

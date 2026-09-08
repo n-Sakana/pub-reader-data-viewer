@@ -1,5 +1,5 @@
-2026-09-09 05:28:49.935	pid=17508	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\rows.json validate=False update=True
-2026-09-09 05:28:49.967	pid=17508	PHASE	loading assemblies and compiling application sources
-2026-09-09 05:28:50.697	pid=17508	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\rows.json validate=False update=True
-2026-09-09 05:28:50.708	pid=17508	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\settings.json
-2026-09-09 05:28:50.777	pid=17508	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\killed-update\data\tableA.csv
+2026-09-09 05:48:12.229	pid=37244	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\rows.json validate=False update=True
+2026-09-09 05:48:12.261	pid=37244	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:48:12.960	pid=37244	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\rows.json validate=False update=True
+2026-09-09 05:48:12.974	pid=37244	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\settings.json
+2026-09-09 05:48:13.046	pid=37244	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\killed-update\data\tableA.csv

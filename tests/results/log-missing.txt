@@ -1,18 +1,18 @@
-2026-09-09 05:28:45.073	pid=52512	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\settings.json data= output= validate=True update=False
-2026-09-09 05:28:45.110	pid=52512	PHASE	loading assemblies and compiling application sources
-2026-09-09 05:28:45.781	pid=52512	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\settings.json data= output= validate=True update=False
-2026-09-09 05:28:45.791	pid=52512	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\settings.json
-2026-09-09 05:28:45.863	pid=52512	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\data\tableA.csv
-2026-09-09 05:28:45.877	pid=52512	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\data\tableB.csv
-2026-09-09 05:28:45.878	pid=52512	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\data\tableC.csv
-2026-09-09 05:28:45.887	pid=52512	VALIDATION	FAIL 1 errors
-  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\settings.json: Could not find file 'C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\data\tableB.csv'.
+2026-09-09 05:48:07.819	pid=16548	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\settings.json data= output= validate=True update=False
+2026-09-09 05:48:07.855	pid=16548	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:48:08.528	pid=16548	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\settings.json data= output= validate=True update=False
+2026-09-09 05:48:08.538	pid=16548	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\settings.json
+2026-09-09 05:48:08.609	pid=16548	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\data\tableA.csv
+2026-09-09 05:48:08.627	pid=16548	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\data\tableB.csv
+2026-09-09 05:48:08.631	pid=16548	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\data\tableC.csv
+2026-09-09 05:48:08.641	pid=16548	VALIDATION	FAIL 1 errors
+  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\settings.json: Could not find file 'C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\data\tableB.csv'.
 STOP input files
 NOT CHECKED remaining checks within input B (tableB.csv) after the reported error
 NOT CHECKED input columns/types and job preparation
 
-2026-09-09 05:28:45.888	pid=52512	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
+2026-09-09 05:48:08.645	pid=16548	ERROR	paths, input files and job preparation: Rdv3ValidationError: FAIL 1 errors; stopped at input files
    at Rdv3Validation.Finish(String stage, String next)
    at Rdv3Headless.Evaluate(Rdv3Config cfg, String appDir, String dataDir, Boolean execute, String baselinePath)
    at Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
-2026-09-09 05:28:45.890	pid=52512	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\missing\data\tableC.csv
+2026-09-09 05:48:08.651	pid=16548	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\missing\data\tableC.csv

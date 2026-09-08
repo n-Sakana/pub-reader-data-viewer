@@ -1,14 +1,23 @@
-2026-09-09 05:28:39.888	pid=51196	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json validate=False update=True
-2026-09-09 05:28:39.921	pid=51196	PHASE	loading assemblies and compiling application sources
-2026-09-09 05:28:40.591	pid=51196	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json validate=False update=True
-2026-09-09 05:28:40.600	pid=51196	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json
-2026-09-09 05:28:40.664	pid=51196	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableA.csv
-2026-09-09 05:28:40.678	pid=51196	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableB.csv
-2026-09-09 05:28:40.686	pid=51196	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\data\tableC.csv
-2026-09-09 05:28:40.693	pid=51196	PHASE	input columns and types
-2026-09-09 05:28:40.709	pid=51196	PHASE	preparing job merge-ledger
-2026-09-09 05:28:40.713	pid=51196	PHASE	preparing job delete-listed-records
-2026-09-09 05:28:40.716	pid=51196	PHASE	executing update job merge-ledger
-2026-09-09 05:28:40.736	pid=51196	PHASE	writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json
-2026-09-09 05:28:40.748	pid=51196	PASS	RunUpdate C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\settings.json
-2026-09-09 05:28:40.777	pid=51196	END	exit=0 last phase=writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-j291iks2\update-ok\rows.json
+2026-09-09 05:48:02.174	pid=50724	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\rows.json validate=False update=True
+2026-09-09 05:48:02.211	pid=50724	PHASE	loading assemblies and compiling application sources
+2026-09-09 05:48:02.943	pid=50724	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\rows.json validate=False update=True
+2026-09-09 05:48:02.954	pid=50724	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\settings.json
+2026-09-09 05:48:03.026	pid=50724	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\data\tableA.csv
+2026-09-09 05:48:03.042	pid=50724	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\data\tableB.csv
+2026-09-09 05:48:03.052	pid=50724	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\data\tableC.csv
+2026-09-09 05:48:03.062	pid=50724	PHASE	input columns and types
+2026-09-09 05:48:03.082	pid=50724	PHASE	preparing job merge-ledger
+2026-09-09 05:48:03.088	pid=50724	PHASE	preparing job delete-listed-records
+2026-09-09 05:48:03.091	pid=50724	PHASE	executing update job merge-ledger
+2026-09-09 05:48:03.125	pid=50724	PHASE	writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\rows.json
+2026-09-09 05:48:03.137	pid=50724	PASS	RunUpdate C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\settings.json
+2026-09-09 05:48:03.183	pid=50724	RESULT	rows=990
+2026-09-09 05:48:03.187	pid=50724	RESULT	skippedEmpty=10
+2026-09-09 05:48:03.190	pid=50724	RESULT	skippedDuplicate=0
+2026-09-09 05:48:03.194	pid=50724	RESULT	baselineRows=0
+2026-09-09 05:48:03.196	pid=50724	RESULT	resetRows=0
+2026-09-09 05:48:03.200	pid=50724	RESULT	JOIN middle1 unmatchedLeft=10 unmatchedRight=310
+2026-09-09 05:48:03.203	pid=50724	RESULT	JOIN middle2 unmatchedLeft=0 unmatchedRight=10
+2026-09-09 05:48:03.206	pid=50724	RESULT	WARNING tableB.csv: キー列 key2 が空の 10 行と重複の 0 行を除き、990 行を読みました。
+2026-09-09 05:48:03.209	pid=50724	RESULT	OUTPUT C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\rows.json
+2026-09-09 05:48:03.215	pid=50724	END	exit=0 last phase=writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-vd2vpkce\update-ok\rows.json

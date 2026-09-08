@@ -1,6 +1,6 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-08T19:51:48.738142+00:00",
+  "utc": "2026-09-08T20:48:00.439167+00:00",
   "details": {
     "excludedFingerprints": [
       "data/ReaderDataViewer.log",
@@ -232,6 +232,30 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:tests/LoggingFaults.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/Test-LoggingFaults.ps1",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/Test-ReadmeBaseline.ps1",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/test_logging.py",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/test_logging_faults.py",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:tests/test_readme_example.py",
+      "status": "PASS"
+    },
+    {
       "name": "win98-only-presentation",
       "status": "PASS"
     },
@@ -248,6 +272,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 59,
+  "passed": 65,
   "failed": 0
 }
