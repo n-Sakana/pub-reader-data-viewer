@@ -367,13 +367,17 @@ public sealed class Rdv3Table
             for (int c = 0; c < source[i].Length; c++) { source[i][c] = Rdv3Input.Cell(source[i][c]); }
             int row = originalRows == null ? i + 2 : originalRows[i];
             bool empty = false;
+            if (validation.SkipEmpty)
+            {
+                foreach (int col in t.KeyCols) { if (source[i][col].Length == 0) { empty = true; break; } }
+                if (empty) { t.SkippedEmptyRows++; continue; }
+            }
             for (int part = 0; part < t.KeyCols.Length; part++)
             {
                 int col = t.KeyCols[part];
                 string value = source[i][col];
                 if (value.Length == 0)
                 {
-                    if (validation.SkipEmpty) { empty = true; continue; }
                     throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip", col);
                 }
                 for (int k = 0; k < value.Length; k++)
@@ -390,7 +394,6 @@ public sealed class Rdv3Table
                     { throw t.KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}", fixedLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col); }
                 }
             }
-            if (empty) { t.SkippedEmptyRows++; continue; }
             for (int c = 0; c < source[i].Length; c++)
             {
                 string value = source[i][c];

@@ -77,10 +77,18 @@ public static class Rdv3Files
 
     public static string ExportPath(string value, string appDir, string dataDir, string ledgerPath,
                                      string logPath, string configPath, Rdv3Data data)
+    { return NewOutputPath(value, appDir, dataDir, ledgerPath, logPath, configPath, data, ".csv"); }
+
+    public static string ReportPath(string value, string appDir, string dataDir, string ledgerPath,
+                                     string logPath, string configPath, Rdv3Data data)
+    { return NewOutputPath(value, appDir, dataDir, ledgerPath, logPath, configPath, data, ".json"); }
+
+    private static string NewOutputPath(string value, string appDir, string dataDir, string ledgerPath,
+                                         string logPath, string configPath, Rdv3Data data, string extension)
     {
         string path = Full(value, appDir);
-        if (!string.Equals(Path.GetExtension(path), ".csv", StringComparison.OrdinalIgnoreCase))
-        { throw new IOException(Rdv3Text.ExportCsvOnly); }
+        if (!string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase))
+        { throw new IOException(extension == ".csv" ? Rdv3Text.ExportCsvOnly : "-Output: use a new .json file"); }
         if (ProgramFile(path, appDir, configPath) || Same(path, ledgerPath) || Same(path, logPath)
             || Same(path, ledgerPath + ".lock") || Same(path, ledgerPath + ".version"))
         { throw new IOException(Rdv3Text.ExportProtected); }

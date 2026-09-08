@@ -2,6 +2,12 @@
 param(
     [switch]$CompileOnly,
     [switch]$TestCore,
+    [switch]$ValidateOnly,
+    [switch]$RunUpdate,
+    [string]$Config,
+    [string]$DataDir,
+    [string]$Output,
+    [string]$BaselineLedger,
     [Parameter(ValueFromRemainingArguments = $true)]
     [string[]]$ReaderArguments
 )
@@ -49,6 +55,15 @@ try {
     # This script lives in src\; the application root -- the folder holding
     # settings.json, src\, web\, lib\ and data\ -- is its parent.
     $baseDirectory = Split-Path -Parent $PSScriptRoot
+    $headless = $ValidateOnly -or $RunUpdate
+    if (($ValidateOnly -and $RunUpdate) -or ($headless -and ($TestCore -or $CompileOnly))) {
+        throw 'Choose one mode: -ValidateOnly, -RunUpdate, -CompileOnly or -TestCore.'
+    }
+    if (-not $headless -and ($Config -or $DataDir -or $Output -or $BaselineLedger)) {
+        throw '-Config, -DataDir, -Output and -BaselineLedger require -ValidateOnly or -RunUpdate.'
+    }
+    if ($RunUpdate -and -not $Output) { throw '-RunUpdate requires -Output <new.json>.' }
+    if ($ValidateOnly -and ($Output -or $BaselineLedger)) { throw '-Output and -BaselineLedger require -RunUpdate.' }
     $sourceDirectory = Join-Path $baseDirectory 'src'
     $libraryDirectory = Join-Path $baseDirectory 'lib'
 
@@ -122,6 +137,15 @@ try {
     if ($CompileOnly) {
         [Console]::WriteLine('PASS: all application C# sources compiled. No window or ledger was opened.')
         exit 0
+    }
+    if ($headless) {
+        if (-not $Config) { $Config = Join-Path $baseDirectory 'settings.json' }
+        $Config = [IO.Path]::GetFullPath($Config)
+        if ($DataDir) { $DataDir = [IO.Path]::GetFullPath($DataDir) }
+        if ($Output) { $Output = [IO.Path]::GetFullPath($Output) }
+        if ($BaselineLedger) { $BaselineLedger = [IO.Path]::GetFullPath($BaselineLedger) }
+        $exitCode = [Rdv3Headless]::Run($baseDirectory, $Config, $DataDir, $RunUpdate.IsPresent, $Output, $BaselineLedger)
+        exit $exitCode
     }
     $exitCode = [ReaderDataViewer.App]::Run($baseDirectory)
     exit $exitCode

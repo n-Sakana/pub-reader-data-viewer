@@ -26,6 +26,7 @@ public sealed class Rdv3ProcessValueResult
 
 public sealed class Rdv3ProcessResult
 {
+    public readonly List<Rdv3JoinResult> Joins = new List<Rdv3JoinResult>();
     public readonly List<string> Warnings = new List<string>();
     public string Kind = "";
     public string[] Columns = new string[0];
@@ -40,6 +41,24 @@ public sealed class Rdv3ProcessResult
     {
         Rdv3ProcessValueResult value;
         return Values.TryGetValue(name, out value) ? value : null;
+    }
+}
+
+public sealed class Rdv3JoinResult
+{
+    public string Output;
+    public int LeftRows, RightRows, OutputRows, UnmatchedLeft, UnmatchedRight;
+}
+
+internal sealed class Rdv3InputResult
+{
+    public string Id, File;
+    public int Rows, SkippedEmpty, SkippedDuplicate;
+
+    public Rdv3InputResult(string id, Rdv3Table table)
+    {
+        Id = id; File = table.Path; Rows = table.Rows;
+        SkippedEmpty = table.SkippedEmptyRows; SkippedDuplicate = table.SkippedDuplicateRows;
     }
 }
 
@@ -89,6 +108,7 @@ internal sealed class Rdv3RowSelection
 
 internal sealed class Rdv3PreparedProcess
 {
+    public readonly List<Rdv3InputResult> InputResults = new List<Rdv3InputResult>();
     public readonly List<string> Warnings = new List<string>();
     public Rdv3Data Data;
     public Rdv3ProcessJobDef Job;
@@ -129,6 +149,7 @@ public static class Rdv3Process
                 new Rdv3Index(table);                    // enforce the configured duplicate rule
                 table.AddWarnings(prepared.Warnings);
             }
+            prepared.InputResults.Add(new Rdv3InputResult(input.Id, table));
             prepared.Inputs.Add(input.Id, input.IsTable
                 ? RelationOfTable(input, table) : RelationOfValues(input, table));
         }
@@ -190,7 +211,9 @@ public static class Rdv3Process
             object output;
             if (step.Operation == "join")
             {
-                output = Join((Rdv3Relation)left, (Rdv3Relation)right, step);
+                Rdv3JoinResult joined;
+                output = Join((Rdv3Relation)left, (Rdv3Relation)right, step, out joined);
+                result.Joins.Add(joined);
             }
             else if (step.Operation == "append")
             {
@@ -350,8 +373,9 @@ public static class Rdv3Process
         }
     }
 
-    private static Rdv3Relation Join(Rdv3Relation left, Rdv3Relation right, Rdv3ProcessStepDef step)
+    private static Rdv3Relation Join(Rdv3Relation left, Rdv3Relation right, Rdv3ProcessStepDef step, out Rdv3JoinResult stats)
     {
+        stats = new Rdv3JoinResult { Output = step.Output, LeftRows = left.Rows.Count, RightRows = right.Rows.Count };
         int[] lc = left.NeedColumns(step.KeySide(0));
         int[] rc = right.NeedColumns(step.KeySide(1));
         string[] columns = new string[left.Columns.Length + right.Columns.Length];
@@ -397,11 +421,14 @@ public static class Rdv3Process
                     output.Rows.Add(Combine(left.Rows[i], right.Rows[found[f]]));
                 }
             }
-            else if (step.Condition == "left" || step.Condition == "full")
+            else
             {
-                output.Rows.Add(Combine(left.Rows[i], blankRight));
+                stats.UnmatchedLeft++;
+                if (step.Condition == "left" || step.Condition == "full")
+                { output.Rows.Add(Combine(left.Rows[i], blankRight)); }
             }
         }
+        for (int i = 0; i < used.Length; i++) { if (!used[i]) { stats.UnmatchedRight++; } }
         if (step.Condition == "full")
         {
             for (int i = 0; i < right.Rows.Count; i++)
@@ -409,6 +436,7 @@ public static class Rdv3Process
                 if (!used[i]) { output.Rows.Add(Combine(blankLeft, right.Rows[i])); }
             }
         }
+        stats.OutputRows = output.Rows.Count;
         return output;
     }
 
