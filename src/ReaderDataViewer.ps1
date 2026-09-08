@@ -15,10 +15,6 @@ param(
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 $startupFailureExitCode = 3
-if ($ReaderArguments -and $ReaderArguments.Count -gt 0) {
-    [Console]::Error.WriteLine('Unknown arguments: ' + ($ReaderArguments -join ' '))
-    exit 2
-}
 
 function Write-ReaderLauncherLog {
     param(
@@ -26,32 +22,53 @@ function Write-ReaderLauncherLog {
         [string]$Message
     )
 
-    try {
-        $localData = [Environment]::GetFolderPath(
-            [Environment+SpecialFolder]::LocalApplicationData)
-        if ([string]::IsNullOrWhiteSpace($localData)) {
+    if ('Rdv3Log' -as [type]) { [Rdv3Log]::Feedback($Level,$Message); return }
+    # Compilation can fail before Rdv3Log exists. Use the same path, limit,
+    # mutex name and rotations for this small bootstrap fallback.
+    $roots=@([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData),[IO.Path]::GetTempPath())
+    foreach($root in $roots) {
+        $mutex=$null; $owned=$false
+        try {
+            $logPath=[IO.Path]::GetFullPath((Join-Path $root 'ReaderDataViewer/logs/feedback.log'))
+            $line=(Get-Date -Format 'yyyy-MM-dd HH:mm:ss.fff')+"`tpid=$PID`t$Level`t$Message`r`n"
+            $hash=[Security.Cryptography.SHA256]::Create()
+            try { $name='Rdv3Log-'+[BitConverter]::ToString($hash.ComputeHash([Text.Encoding]::UTF8.GetBytes($logPath.ToUpperInvariant()))).Replace('-','') }
+            finally { $hash.Dispose() }
+            $mutex=New-Object Threading.Mutex($false,$name)
+            try { $owned=$mutex.WaitOne(1000) } catch [Threading.AbandonedMutexException] { $owned=$true }
+            if(-not $owned) { throw 'Log is busy' }
+            [IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($logPath)) | Out-Null
+            if([Text.Encoding]::UTF8.GetByteCount($line) -gt 4194304) { $line=$line.Substring(0,[Math]::Min($line.Length,1048476))+"`r`n[LOG ENTRY TRUNCATED: exceeded 4 MiB]`r`n" }
+            $size=if([IO.File]::Exists($logPath)) {(New-Object IO.FileInfo($logPath)).Length} else {0}
+            if($size+[Text.Encoding]::UTF8.GetByteCount($line) -gt 4194304) {
+                for($i=3;$i -ge 1;$i--) {
+                    $older=$logPath+'.'+$i
+                    $newer=if($i -eq 1) {$logPath} else {$logPath+'.'+($i-1)}
+                    if([IO.File]::Exists($older)) { [IO.File]::Delete($older) }
+                    if([IO.File]::Exists($newer)) { [IO.File]::Move($newer,$older) }
+                }
+            }
+            $file=New-Object IO.FileStream($logPath,[IO.FileMode]::Append,[IO.FileAccess]::Write,[IO.FileShare]::Read)
+            try { $bytes=[Text.Encoding]::UTF8.GetBytes($line); $file.Write($bytes,0,$bytes.Length); $file.Flush($true) }
+            finally { $file.Dispose() }
             return
-        }
-
-        $logDirectory = Join-Path $localData 'ReaderDataViewer\logs'
-        if (-not (Test-Path -LiteralPath $logDirectory -PathType Container)) {
-            New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
-        }
-
-        $logPath = Join-Path $logDirectory (
-            'reader-data-viewer_' + (Get-Date -Format 'yyyyMMdd') + '.log')
-        $line = '[' + (Get-Date -Format 'HH:mm:ss') + '] ' +
-            '[' + $Level + '] ' + $Message
-        [IO.File]::AppendAllText(
-            $logPath,
-            $line + [Environment]::NewLine,
-            (New-Object Text.UTF8Encoding($false)))
-    }
-    catch {
+        } catch { [Console]::Error.WriteLine('LOG WRITE FAILED '+$root+': '+$_.Exception.Message) }
+        finally { if($owned) { $mutex.ReleaseMutex() }; if($null -ne $mutex) { $mutex.Dispose() } }
     }
 }
 
+$exitCode=$startupFailureExitCode
+$context='app='+(Split-Path -Parent $PSScriptRoot)+' config='+$Config+' data='+$DataDir+' output='+$Output+' validate='+$ValidateOnly+' update='+$RunUpdate
+Write-ReaderLauncherLog 'BEGIN BOOTSTRAP' $context
+[Console]::Error.WriteLine('LOG '+(Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)) 'ReaderDataViewer/logs/feedback.log'))
 try {
+    if ($ReaderArguments -and $ReaderArguments.Count -gt 0) {
+        $detail='Unknown arguments: ' + ($ReaderArguments -join ' ')
+        Write-ReaderLauncherLog 'ERROR' $detail
+        [Console]::Error.WriteLine($detail)
+        $exitCode=2
+        exit $exitCode
+    }
     # This script lives in src\; the application root -- the folder holding
     # settings.json, src\, web\, lib\ and data\ -- is its parent.
     $baseDirectory = Split-Path -Parent $PSScriptRoot
@@ -66,6 +83,7 @@ try {
     if ($ValidateOnly -and ($Output -or $BaselineLedger)) { throw '-Output and -BaselineLedger require -RunUpdate.' }
     $sourceDirectory = Join-Path $baseDirectory 'src'
     $libraryDirectory = Join-Path $baseDirectory 'lib'
+    Write-ReaderLauncherLog 'PHASE' 'loading assemblies and compiling application sources'
 
     Add-Type -AssemblyName PresentationFramework
     Add-Type -AssemblyName PresentationCore
@@ -130,13 +148,16 @@ try {
         -ReferencedAssemblies $references `
         -Language CSharp
 
+    [Rdv3Log]::Begin('launcher',$context)
+
     if ($TestCore) {
-        $testExitCode = [Rdv3RegressionTests]::Run($baseDirectory)
-        exit $testExitCode
+        $exitCode = [Rdv3RegressionTests]::Run($baseDirectory)
+        exit $exitCode
     }
     if ($CompileOnly) {
         [Console]::WriteLine('PASS: all application C# sources compiled. No window or ledger was opened.')
-        exit 0
+        $exitCode=0
+        exit $exitCode
     }
     if ($headless) {
         if (-not $Config) { $Config = Join-Path $baseDirectory 'settings.json' }
@@ -159,5 +180,10 @@ catch {
     $detail = 'launcher failed' + $location + ' ' + $_.Exception.ToString()
     Write-ReaderLauncherLog 'ERROR' $detail
     [Console]::Error.WriteLine('Reader Data Viewer: ' + $detail)
-    exit $startupFailureExitCode
+    $exitCode=$startupFailureExitCode
+    exit $exitCode
+}
+finally {
+    if ('Rdv3Log' -as [type]) { [Rdv3Log]::End($exitCode) }
+    else { Write-ReaderLauncherLog 'END' ('exit='+$exitCode) }
 }
