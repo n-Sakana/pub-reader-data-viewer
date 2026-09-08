@@ -20,7 +20,8 @@ public sealed class Rdv3TableDef
     public string Id = "";
     public string Label = "";
     public string File = "";
-    public string Key = "";
+    public string[] KeyColumns = new string[] { "" };
+    public string Key { get { return KeyColumns[0]; } set { KeyColumns = new string[] { value }; } }
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int Ord;
     public string[] Head;
@@ -118,6 +119,7 @@ public sealed class Rdv3ProcessInputDef
     public string File = "";
     public string Column = "";
     public string Key = "";
+    public string[] Columns;
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int TableOrd = -1;
     public bool IsTable { get { return TableOrd >= 0; } }
@@ -131,6 +133,9 @@ public sealed class Rdv3ProcessStepDef
     public string Condition = "";
     public string Output = "";
     public string[] Keys = new string[0];
+    public string[][] KeyGroups;
+    public string[] KeySide(int side)
+    { return KeyGroups == null ? new string[] { Keys[side] } : KeyGroups[side]; }
     public List<Rdv3ProcessColumnDef> Columns = new List<Rdv3ProcessColumnDef>();
     public Rdv3ProcessWhereDef Where;
     public string Column = "";
@@ -190,7 +195,17 @@ public sealed class Rdv3Data
     public List<Rdv3ApplicationColumnDef> ApplicationColumnDefs = new List<Rdv3ApplicationColumnDef>();
     public bool WorkStateIsApplicationOwned;
     public string WorkStateOnSourceChange = "";
-    public int IdentityCol = -1;
+    public int[] IdentityCols = new int[] { -1 };
+    public int IdentityCol { get { return IdentityCols[0]; } set { IdentityCols = new int[] { value }; } }
+    public string[] IdentityRefs
+    {
+        get
+        {
+            string[] refs = new string[IdentityCols.Length];
+            for (int i = 0; i < refs.Length; i++) { refs[i] = Columns[IdentityCols[i]].Ref; }
+            return refs;
+        }
+    }
     public List<Rdv3ColumnRef> Columns = new List<Rdv3ColumnRef>();
 
     public Rdv3TableDef TableOf(string id)
@@ -285,7 +300,7 @@ public sealed class Rdv3Data
             t.Id = id;
             t.Label = to.StrOr("label", id);
             t.File = to.Need("file");
-            t.Key = to.Need("key");
+            t.KeyColumns = ReadColumnNames(to.Member("key"));
             t.KeyValidation = ReadKeyValidation(to);
             t.Enc = ReadEncoding(to, d.Enc);
             t.EncodingSetting = EncodingSetting(to);
@@ -385,14 +400,21 @@ public sealed class Rdv3Data
         }
         for (int i = 0; i < d.Jobs.Count; i++) { d.Jobs[i].OnSourceChange = d.WorkStateOnSourceChange; }
 
-        Rdv3ColumnRef identityRef = ParseRef(d, ledger.Need("identity"), ledger.Member("identity"));
+        string[] identityRefs = ReadColumnNames(ledger.Member("identity"));
+        Rdv3ColumnRef identityRef = ParseRef(d, identityRefs[0], ledger.Member("identity"));
         Rdv3TableDef identityTable = d.TableOf(identityRef.Table);
-        if (identityTable == null || identityRef.Column != identityTable.Key)
+        if (identityTable == null || identityRefs.Length != identityTable.KeyColumns.Length)
         {
-            throw ledger.Member("identity").Fail("must be a table's unique key");
+            throw ledger.Member("identity").Fail("must include all columns of one table's key, in the same order");
         }
-        d.IdentityCol = d.IndexOf(identityRef.Ref);
-        if (d.IdentityCol < 0) { throw colsNode.Fail("must include the update key " + identityRef.Ref + " (the row identity)"); }
+        d.IdentityCols = new int[identityRefs.Length];
+        for (int k = 0; k < identityRefs.Length; k++)
+        {
+            if (identityRefs[k] != identityTable.Id + "." + identityTable.KeyColumns[k])
+            { throw ledger.Member("identity").Fail("must include all columns of one table's key, in the same order"); }
+            d.IdentityCols[k] = d.IndexOf(identityRefs[k]);
+            if (d.IdentityCols[k] < 0) { throw colsNode.Fail("must include the update key " + identityRefs[k] + " (the row identity)"); }
+        }
         d.Spine = identityRef.Table;
         d.SpineOrd = identityRef.TableOrd;
         for (int i = 0; i < d.Jobs.Count; i++)
@@ -474,6 +496,7 @@ public sealed class Rdv3Data
                 input.Table = table.Id;
                 input.File = table.File;
                 input.Column = table.Key;
+                input.Columns = table.KeyColumns;
                 input.Key = table.Id + "." + table.Key;
                 input.KeyValidation = table.KeyValidation;
                 input.Enc = table.Enc;
@@ -519,12 +542,12 @@ public sealed class Rdv3Data
             if (step.Operation == "join")
             {
                 so.Only("operation", "target1", "target2", "keys", "condition", "output");
-                step.Keys = ReadKeys(so, true);
+                ReadKeys(step, so, true);
             }
             else if (step.Operation == "extract")
             {
                 so.Only("operation", "target1", "target2", "keys", "condition", "where", "output");
-                step.Keys = ReadKeys(so, false);
+                ReadKeys(step, so, false);
                 step.Where = ReadWhere(so);
             }
             else if (step.Operation == "delete" || step.Operation == "append")
@@ -540,7 +563,7 @@ public sealed class Rdv3Data
             {
                 so.Only("operation", "target1", "target2", "keys", "condition", "output",
                         "sourceOnly", "both", "targetOnly");
-                step.Keys = ReadKeys(so, true);
+                ReadKeys(step, so, true);
                 step.SourceOnly = so.Word("sourceOnly", "", "add", "ignore");
                 step.Both = so.Word("both", "", "update", "keep");
                 step.TargetOnly = so.Word("targetOnly", "keep", "keep", "delete");
@@ -548,7 +571,7 @@ public sealed class Rdv3Data
             else if (step.Operation == "replace")
             {
                 so.Only("operation", "target1", "target2", "keys", "condition", "output");
-                step.Keys = ReadKeys(so, true);
+                ReadKeys(step, so, true);
             }
             else if (step.Operation == "select")
             {
@@ -593,11 +616,43 @@ public sealed class Rdv3Data
         return job;
     }
 
-    private static string[] ReadKeys(Rdv3Json o, bool required)
+    private static string[] ReadColumnNames(Rdv3Json at)
     {
-        string[] keys = o.Strs("keys", required);
-        for (int i = 0; i < keys.Length; i++) { keys[i] = NeedRef(keys[i], o.Member("keys").At(i)); }
-        return keys;
+        if (at == null) { throw new Rdv3LoadError("key: specify a column name or a non-empty array of column names"); }
+        List<string> names = new List<string>();
+        if (at.Kind == Rdv3Json.TString) { names.Add(at.Str.Trim()); }
+        else if (at.Kind == Rdv3Json.TArray)
+        {
+            for (int i = 0; i < at.Items.Count; i++)
+            {
+                if (at.At(i).Kind != Rdv3Json.TString) { throw at.At(i).Fail("must be a column name"); }
+                string name = at.At(i).Str.Trim();
+                if (names.Contains(name)) { throw at.At(i).Fail("lists the same column twice"); }
+                names.Add(name);
+            }
+        }
+        else { throw at.Fail("specify a column name or an array of column names"); }
+        if (names.Count == 0 || names.Contains("")) { throw at.Fail("must name at least one non-blank column"); }
+        return names.ToArray();
+    }
+
+    private static void ReadKeys(Rdv3ProcessStepDef step, Rdv3Json o, bool required)
+    {
+        if (!o.Has("keys") && !required) { return; }
+        Rdv3Json at = o.Member("keys");
+        if (at == null || at.Kind != Rdv3Json.TArray || at.Items.Count != 2)
+        { throw o.Fail("keys must contain two sides: [\"A.id\",\"B.id\"] or [[\"A.id\",\"A.part\"],[\"B.id\",\"B.part\"]]"); }
+        step.KeyGroups = new string[2][];
+        step.Keys = new string[2];
+        for (int side = 0; side < 2; side++)
+        {
+            string[] cols = ReadColumnNames(at.At(side));
+            for (int i = 0; i < cols.Length; i++) { cols[i] = NeedRef(cols[i], at.At(side)); }
+            step.KeyGroups[side] = cols;
+            step.Keys[side] = cols[0];
+        }
+        if (step.KeySide(0).Length != step.KeySide(1).Length)
+        { throw at.Fail("the two sides of keys must have the same number of columns"); }
     }
 
     private static Rdv3ProcessWhereDef ReadWhere(Rdv3Json o)
@@ -872,7 +927,8 @@ public sealed class Rdv3Data
 
     private static void NeedKeys(Rdv3ProcessStepDef step, Rdv3Json at)
     {
-        if (step.Keys.Length != 2) { throw at.Member("keys").Fail("must hold exactly two column names"); }
+        if (step.Keys.Length != 2 || step.KeySide(0).Length != step.KeySide(1).Length)
+        { throw at.Member("keys").Fail("must hold two sides with the same number of columns"); }
     }
 
     private static void NeedCondition(Rdv3ProcessStepDef step, Rdv3Json at, params string[] allowed)
@@ -889,6 +945,7 @@ public sealed class Rdv3Data
     private static void CompileFastUpdate(Rdv3Data d, Rdv3ProcessJobDef job, Rdv3Json at)
     {
         job.FastJoinPlan = false;
+        if (d.IdentityCols.Length != 1) { return; }
         job.Spine = "";
         job.SpineOrd = -1;
         job.Joins.Clear();
@@ -901,7 +958,7 @@ public sealed class Rdv3Data
         for (int i = 0; i < job.Steps.Count - 1; i++)
         {
             Rdv3ProcessStepDef step = job.Steps[i];
-            if (step.Operation != "join" || step.Condition != "left" || step.Keys.Length != 2) { return; }
+            if (step.Operation != "join" || step.Condition != "left" || step.Keys.Length != 2 || step.KeySide(0).Length != 1) { return; }
             Rdv3TableDef other;
             Rdv3ColumnRef leftKey;
             Rdv3ColumnRef rightKey;
@@ -923,7 +980,7 @@ public sealed class Rdv3Data
                 other = d.TableOf(step.Target2);
                 if (other == null) { return; }
             }
-            if (rightKey.Table != other.Id || rightKey.Column != other.Key || other.Ord == spine.Ord) { return; }
+            if (other.KeyColumns.Length != 1 || rightKey.Table != other.Id || rightKey.Column != other.Key || other.Ord == spine.Ord) { return; }
             for (int j = 0; j < plan.Count; j++) { if (plan[j].TableOrd == other.Ord) { return; } }
             Rdv3JoinDef join = new Rdv3JoinDef();
             join.Table = other.Id;
@@ -964,7 +1021,8 @@ public sealed class Rdv3Data
                 RequireLabel(d, step.Target1, sn.Member("target1"));
                 if (step.Target2.Length > 0) { RequireLabel(d, step.Target2, sn.Member("target2")); }
                 RequireLabel(d, step.Output, sn.Member("output"));
-                for (int k = 0; k < step.Keys.Length; k++) { RequireLabel(d, step.Keys[k], sn.Member("keys").At(k)); }
+                for (int k = 0; k < step.Keys.Length; k++)
+                { foreach (string reference in step.KeySide(k)) { RequireLabel(d, reference, sn.Member("keys").At(k)); } }
                 if (step.Where != null) { RequireLabel(d, step.Where.Column, sn.Member("where").Member("column")); }
                 for (int c = 0; c < step.Columns.Count; c++)
                 {
@@ -1064,7 +1122,8 @@ public sealed class Rdv3Data
         for (int t = 0; t < Tables.Count; t++)
         {
             Tables[t].Head = heads[t];
-            if (FieldOf(heads[t], Tables[t].Key) < 0) { throw Missing(Tables[t], Tables[t].Key, "tables." + Tables[t].Id + ".key"); }
+            foreach (string key in Tables[t].KeyColumns)
+            { if (FieldOf(heads[t], key) < 0) { throw Missing(Tables[t], key, "tables." + Tables[t].Id + ".key"); } }
         }
         for (int j = 0; j < Jobs.Count; j++)
         {
@@ -1154,7 +1213,7 @@ public sealed class Rdv3Data
         sb.Append(" joins=");
         for (int i = 0; i < Joins.Count; i++) { if (i > 0) { sb.Append(','); } sb.Append(Joins[i].Table).Append("(on ").Append(Joins[i].On).Append(')'); }
         sb.Append(" columns=").Append(Columns.Count.ToString(CultureInfo.InvariantCulture));
-        sb.Append(" identity=").Append(Columns[IdentityCol].Ref);
+        sb.Append(" identity=").Append(string.Join(" / ", IdentityRefs));
         sb.Append(" search=").Append(string.Join(",", SearchRefs.ToArray())).Append("(").Append(SearchMatch).Append(")");
         sb.Append(" appColumns=").Append(string.Join(",", ApplicationColumns.ToArray()));
         sb.Append(" sourceChange=").Append(WorkStateOnSourceChange);
