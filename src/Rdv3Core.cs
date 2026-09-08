@@ -88,6 +88,7 @@ public sealed class Rdv3Table
     // the key column: its index in Head, the byte offset of the key in each
     // row, and its width (taken from the first data row)
     public int KeyCol;
+    public int[] KeyCols;
     public int[] KeyAt;
     public int KeyLen;
     public int[] KeyLengths;
@@ -164,7 +165,7 @@ public sealed class Rdv3Table
         if (validation == null) { validation = new Rdv3KeyValidation(); }
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return ReadDecoded(path, name, enc, keyName, validation, true, encodingSetting);
+            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting);
         }
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -172,7 +173,7 @@ public sealed class Rdv3Table
         t.Enc = enc;
         t.KeyValidation = validation;
         t.Buf = File.ReadAllBytes(path);
-        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, keyName, validation, false, encodingSetting); }
+        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting); }
         Rdv3Input.ValidateEncoding(t.Buf, enc, path, encodingSetting);
         string file = System.IO.Path.GetFileName(path);
 
@@ -218,6 +219,7 @@ public sealed class Rdv3Table
         t.KeyCol = -1;
         for (int i = 0; i < cols; i++) { if (t.Head[i] == keyName) { t.KeyCol = i; } }
         if (t.KeyCol < 0) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoColumn, file, 1).Replace("{name}", keyName)); }
+        t.KeyCols = new int[] { t.KeyCol };
 
         int sourceRows = rows - 1;
         t.Rows = 0;
@@ -272,7 +274,7 @@ public sealed class Rdv3Table
             {
                 // Unicode digits occupy several bytes. Validate their normalized
                 // characters, rather than guessing widths from the encoded bytes.
-                if (b[k] > 127) { return ReadDecoded(path, name, enc, keyName, validation, false, encodingSetting); }
+                if (b[k] > 127) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting); }
             }
             int klen = keyEnd - keyAt;
             if (klen <= 0)
@@ -323,7 +325,16 @@ public sealed class Rdv3Table
         return t;
     }
 
-    private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string keyName,
+    public static Rdv3Table Read(string path, string name, Encoding enc, string[] keyNames,
+                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding")
+    {
+        if (keyNames == null || keyNames.Length == 0) { throw new ArgumentException("key names are empty"); }
+        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting); }
+        return ReadDecoded(path, name, enc, keyNames, validation ?? new Rdv3KeyValidation(),
+            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting);
+    }
+
+    private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string[] keyNames,
                                           Rdv3KeyValidation validation, bool workbook, string encodingSetting)
     {
         Rdv3Table t = new Rdv3Table();
@@ -336,25 +347,50 @@ public sealed class Rdv3Table
         if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning); }
         else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting); }
         t.ControlCharacterWarning = warning;
-        t.KeyCol = t.ColumnOf(keyName);
-        if (t.KeyCol < 0)
+        t.KeyCols = new int[keyNames.Length];
+        for (int k = 0; k < keyNames.Length; k++)
         {
-            throw new Rdv3DataError(Fmt(Rdv3Text.DataNoColumn, System.IO.Path.GetFileName(path), 1)
-                .Replace("{name}", keyName));
+            t.KeyCols[k] = t.ColumnOf(keyNames[k]);
+            if (t.KeyCols[k] < 0)
+            { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoColumn, System.IO.Path.GetFileName(path), 1).Replace("{name}", keyNames[k])); }
         }
+        t.KeyCol = t.KeyCols[0];
         string[][] source = t.Cells;
         List<string[]> kept = new List<string[]>(source.Length);
         List<int> sourceRows = new List<int>(source.Length);
         HashSet<string> distinct = validation.Unique ? null : new HashSet<string>(StringComparer.Ordinal);
-        int fixedLength = -1;
+        int[] fixedLengths = new int[keyNames.Length];
+        for (int k = 0; k < fixedLengths.Length; k++) { fixedLengths[k] = -1; }
         string file = System.IO.Path.GetFileName(path);
         for (int i = 0; i < source.Length; i++)
         {
             for (int c = 0; c < source[i].Length; c++) { source[i][c] = Rdv3Input.Cell(source[i][c]); }
-            string key = source[i][t.KeyCol];
             int row = originalRows == null ? i + 2 : originalRows[i];
-            for (int k = 0; k < key.Length; k++)
-            { if (key[k] < ' ') { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); } }
+            bool empty = false;
+            for (int part = 0; part < t.KeyCols.Length; part++)
+            {
+                int col = t.KeyCols[part];
+                string value = source[i][col];
+                if (value.Length == 0)
+                {
+                    if (validation.SkipEmpty) { empty = true; continue; }
+                    throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip", col);
+                }
+                for (int k = 0; k < value.Length; k++)
+                {
+                    if (value[k] < ' ')
+                    { throw Rdv3Input.Error(path, row, t.Head[col], Rdv3Text.InputExpectKey, value, Rdv3Text.InputFixCsv); }
+                    if (validation.Ascii && value[k] > 127)
+                    { throw t.KeyError(row, value, "ASCII", "characters", "unicode", col); }
+                }
+                if (validation.FixedLength)
+                {
+                    if (fixedLengths[part] < 0) { fixedLengths[part] = value.Length; }
+                    else if (value.Length != fixedLengths[part])
+                    { throw t.KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}", fixedLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col); }
+                }
+            }
+            if (empty) { t.SkippedEmptyRows++; continue; }
             for (int c = 0; c < source[i].Length; c++)
             {
                 string value = source[i][c];
@@ -368,30 +404,7 @@ public sealed class Rdv3Table
                 }
                 if (safe != null) { source[i][c] = new string(safe); }
             }
-            if (key.Length == 0)
-            {
-                if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
-                throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip");
-            }
-            if (validation.Ascii)
-            {
-                for (int k = 0; k < key.Length; k++)
-                {
-                    if (key[k] > 127)
-                    {
-                        throw t.KeyError(row, key, "ASCII", "characters", "unicode");
-                    }
-                }
-            }
-            if (validation.FixedLength)
-            {
-                if (fixedLength < 0) { fixedLength = key.Length; }
-                else if (key.Length != fixedLength)
-                {
-                    throw t.KeyError(row, key,
-                        Rdv3Text.InputExpectWidth.Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)), "length", "variable");
-                }
-            }
+            string key = Rdv3Key.FromCells(source[i], t.KeyCols);
             if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
             kept.Add(source[i]);
             if (sourceRows != null) { sourceRows.Add(row); }
@@ -400,7 +413,7 @@ public sealed class Rdv3Table
         t.Rows = t.Cells.Length;
         t.KeyAt = new int[t.Rows];
         t.SourceRows = (sourceRows == null) ? null : sourceRows.ToArray();
-        t.KeyLen = validation.UsesFixedAsciiPath && fixedLength > 0 ? fixedLength : 0;
+        t.KeyLen = keyNames.Length == 1 && validation.UsesFixedAsciiPath && fixedLengths[0] > 0 ? fixedLengths[0] : 0;
         t.RemoveIdenticalRows();
         return t;
     }
@@ -443,7 +456,7 @@ public sealed class Rdv3Table
         { return Rdv3Text.InputNoData.Replace("{file}", System.IO.Path.GetFileName(Path)); }
         if (SkippedEmptyRows == 0 && SkippedDuplicateRows == 0) { return ""; }
         return Rdv3Text.InputRowsSkipped.Replace("{file}", System.IO.Path.GetFileName(Path))
-            .Replace("{column}", Head[KeyCol])
+            .Replace("{column}", KeyLabel)
             .Replace("{empty}", SkippedEmptyRows.ToString(CultureInfo.InvariantCulture))
             .Replace("{duplicate}", SkippedDuplicateRows.ToString(CultureInfo.InvariantCulture))
             .Replace("{kept}", Rows.ToString(CultureInfo.InvariantCulture));
@@ -456,10 +469,10 @@ public sealed class Rdv3Table
         if (notice.Length > 0) { warnings.Add(notice); }
     }
 
-    private Rdv3DataError KeyError(int row, string actual, string expected, string rule, string choice)
+    private Rdv3DataError KeyError(int row, string actual, string expected, string rule, string choice, int column = -1)
     {
         string path = KeyValidation.SettingsPath.Length == 0 ? "data.tables." + Name + ".keyValidation" : KeyValidation.SettingsPath;
-        return Rdv3Input.Error(Path, row, Head[KeyCol], expected, actual,
+        return Rdv3Input.Error(Path, row, Head[column < 0 ? KeyCol : column], expected, actual,
             Rdv3Text.InputFixKey.Replace("{path}", path + "." + rule).Replace("{choice}", choice));
     }
 
@@ -501,9 +514,19 @@ public sealed class Rdv3Table
 
     public string Key(int i)
     {
-        if (Cells != null) { return Cells[i][KeyCol]; }
+        if (Cells != null) { return Rdv3Key.FromCells(Cells[i], KeyCols); }
         int len = (KeyLengths == null) ? KeyLen : KeyLengths[i];
         return Enc.GetString(Buf, KeyAt[i], len);
+    }
+
+    public string KeyLabel
+    {
+        get
+        {
+            string[] names = new string[KeyCols.Length];
+            for (int i = 0; i < names.Length; i++) { names[i] = Head[KeyCols[i]]; }
+            return string.Join(" / ", names);
+        }
     }
 
     public int SourceRow(int i)
