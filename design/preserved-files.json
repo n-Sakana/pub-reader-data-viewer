@@ -1,5 +1,5 @@
 {
-  "scope": "Expected source and contracts after per-input encoding, composite identities and headless validation/execution. Original file hashes retained for changed entries.",
+  "scope": "Expected sources after staged headless validation and native picker-close recovery. Original file hashes retained for changed entries.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -75,7 +75,7 @@
     },
     {
       "path": "src/Rdv3Config.cs",
-      "sha256": "12bdd5d3d9cbabd25ac256953d16516138f8245950ee3e6b541363466b8289de",
+      "sha256": "cbc0ac0fe9fcf19911552474afa392123dc6e85983e2cdbf01d378cac3e51034",
       "baselineSha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f"
     },
     {
@@ -90,7 +90,7 @@
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "eeee509d8a4986d715fe2df55803f1f1990e35beaed9f136a4b11be7dc9a7aab",
+      "sha256": "4dc38e056df79176988d6793833a0f928ca5acd4d03cfa0e0a844cc7d0f931ce",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
@@ -109,7 +109,7 @@
     },
     {
       "path": "src/Rdv3Json.cs",
-      "sha256": "866ea29d06b5f97ad680e372b9b56a85099a185aecd8e18e310f2ef1cd9cbfd0",
+      "sha256": "e7226c1aea63813b5f557aab583d7843920671b700a2268f576f04f730cbba16",
       "baselineSha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8"
     },
     {
@@ -124,17 +124,18 @@
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "ddfcab0a0835fb89118797810ee3f75de8be51779a2b731ea24ffbbac1539c8c",
+      "sha256": "c0170391ba88a15d57a28f12a5c7b6cf3dd37c6aa385253dc3f6ab40ca26e624",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
       "path": "src/Rdv3Screen.cs",
-      "sha256": "6bb3b7e37501737b1b07b0234bbef69c1e8295c8db9453f7bd702931c06dddc2",
+      "sha256": "890d7e66096161785f55daa077ce4bba58223099141b7134bb3ed3dc2873b109",
       "baselineSha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce"
     },
     {
       "path": "src/Rdv3Settings.cs",
-      "sha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f"
+      "sha256": "8596244ecb19e810e337800b7a120521bc742f4e3906c3a7d2065ead21e4982c",
+      "baselineSha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f"
     },
     {
       "path": "src/Rdv3Shared.cs",
@@ -148,7 +149,7 @@
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "cf4227b4f7ccc28f022e2d3efd9689b5297733147ad59d7bbde7dc28873a78b1",
+      "sha256": "0e244cc74aaa2c39c9eb53cd74990fca146912e3e88b3b0172a8027a31d312f5",
       "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
     },
     {
@@ -176,7 +177,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "2b8fdaaf4bded5fc03ffd7418e6693932ba3941256991fb504277069b144f6c2",
+      "sha256": "d80614494758018d46c57a7e76d3b91c2e40f4e95de111995e802f813ee8dc3e",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -251,12 +252,24 @@
     },
     {
       "path": "src/Rdv3Headless.cs",
-      "sha256": "d93a3ca6893017e50f9f904565e01427ca9e576fadf47f9fb32beaf30d0ab29d",
+      "sha256": "589bff35d6332af79d9781b62e0f9634ab33f94ff6d5aff0c26abe3da14ec1e7",
       "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
     },
     {
       "path": "src/Rdv3Key.cs",
       "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
+    },
+    {
+      "path": "src/02_MainWindow.cs",
+      "sha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0"
+    },
+    {
+      "path": "src/Rdv3Validation.cs",
+      "sha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901"
+    },
+    {
+      "path": "tests/Test-ModalPicker.ps1",
+      "sha256": "ef361324fc9098264d3701c659e1b4ff0b6dfe434e95352ee08f38757cba69cb"
     }
   ]
 }
