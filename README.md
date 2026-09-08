@@ -422,7 +422,9 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 `where.operator`は`equals/notEquals/contains/startsWith/endsWith/empty/notEmpty/greater/atLeast/less/atMost`。前6種等の文字比較は値をそのまま比較し、大小4種は数値です。`empty/notEmpty`には`value`を書かず、それ以外には文字列の`value`を書きます。空欄と0は同じではありません。
 
-`expression`は列参照、数値、単一引用符の文字列、括弧、`+ - * /`、`substring(列,開始,長さ)`、`splitPart(列,'区切り',位置)`、`regexExtract(列,'正規表現')`です。開始位置は0。`'it''s'`のように単一引用符を重ねて文字自体を表します。任意のC#/SQL、IFやCASE、一般的な文字列連結関数を使えるとは仮定しないでください。空・抽出不一致・範囲外は処理エラーになります。空欄を別の値へ変えると決めた場合は、`extract`で選んで`update.set.expression`に定数を書く形で表せます。
+`expression`は列参照、数値、単一引用符の文字列、括弧、`+ - * /`、`substring(列,開始,長さ)`、`splitPart(列,'区切り',位置)`、`regexExtract(列,'正規表現')`です。開始位置は0。`'it''s'`のように単一引用符を重ねて文字自体を表します。`+`は両辺が数値なら加算、どちらかが数値でなければ文字列連結です。例えば`A.id + '-' + A.part`は区切り付きの文字列になりますが、数字だけの`A.id + A.part`は加算され得ます。行の識別には連結の代わりに複合キーを使ってください。
+
+任意のC#/SQL、IFやCASE、`concat`等の未定義関数は使えません。上の3つの文字列抽出関数は、空入力・空の抽出結果・不一致・範囲外をエラーにします。空欄を別の値へ変えると決めた場合は、`extract`で選んで`update.set.expression`に定数を書く形で表せます。
 
 ### 複合キーで結合する
 
