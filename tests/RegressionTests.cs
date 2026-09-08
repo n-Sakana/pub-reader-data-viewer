@@ -327,6 +327,134 @@ public static class Rdv3RegressionTests
                 Check(m.Lines != null && m.Lines.Length > 0, "sample pipeline produced no rows");
                 Rdv3Ledger.RowMap(m.Lines, c.Data.IdentityCol, "test");
             });
+            Test("input-padding-wide-digits-and-quoted-newlines", delegate {
+                foreach (Encoding encoding in new Encoding[] { new UTF8Encoding(false), new UTF8Encoding(true), Encoding.GetEncoding(932) })
+                {
+                    string path = Csv("id ,note \r\n\uff10\uff10\uff11 ,A\u3000\n002,B \r\n", encoding);
+                    Rdv3Table t = Rdv3Table.Read(path, "T", encoding, "id");
+                    Check(t.Rows == 2 && t.Key(0) == "001" && t.Field(0, 1) == "A" && t.Field(1, 1) == "B", "normalized source");
+                }
+                Rdv3Table quoted = Table("id,note\n\"001\" ,\"A\r\nB  \" \n");
+                Check(quoted.Field(0, 1) == "A\r\nB", "embedded newline lost");
+            });
+            Test("input-identical-retransmission-counts-and-source-rows", delegate {
+                foreach (string quote in new string[] { "", "\"" })
+                {
+                    Rdv3Table t = Table("id,note\n" + quote + "001" + quote + ",A\n001,A\n,B\n002,C\n");
+                    Check(t.Rows == 2 && t.SkippedDuplicateRows == 1 && t.SkippedEmptyRows == 1, "discard counts");
+                    Check(t.SourceRow(1) == 5 && t.Key(1) == "002" && new Rdv3Index(t).Keys == 2, "compacted source rows/index");
+                }
+                Rdv3Table conflict = Table("id,note\n001,A\n001,A\n001,B\n");
+                Throws<Rdv3DataError>(delegate { new Rdv3Index(conflict); });
+            });
+            Test("input-key-errors-identify-source-and-fix", delegate {
+                Rdv3KeyValidation v = new Rdv3KeyValidation(); v.SkipEmpty = false;
+                v.SettingsPath = "data.tables.T.keyValidation";
+                foreach (string row in new string[] { ",B", "0002,B", "\u65e5,B" })
+                {
+                    string path = Csv("id,note\n001,A\n" + row + "\n", Encoding.UTF8);
+                    try { Rdv3Table.Read(path, "T", Encoding.UTF8, "id", v); throw new Exception("bad key accepted"); }
+                    catch (Rdv3DataError ex)
+                    {
+                        Check(ex.Message.Contains(Path.GetFileName(path)) && ex.Message.Contains("3")
+                            && ex.Message.Contains("id") && ex.Message.Contains(v.SettingsPath), "missing source or setting");
+                    }
+                }
+            });
+            Test("input-invalid-bytes-and-shape-explain-repair", delegate {
+                foreach (string prefix in new string[] { "id,note\n001,", "id,note\n\"001\",\"" })
+                {
+                    string path = NewPath(".csv"); byte[] start = Encoding.UTF8.GetBytes(prefix);
+                    byte[] bytes = new byte[start.Length + 1]; Array.Copy(start, bytes, start.Length); bytes[start.Length] = 255;
+                    File.WriteAllBytes(path, bytes);
+                    try { Rdv3Table.Read(path, "T", Encoding.UTF8, "id"); throw new Exception("invalid encoding accepted"); }
+                    catch (Rdv3DataError ex) { Check(ex.Message.Contains("data.encoding") && ex.Message.Contains("FF") && ex.Message.Contains("2"), "encoding repair context"); }
+                }
+                try { Table("id,note\n001,A,B\n"); throw new Exception("extra column accepted"); }
+                catch (Rdv3DataError ex) { Check(ex.Message.Contains("CSV") && ex.Message.Contains("3"), "CSV repair context"); }
+            });
+            Test("input-search-normalization-without-changing-stored-snapshot", delegate {
+                string line = "\uff10\uff10\uff11  \tKEEP";
+                Rdv3Index exact = new Rdv3Index(new string[] { line }, new int[] { 0 }, "exact");
+                Rdv3Index contains = new Rdv3Index(new string[] { line }, new int[] { 0 }, "contains");
+                Check(exact.Find("001")[0] == 0 && exact.Find("\uff10\uff10\uff11 ")[0] == 0, "exact search");
+                Check(contains.Find("\uff11")[0] == 0 && line == "\uff10\uff10\uff11  \tKEEP", "snapshot changed");
+                Rdv3Config c = new Rdv3Config(); c.KeyPattern = "[0-9]{3}";
+                Check(c.IsKey("\uff10\uff10\uff11 ") && !c.IsKey("001\n"), "pattern boundary");
+                Check(Rdv3Watch.Candidate("previous\r\n\uff10\uff10\uff11 ") == "001", "UIA input");
+            });
+            Test("input-numeric-values-reach-expression-aggregate-and-export", delegate {
+                string[] values = { "\u00a51,234", "\uffe5\uff11\uff0c\uff12\uff13\uff14", "(500)", "\uff08\uff15\uff10\uff10\uff09" };
+                decimal[] expected = { 1234m, 1234m, -500m, -500m };
+                for (int i = 0; i < values.Length; i++)
+                {
+                    decimal value; Check(Rdv3Input.TryNumber(values[i], out value) && value == expected[i], "money conversion");
+                    Check(Rdv3Expression.Compile("T.amount + 1", new string[] { "T.amount" }).Evaluate(new string[] { values[i] })
+                        == (expected[i] + 1m).ToString(CultureInfo.InvariantCulture), "expression value");
+                }
+                decimal unused;
+                Check(!Rdv3Input.TryNumber("(-500)", out unused) && !Rdv3Input.TryNumber("12oops", out unused), "ambiguous numeric input");
+                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+                Rdv3PreparedProcess p = new Rdv3PreparedProcess(); p.Data = c.Data; p.Job = new Rdv3ProcessJobDef();
+                Rdv3Relation input = new Rdv3Relation(); input.Columns = new string[] { "T.amount" };
+                input.Rows.Add(new string[] { values[0] }); input.Rows.Add(new string[] { values[2] }); p.Inputs.Add("T", input);
+                Rdv3ProcessStepDef sum = new Rdv3ProcessStepDef(); sum.Operation = "aggregate"; sum.Target1 = "T"; sum.Output = "S";
+                sum.Aggregates.Add(new Rdv3ProcessAggregateDef { Function = "sum", Column = "T.amount", As = "total" }); p.Job.Steps.Add(sum);
+                Check(Rdv3Process.Execute(p, new string[0], new string[0], "", false).Lines[0] == "734", "aggregate sum");
+                Rdv3ExportFilter filter = new Rdv3ExportFilter { Field = "B.b_qty", Operator = "range", First = "(600)", Last = "\u00a52,000" };
+                string[] row = new string[c.Data.Columns.Count]; row[c.Data.IndexOf("B.b_qty")] = "(500)";
+                Check(filter.Matches(c.Data, row, ""), "export range lost accepted money");
+            });
+            Test("input-dirty-join-preserves-990-records-and-reports-discards", delegate {
+                Rdv3Config c = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+                Rdv3MergeResult clean = Rdv3Ledger.BuildFromCsv(c.Data, Path.Combine(root, "data"));
+                string dir = NewPath("-data"); Directory.CreateDirectory(dir);
+                foreach (string file in Directory.GetFiles(Path.Combine(root, "data"), "*.csv")) { File.Copy(file, Path.Combine(dir, Path.GetFileName(file))); }
+                string bPath = Path.Combine(dir, "tableB.csv"); string[] lines = File.ReadAllLines(bPath, Encoding.UTF8);
+                for (int i = 1; i < lines.Length; i++)
+                {
+                    string[] fields = lines[i].Split(',');
+                    for (int col = 0; col < 2; col++)
+                    {
+                        char[] digits = fields[col].ToCharArray();
+                        for (int k = 0; k < digits.Length; k++) { if (digits[k] >= '0' && digits[k] <= '9') { digits[k] = (char)('\uff10' + digits[k] - '0'); } }
+                        fields[col] = new string(digits) + " ";
+                    }
+                    lines[i] = string.Join(",", fields);
+                }
+                string blank = new string(',', lines[0].Split(',').Length - 1);
+                File.WriteAllText(bPath, string.Join("\r\n", lines) + "\n" + lines[1] + "\n" + blank + "\n" + blank + "\n", Encoding.UTF8);
+                Rdv3MergeResult dirty = Rdv3Ledger.BuildFromCsv(c.Data, dir);
+                Check(dirty.Rows == 990 && string.Join("\n", dirty.Lines) == string.Join("\n", clean.Lines), "dirty joins changed records");
+                Check(dirty.Warnings.Exists(delegate(string s) { return s.Contains("tableB.csv") && s.Contains("12") && s.Contains("990"); }), "missing discard report");
+                object[] args = { c.Data, c.Data.UpdateJob, dir, NewPath(".xlsx"), false };
+                string body = (string)typeof(Rdv3ProcessForm).GetMethod("Build", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, args);
+                Check((bool)args[4] && body.Contains("12") && body.Contains("990"), "process dialog lost accepted input report");
+                string deletePath = Path.Combine(dir, "delete.csv"); File.AppendAllText(deletePath, ",\n,\n", Encoding.UTF8);
+                Rdv3ProcessJobDef deletion = c.Data.Jobs.Find(delegate(Rdv3ProcessJobDef j) { return j.Kind == "delete"; });
+                Rdv3DeleteResult deleted = Rdv3Ledger.ApplyDelete(c.Data, deletion, dir, clean.Lines, new string[clean.Rows], c.Screen.WorkState.InitialStored);
+                Check(deleted.Warnings.Exists(delegate(string s) { return s.Contains("delete.csv") && s.Contains("2"); }), "delete discarded input silently");
+            });
+            Test("config-optional-sections-save-and-external-edit-guard", delegate {
+                Rdv3Json json = Rdv3Json.Parse(File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8));
+                string text = "{/*keep-root-comment*/\"schema\":3,\"data\":" + File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8).Substring(json.Member("data").Start, json.Member("data").End - json.Member("data").Start)
+                    + ",\"screen\":" + File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8).Substring(json.Member("screen").Start, json.Member("screen").End - json.Member("screen").Start) + ",}";
+                string path = NewPath(".json"); File.WriteAllText(path, text, Encoding.UTF8);
+                Rdv3Config a = Rdv3Config.Load(path), b = Rdv3Config.Load(path);
+                Check(a.Targets.Count == 0 && a.PollMs == 40 && a.DataDir == "data" && a.CheckTimeoutMs == 180000, "missing defaults");
+                a.KeyPattern = ".+";
+                Check(a.Save(path) == null && Rdv3Config.Load(path).KeyPattern == ".+", "save missing objects");
+                string saved = File.ReadAllText(path, Encoding.UTF8);
+                Check(saved.Contains("/*keep-root-comment*/") && b.Save(path) != null && File.ReadAllText(path, Encoding.UTF8) == saved, "comment/CAS lost");
+                Check(saved.Contains("\"paths\"") && saved.Contains("\"search\"") && saved.Contains("\"watch\""), "objects not persisted");
+            });
+            Test("config-text-type-and-enum-padding", delegate {
+                string text = File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8).Replace("\"type\": \"number\"", "\"type\": \" Text \"");
+                Rdv3Config c = Rdv3Config.Parse(text);
+                Check(c.Data.TypeOf("B.b_qty") == null, "text uses numeric filter");
+                Check(Rdv3Ledger.BuildFromCsv(c.Data, Path.Combine(root, "data")).Rows == 990, "explicit text rejected");
+                Check(Rdv3Json.Parse("{\"v\":\" Merge \"}").Word("v", "", "merge", "replace") == "merge", "enum normalization");
+            });
             Test("apply-reloads-state-after-lock-wait", delegate {
                 ApplyFixture f = new ApplyFixture();
                 f.Save(Lines(), States());
