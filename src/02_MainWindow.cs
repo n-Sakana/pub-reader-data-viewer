@@ -503,6 +503,7 @@ namespace ReaderDataViewer
 
         private void OnClosed(object sender, EventArgs eventArgs)
         {
+            pageLoaded = false;
             DiscardDialogSurface();
             if (webView.CoreWebView2 != null)
             {
