@@ -923,9 +923,22 @@ public static class Rdv3Process
         Rdv3RowSelection rows = value as Rdv3RowSelection;
         if (rows != null)
         {
+            FillResult(result, SelectedTable(rows));
             result.Kind = "rows";
-            result.Lines = new string[0];
         }
+    }
+
+    private static Rdv3Relation SelectedTable(Rdv3RowSelection selection)
+    {
+        Rdv3Relation table = NewLike(selection.Table);
+        List<int> indices = new List<int>(selection.Rows);
+        indices.Sort();
+        foreach (int row in indices)
+        {
+            table.Rows.Add(selection.Table.Rows[row]);
+            if (table.States != null) { table.States.Add(selection.Table.States[row]); }
+        }
+        return table;
     }
 
     private static void Capture(Dictionary<string, object> values, Rdv3ProcessResult result)
@@ -946,6 +959,8 @@ public static class Rdv3Process
                 Rdv3RowSelection rows = (Rdv3RowSelection)pair.Value;
                 snapshot.Kind = "rows";
                 snapshot.Count = rows.Rows.Count;
+                snapshot.Columns = (string[])rows.Table.Columns.Clone();
+                snapshot.Lines = SelectedTable(rows).ToLines();
             }
             result.Values[pair.Key] = snapshot;
         }

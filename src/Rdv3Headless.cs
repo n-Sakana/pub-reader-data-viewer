@@ -134,6 +134,7 @@ public static class Rdv3Headless
             {
                 if (comma) { sb.Append(','); } comma = true;
                 sb.Append(Rdv3Json.Quote(value.Key)).Append(":{\"kind\":").Append(Rdv3Json.Quote(value.Value.Kind));
+                sb.Append(",\"count\":").Append(N(value.Value.Count));
                 sb.Append(",\"columns\":").Append(Rdv3WebJson.S(value.Value.Columns));
                 sb.Append(",\"rows\":").Append(Rows(value.Value.Lines)).Append('}');
             }
