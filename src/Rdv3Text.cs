@@ -34,6 +34,9 @@ public static class Rdv3Text
     public const string InputExpectHeader = "空でなく重複しない列名";
     public const string InputFixHeader = "Use non-empty source column names. Duplicate headers used by a key, type, job or ledger reference are ambiguous: rename them in the source and update the references in data.tables, data.jobs, data.types, data.ledger and screen. JSON labels or select cannot disambiguate repeated source headers. Unreferenced duplicate name groups are excluded automatically with a warning; empty cells do not make a referenced duplicate safe.";
     public const string InputShapeSkipped = "{file}: 見出しより列が少ない {short} 行と空行 {blank} 行を除外しました。不足セルの補完はしていません。";
+    public const string InputHeaderOffset = "{file}: headerRow の指定により、見出し行より前の {n} 行を読み飛ばしました。";
+    public const string DataNoDerivedColumn = "更新ジョブの結果に列 {name} がありません ({where})。入力表の見出し、または calculate の column / aggregate の as / select の as で作った参照を指定してください。";
+    public const string LedgerColumnNotProduced = "台帳の保存列 {name} は、更新ジョブの最後の書込み段 ({step}) の入力にありません。その列を持つ表を結合していないか、select で外したか、綴りが違います。";
     public const string InputHeadersSkipped = "{file}: 設定から参照されていない重複見出し「{names}」の {n} 列をすべて除外しました。";
     public const string InputExpectQuote = "セル全体を囲む二重引用符と閉じ引用符";
     public const string InputExpectDelimiter = "閉じ引用符の後のカンマまたは改行";

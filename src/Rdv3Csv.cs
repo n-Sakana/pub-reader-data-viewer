@@ -21,12 +21,16 @@ public static class Rdv3Csv
         return false;
     }
 
+    // headerRow: the physical line that holds the header (1 = the first line).
+    // Report exports often put a title and a print date above the header;
+    // those lines are skipped without being counted as short or blank rows.
     public static void Read(string path, Encoding encoding, bool headOnly,
                             out string[] head, out string[][] rows, out int[] rowNumbers, string encodingSetting = "data.encoding",
-                            HashSet<string> references = null, Rdv3InputCounts counts = null)
+                            HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1)
     {
         head = null;
         if (counts == null) { counts = new Rdv3InputCounts(); }
+        if (headerRow > 1) { counts.HeaderOffset = headerRow - 1; }
         Rdv3InputColumns columns = null;
         List<string[]> data = new List<string[]>();
         List<int> numbers = new List<int>();
@@ -65,6 +69,7 @@ public static class Rdv3Csv
                         throw;
                     }
                     if (cells == null) { break; }
+                    if (first < headerRow) { continue; }
                     if (blank) { counts.BlankRows++; continue; }
                     if (head == null)
                     {

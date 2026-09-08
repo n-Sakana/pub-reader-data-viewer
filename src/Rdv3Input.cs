@@ -5,12 +5,15 @@ using System.Text;
 
 public sealed class Rdv3InputCounts
 {
-    public int ShortRows, BlankRows, HeaderColumns;
+    public int ShortRows, BlankRows, HeaderColumns, HeaderOffset;
     public readonly List<string> DuplicateHeaders = new List<string>();
 
     public void AddWarnings(string path, List<string> warnings)
     {
         string file = System.IO.Path.GetFileName(path);
+        if (HeaderOffset > 0)
+        { warnings.Add(Rdv3Text.InputHeaderOffset.Replace("{file}", file)
+            .Replace("{n}", HeaderOffset.ToString(CultureInfo.InvariantCulture))); }
         if (ShortRows > 0 || BlankRows > 0)
         { warnings.Add(Rdv3Text.InputShapeSkipped.Replace("{file}", file)
             .Replace("{short}", ShortRows.ToString(CultureInfo.InvariantCulture))
