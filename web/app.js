@@ -9,7 +9,6 @@
   var modalReturnFocus = null;
   var settingsContent = null;
   var pendingSettings = null;
-  var pendingFilter = null;
   var activeCalendar = null;
   var mainFocusDone = false;
 
@@ -547,7 +546,6 @@
     if (!currentToken) { return; }
     var token = currentToken;
     pendingSettings = null;
-    pendingFilter = null;
     closeCalendar(false);
     closeVeils(true);
     post({ type: 'modalResult', token: token, result: result || { ok: false } });
@@ -1147,9 +1145,7 @@
     return root;
   }
 
-  function openExport(content) {
-    var shell = modalShell('v-out', content.title);
-    shell.body.appendChild(element('div', 'hint', content.hint));
+  function exportFieldPicker(content) {
     var byRef = {};
     content.fields.forEach(function (field) { byRef[field.ref] = field; });
     var selected = content.defaults.filter(function (reference) { return !!byRef[reference]; });
@@ -1262,9 +1258,15 @@
     moveLeft.classList.add('sm'); moveLeft.style.width = '34px';
     mover.appendChild(moveRight); mover.appendChild(moveLeft);
     picker.appendChild(left); picker.appendChild(mover); picker.appendChild(right);
-    shell.body.appendChild(picker);
     drawLists();
-    shell.body.appendChild(element('div', 'process-gap'));
+    return { node: picker, values: function () { return selected.slice(); } };
+  }
+
+
+  function exportFilterEditor(content, token, isActive, showError) {
+    var byRef = {};
+    content.fields.forEach(function (field) { byRef[field.ref] = field; });
+    var pendingFilter = null;
     var filters = [];
     var filterSet = fieldset('絞り込み条件（すべてに一致）');
     var grid = element('div', 'fgrid');
@@ -1284,7 +1286,7 @@
     var filterTable = tableNode([{ header: '項目', width: 180 }, { header: '条件', width: 110 }, { header: '値' }], [], { readOnly: false });
     filterTable.classList.add('f3'); listHost.appendChild(filterTable); grid.appendChild(listHost);
     var remove = modalButton('削除', false, removeFilter); remove.classList.add('sm', 'row3b'); grid.appendChild(remove);
-    filterSet.appendChild(grid); shell.body.appendChild(filterSet);
+    filterSet.appendChild(grid);
     fieldSelect.addEventListener('change', updateOperators);
     var operatorLabels = {
       contains: '含む', equals: '等しい', startsWith: '始まる',
@@ -1321,7 +1323,7 @@
       var lastValue = editorValue(lastHost, 'filterLast');
       pendingFilter = { field: field.ref, operator: operatorSelect.value, first: firstValue,
         last: field.kind === 'text' ? '' : lastValue };
-      post({ type: 'validateExportFilter', token: currentToken, field: field.ref,
+      post({ type: 'validateExportFilter', token: token, field: field.ref,
         first: pendingFilter.first, last: pendingFilter.last });
     }
     function redrawFilters(selectedIndex, focus) {
@@ -1346,11 +1348,9 @@
       }
     }
     function exportFilterValidation(message) {
-      if (!pendingFilter || Number(message.token) !== currentToken ||
-          !currentModal || currentModal.id !== 'v-out') { return; }
+      if (!pendingFilter || Number(message.token) !== token || !isActive()) { return; }
       if (!message.ok) {
-        error.textContent = message.error || '';
-        error.hidden = false;
+        showError(message.error || '');
         var target = firstHost.querySelector('[data-field]');
         if (target) { target.focus(); }
         pendingFilter = null;
@@ -1360,34 +1360,54 @@
       pendingFilter.last = message.last === undefined ? pendingFilter.last : message.last;
       filters.push(pendingFilter);
       pendingFilter = null;
-      error.hidden = true;
+      showError(null);
       redrawFilters(filters.length - 1, true);
     }
     updateOperators();
+    return { node: filterSet, values: function () { return filters.slice(); }, validate: exportFilterValidation };
+  }
+
+  function exportDestination(content) {
     var pathRow = element('div', 'kv export-path'); pathRow.style.marginTop = '9px';
     pathRow.appendChild(element('label', '', '出力先'));
     var safeRow = element('label', 'export-safe');
     var excelSafe = element('input'); excelSafe.type = 'checkbox'; excelSafe.checked = true;
     excelSafe.id = 'export-excel-safe'; safeRow.appendChild(excelSafe);
     safeRow.appendChild(document.createTextNode(content.excelSafeText || 'Excel向けに数式を無効化'));
-    shell.body.appendChild(safeRow);
     var destination = editable(content.destination, 'exportPath'); pathRow.appendChild(destination);
-    pathRow.appendChild(browseButton('exportPath', 'export', destination)); shell.body.appendChild(pathRow);
-    var error = element('div', 'setting-error'); error.hidden = true; error.setAttribute('role', 'alert'); shell.body.appendChild(error);
+    pathRow.appendChild(browseButton('exportPath', 'export', destination));
+    return { nodes: [safeRow, pathRow], path: function () { return destination.textContent.trim(); },
+      excelSafe: function () { return excelSafe.checked; } };
+  }
+
+  function openExport(content) {
+    var shell = modalShell('v-out', content.title);
+    var token = currentToken;
+    var error = element('div', 'setting-error'); error.hidden = true; error.setAttribute('role', 'alert');
+    function showError(message) { error.textContent = message || ''; error.hidden = message === null; }
+    function isActive() { return currentToken === token && currentModal === shell.veil; }
+
+    var fields = exportFieldPicker(content);
+    var filters = exportFilterEditor(content, token, isActive, showError);
+    var destination = exportDestination(content);
+    shell.body.appendChild(element('div', 'hint', content.hint));
+    shell.body.appendChild(fields.node);
+    shell.body.appendChild(element('div', 'process-gap'));
+    shell.body.appendChild(filters.node);
+    destination.nodes.forEach(function (node) { shell.body.appendChild(node); });
+    shell.body.appendChild(error);
+
     var foot = element('div', 'foot');
     foot.appendChild(modalButton('OK', true, function () {
-      if (!selected.length) {
-        error.textContent = '出力する項目を 1 つ以上選んでください。'; error.hidden = false; return;
-      }
-      var path = destination.textContent.trim();
-      if (!/\.csv$/i.test(path)) {
-        error.textContent = '出力先には .csv ファイルを指定してください。'; error.hidden = false; return;
-      }
-      finishModal({ ok: true, path: path, fields: selected, filters: filters, excelSafe: excelSafe.checked });
+      var selected = fields.values();
+      if (!selected.length) { showError('出力する項目を 1 つ以上選んでください。'); return; }
+      var path = destination.path();
+      if (!/\.csv$/i.test(path)) { showError('出力先には .csv ファイルを指定してください。'); return; }
+      finishModal({ ok: true, path: path, fields: selected, filters: filters.values(), excelSafe: destination.excelSafe() });
     }));
     foot.appendChild(modalButton('キャンセル', false, function () { finishModal({ ok: false }); }));
     shell.body.appendChild(foot);
-    shell.dialog.exportFilterValidation = exportFilterValidation;
+    shell.dialog.exportFilterValidation = filters.validate;
   }
 
   function selectNode(entries) {
@@ -1424,7 +1444,6 @@
     modalReturnFocus = document.activeElement;
     currentToken = Number(message.token) || 0;
     pendingSettings = null;
-    pendingFilter = null;
     var modal = message.modal;
     var content = message.content || {};
     if (modal === 'confirm') { openConfirm(content); }
