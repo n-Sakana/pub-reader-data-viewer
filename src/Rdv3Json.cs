@@ -255,6 +255,30 @@ public sealed class Rdv3Json
         return v;
     }
 
+    // Shared by settings persistence and WebView messages. Keep the settings
+    // escape spelling stable; both JSON spellings of backspace/formfeed decode
+    // to the same characters in the browser.
+    public static string Quote(string s)
+    {
+        StringBuilder sb = new StringBuilder();
+        sb.Append('"');
+        if (s != null)
+        {
+            for (int i = 0; i < s.Length; i++)
+            {
+                char c = s[i];
+                if (c == '"' || c == '\\') { sb.Append('\\').Append(c); }
+                else if (c == '\n') { sb.Append("\\n"); }
+                else if (c == '\r') { sb.Append("\\r"); }
+                else if (c == '\t') { sb.Append("\\t"); }
+                else if (c < ' ') { sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture)); }
+                else { sb.Append(c); }
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
+    }
+
     // ---- reading -----------------------------------------------------------
     private string src;
     private int pos;

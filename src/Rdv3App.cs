@@ -1510,13 +1510,6 @@ public sealed class Rdv3App
         }
     }
 
-    private static string CsvCell(string value)
-    {
-        string s = (value == null) ? "" : value;
-        if (s.IndexOfAny(new char[] { ',', '"', '\r', '\n' }) < 0) { return s; }
-        return "\"" + s.Replace("\"", "\"\"") + "\"";
-    }
-
     // ---- settings ------------------------------------------------------------
     // The settings dialog edits a copy; when it comes back, the file is written
     // and the running session adopts what it can without a restart.

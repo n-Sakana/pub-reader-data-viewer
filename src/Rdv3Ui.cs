@@ -26,28 +26,7 @@ public sealed class Rdv3CandRow
 
 public static class Rdv3WebJson
 {
-    public static string Q(string value)
-    {
-        StringBuilder sb = new StringBuilder();
-        sb.Append('"');
-        if (value != null)
-        {
-            for (int i = 0; i < value.Length; i++)
-            {
-                char c = value[i];
-                if (c == '"' || c == '\\') { sb.Append('\\').Append(c); }
-                else if (c == '\b') { sb.Append("\\b"); }
-                else if (c == '\f') { sb.Append("\\f"); }
-                else if (c == '\n') { sb.Append("\\n"); }
-                else if (c == '\r') { sb.Append("\\r"); }
-                else if (c == '\t') { sb.Append("\\t"); }
-                else if (c < ' ') { sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture)); }
-                else { sb.Append(c); }
-            }
-        }
-        sb.Append('"');
-        return sb.ToString();
-    }
+    public static string Q(string value) { return Rdv3Json.Quote(value); }
 
     public static string B(bool value) { return value ? "true" : "false"; }
 
@@ -776,9 +755,8 @@ public sealed class Rdv3Form
             if (i > 0) { sb.Append(','); }
             AppendSection(sb, Screen.Sections[i], "s" + i.ToString(CultureInfo.InvariantCulture));
         }
-        sb.Append("],\"candidates\":");
-        AppendCandidatesDef(sb, Screen.Candidates);
-        sb.Append("},\"state\":").Append(BuildStateBody()).Append('}');
+        // Candidate columns are sent with the modal rows, not during init.
+        sb.Append("]},\"state\":").Append(BuildStateBody()).Append('}');
         return sb.ToString();
     }
 
@@ -996,31 +974,6 @@ public sealed class Rdv3Form
         sb.Append(",\"tip\":").Append(Rdv3WebJson.Q(button.Tip));
         sb.Append(",\"job\":").Append(Rdv3WebJson.Q(button.Job));
         sb.Append(",\"primary\":").Append(Rdv3WebJson.B(button.Primary)).Append('}');
-    }
-
-    private static void AppendCandidatesDef(StringBuilder sb, Rdv3CandidatesDef def)
-    {
-        if (def == null) { sb.Append("null"); return; }
-        sb.Append('{');
-        sb.Append("\"title\":").Append(Rdv3WebJson.Q(def.Title));
-        sb.Append(",\"hint\":").Append(Rdv3WebJson.Q(def.Hint));
-        sb.Append(",\"width\":").Append(Rdv3WebJson.N(def.Width));
-        sb.Append(",\"maxHeight\":").Append(Rdv3WebJson.N(def.MaxHeight));
-        sb.Append(",\"rowHeight\":").Append(Rdv3WebJson.N(def.RowHeight));
-        sb.Append(",\"headerHeight\":").Append(Rdv3WebJson.N(def.HeaderHeight));
-        sb.Append(",\"columns\":[");
-        for (int i = 0; i < def.Columns.Count; i++)
-        {
-            if (i > 0) { sb.Append(','); }
-            Rdv3ColumnDef column = def.Columns[i];
-            sb.Append("{\"header\":").Append(Rdv3WebJson.Q(column.Header));
-            sb.Append(",\"width\":").Append(Rdv3WebJson.N(column.Width));
-            sb.Append(",\"align\":").Append(Rdv3WebJson.Q(column.Align));
-            sb.Append(",\"bold\":").Append(Rdv3WebJson.B(column.Bold));
-            sb.Append(",\"muted\":").Append(Rdv3WebJson.B(column.Muted));
-            sb.Append(",\"render\":").Append(Rdv3WebJson.Q(column.Render)).Append('}');
-        }
-        sb.Append("]}");
     }
 
     internal static string Text(Rdv3Json root, string name)

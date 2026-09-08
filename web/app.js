@@ -2,8 +2,6 @@
   'use strict';
 
   var stage = document.querySelector('.stage');
-  var screen = null;
-  var state = null;
   var input = null;
   var statusSegments = [];
   var currentModal = null;
@@ -358,7 +356,6 @@
   }
 
   function renderScreen(definition) {
-    screen = definition;
     actionCounts = {};
     stage.classList.add('runtime');
     var card = definition.card;
@@ -425,7 +422,6 @@
   }
 
   function applyState(next) {
-    state = next;
     var values = next.values || {};
     Object.keys(values).forEach(function (id) {
       Array.prototype.forEach.call(stage.querySelectorAll('[data-bind="' + cssEscape(id) + '"]'), function (node) {

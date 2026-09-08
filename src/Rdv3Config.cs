@@ -521,26 +521,7 @@ public sealed class Rdv3Config
         return sb.ToString();
     }
 
-    internal static string Q(string s)
-    {
-        StringBuilder sb = new StringBuilder();
-        sb.Append('"');
-        if (s != null)
-        {
-            for (int i = 0; i < s.Length; i++)
-            {
-                char c = s[i];
-                if (c == '"' || c == '\\') { sb.Append('\\').Append(c); }
-                else if (c == '\n') { sb.Append("\\n"); }
-                else if (c == '\r') { sb.Append("\\r"); }
-                else if (c == '\t') { sb.Append("\\t"); }
-                else if (c < ' ') { sb.Append("\\u").Append(((int)c).ToString("x4", CultureInfo.InvariantCulture)); }
-                else { sb.Append(c); }
-            }
-        }
-        sb.Append('"');
-        return sb.ToString();
-    }
+    internal static string Q(string s) { return Rdv3Json.Quote(s); }
 
     internal static string N(int v) { return v.ToString(CultureInfo.InvariantCulture); }
 

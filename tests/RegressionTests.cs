@@ -105,6 +105,17 @@ public static class Rdv3RegressionTests
         try
         {
             Test("json-comments-trailing-comma", delegate { Check(Rdv3Json.Parse("{/*x*/\"a\":[1,],}").Member("a").Count == 1, "JSONC"); });
+            Test("json-string-roundtrip", delegate {
+                char[] controls = new char[32];
+                for (int i = 0; i < controls.Length; i++) { controls[i] = (char)i; }
+                string text = "quote=\" slash=\\ <tag> \uD83D\uDE00 " + new string(controls);
+                foreach (string json in new string[] {
+                    Rdv3Json.Quote(text), Rdv3Config.Q(text), Rdv3WebJson.Q(text) })
+                { Check(Rdv3Json.Parse(json).Str == text, "quoted text changed"); }
+                Check(Rdv3Json.Parse(Rdv3Json.Quote(null)).Str == "", "null string changed");
+                Check(Rdv3Json.Parse(Rdv3Json.Quote("")).Str == "", "empty string changed");
+                Check(Rdv3Config.Q("\b\f") == "\"\\u0008\\u000c\"", "settings escape spelling changed");
+            });
             Test("json-invalid-number-forms", delegate {
                 foreach (string value in new string[] { "01", "1.", "-.1", "1e", "1e9999", "+1" })
                 { Throws<Rdv3LoadError>(delegate { Rdv3Json.Parse(value); }); }
