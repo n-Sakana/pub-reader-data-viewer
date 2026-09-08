@@ -204,9 +204,9 @@ def export_text_filters(page):
         request = messages(page, "validateExportFilter")[-1]
         check(request["field"] == "T.id" and request["first"] == value and request["last"] == "", str(request))
         export_filter_reply(page, first=value, last="")
-    rows = page.locator(".veil.show table.f3 tbody tr[data-index]")
+    rows = page.locator(".veil.show .f3 table tbody tr[data-index]")
     check(rows.count() == 2 and "<tag>" in rows.nth(1).text_content(), "filter labels or literal text lost")
-    check(page.locator(".veil.show table.f3 tag").count() == 0, "filter value was treated as HTML")
+    check(page.locator(".veil.show .f3 table tag").count() == 0, "filter value was treated as HTML")
     rows.nth(0).click()
     page.locator(".veil.show .fgrid .btn").filter(has_text="削除").click()
     check(export_submit(page)["filters"] ==
@@ -246,7 +246,7 @@ def export_validation_error(page):
     page.evaluate("m=>window.rdvDeliver(m)", {"type": "exportFilterValidation", "token": 123, "ok": False, "error": "Need a value"})
     error = page.locator(".veil.show .setting-error")
     check(error.is_visible() and error.text_content() == "Need a value", "validation error not shown")
-    check(page.locator(".veil.show table.f3 tbody tr[data-index]").count() == 0, "invalid filter added")
+    check(page.locator(".veil.show .f3 table tbody tr[data-index]").count() == 0, "invalid filter added")
     page.locator('[data-field="filterFirst"]').fill("valid")
     page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
     export_filter_reply(page, first="valid", last="")
@@ -267,7 +267,7 @@ def export_stale_validation(page):
     page.locator('[data-field="filterFirst"]').fill("new")
     page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
     export_filter_reply(page, token=201, first="old", last="")
-    check(page.locator(".veil.show table.f3 tbody tr[data-index]").count() == 0, "old token modified next dialog")
+    check(page.locator(".veil.show .f3 table tbody tr[data-index]").count() == 0, "old token modified next dialog")
     export_filter_reply(page, token=202, first="new", last="")
     check(export_submit(page)["filters"] == [
         {"field": "T.id", "operator": "contains", "first": "new", "last": ""}], "next dialog lost its request")
