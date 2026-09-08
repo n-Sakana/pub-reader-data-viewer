@@ -363,16 +363,21 @@ public sealed class Rdv3Form
         modalToken++;
         waitingToken = modalToken;
         modalResult = null;
-        host.ShowDialogSurface(
-            BuildInitJson(),
-            "{\"type\":\"modalOpen\",\"token\":" +
-            waitingToken.ToString(CultureInfo.InvariantCulture) +
-            ",\"modal\":" + Rdv3WebJson.Q(modal) +
-            ",\"content\":" + content + "}");
-        Rdv3Json result = modalResult;
-        modalResult = null;
-        waitingToken = 0;
-        return result ?? Rdv3Json.Parse("{\"ok\":false}");
+        try
+        {
+            host.ShowDialogSurface(
+                BuildInitJson(),
+                "{\"type\":\"modalOpen\",\"token\":" +
+                waitingToken.ToString(CultureInfo.InvariantCulture) +
+                ",\"modal\":" + Rdv3WebJson.Q(modal) +
+                ",\"content\":" + content + "}");
+            return modalResult ?? Rdv3Json.Parse("{\"ok\":false}");
+        }
+        finally
+        {
+            modalResult = null;
+            waitingToken = 0;
+        }
     }
 
     public void TriggerProbeAction(string action)

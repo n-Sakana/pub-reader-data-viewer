@@ -165,12 +165,18 @@ public sealed class Rdv3PickerForm
         }
         Rdv3PickerForm picker = new Rdv3PickerForm(owner);
         current = picker;
-        picker.timer.Start();
-        Dispatcher.PushFrame(picker.frame);
-        picker.timer.Stop();
-        picker.timer.Tick -= picker.OnTick;
-        current = null;
-        return picker.result;
+        try
+        {
+            picker.timer.Start();
+            Dispatcher.PushFrame(picker.frame);
+            return picker.result;
+        }
+        finally
+        {
+            picker.timer.Stop();
+            picker.timer.Tick -= picker.OnTick;
+            current = null;
+        }
     }
 
     public static void CancelCurrent()

@@ -193,12 +193,16 @@ namespace ReaderDataViewer
 
         public void CloseDialogSurface()
         {
+            // The picker has an inner dispatcher frame. Closing only the
+            // dialog frame leaves that frame running and the owner disabled.
+            Rdv3PickerForm.CancelCurrent();
             if (dialogWindow != null) { dialogWindow.HideSurface(); }
             if (dialogFrame != null) { dialogFrame.Continue = false; }
         }
 
         private void DiscardDialogSurface()
         {
+            Rdv3PickerForm.CancelCurrent();
             DialogWindow dialog = dialogWindow;
             dialogWindow = null;
             if (dialog != null)
