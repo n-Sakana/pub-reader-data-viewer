@@ -74,7 +74,7 @@ public static class Rdv3Program
                 Rdv3Log.Phase("window input header " + p);
                 if (!File.Exists(p)) { throw new Rdv3DataError(Rdv3Text.ErrNoData + p); }
                 heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Tables[t].Enc, cfg.Data.Tables[t].EncodingSetting,
-                    cfg.Data.SourceReferences(cfg.Data.Tables[t].Id));
+                    cfg.Data.SourceReferences(cfg.Data.Tables[t].Id), cfg.Data.Tables[t].HeaderRow);
             }
             cfg.Data.Bind(heads);
             if (cfg.Data.TypeOrder.Count > 0)
@@ -83,11 +83,14 @@ public static class Rdv3Program
                 for (int i = 0; i < cfg.Data.TypeOrder.Count; i++)
                 {
                     int tableOrd = cfg.Data.TypeOrder[i].TableOrd;
-                    if (typedTables[tableOrd] != null) { continue; }
+                    // a type on a column the update job makes has no file to check here
+                    if (tableOrd < 0 || typedTables[tableOrd] != null) { continue; }
                     Rdv3TableDef table = cfg.Data.Tables[tableOrd];
                     typedTables[tableOrd] = Rdv3Table.Read(Path.Combine(dataDir, table.File),
-                        table.Id, table.Enc, table.KeyColumns, table.KeyValidation, table.EncodingSetting, cfg.Data.SourceReferences(table.Id));
+                        table.Id, table.Enc, table.KeyColumns, table.KeyValidation, table.EncodingSetting, cfg.Data.SourceReferences(table.Id),
+                        table.HeaderRow);
                 }
+                cfg.Data.ConvertWorkbookDates(typedTables);
                 cfg.Data.ValidateTypes(typedTables);
             }
         }

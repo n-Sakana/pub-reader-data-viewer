@@ -20,6 +20,7 @@ public sealed class Rdv3TableDef
     public string Id = "";
     public string Label = "";
     public string File = "";
+    public int HeaderRow = 1;                 // the line/row that holds the header
     public string[] KeyColumns = new string[] { "" };
     public string Key { get { return KeyColumns[0]; } set { KeyColumns = new string[] { value }; } }
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
@@ -119,6 +120,7 @@ public sealed class Rdv3ProcessInputDef
     public string File = "";
     public string Column = "";
     public string Key = "";
+    public int HeaderRow = 1;
     public string[] Columns;
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int TableOrd = -1;
@@ -319,12 +321,13 @@ public sealed class Rdv3Data
             }
             if (id == "ledger") { throw to.Fail("ledger is a reserved value name"); }
             if (to.Kind != Rdv3Json.TObject) { throw to.Fail("must be an object { label, file, key }"); }
-            to.Only("label", "file", "key", "keyValidation", "encoding");
+            to.Only("label", "file", "key", "keyValidation", "encoding", "headerRow");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
             int before = to.ErrorCount;
             to.Check(delegate { t.Label = to.StrOr("label", id); });
             to.Check(delegate { t.File = to.Need("file"); });
+            to.Check(delegate { t.HeaderRow = to.IntOr("headerRow", 1, 1, 1000000); });
             to.Check(delegate { t.KeyColumns = ReadColumnNames(to.Member("key")); });
             to.Check(delegate { t.KeyValidation = ReadKeyValidation(to); });
             to.Check(delegate { t.Enc = ReadEncoding(to, d.Enc); });
@@ -350,6 +353,27 @@ public sealed class Rdv3Data
             });
         }
 
+        List<Rdv3Json> jobs = o.Objs("jobs", true);
+        if (jobs.Count == 0) { throw o.Member("jobs").Fail("holds no job"); }
+        int jobErrors = o.ErrorCount;
+        for (int i = 0; i < jobs.Count; i++)
+        {
+            jobs[i].Check(delegate {
+            Rdv3ProcessJobDef job = ReadJob(d, jobs[i]);
+            if (d.JobOf(job.Id) != null) { throw jobs[i].Member("id").Fail(job.Id + " is used by another job"); }
+            d.Jobs.Add(job);
+            if (job.Kind == "update" && d.UpdateJob == null) { d.UpdateJob = job; }
+            });
+        }
+        o.Guard(jobErrors, "data.ledger and job references (incomplete job definitions)");
+        if (d.UpdateJob == null) { throw o.Member("jobs").Fail("must contain at least one update job"); }
+        if (d.UpdateJob.FinalKind != "ledger")
+        {
+            throw jobNodesFor(d, jobs, d.UpdateJob).Member("steps").Fail("the automatic update job must produce ledger");
+        }
+
+        // Types come after the jobs: a type may name a column the update job
+        // makes (aggregate as, calculate column), not only an input column.
         Rdv3Json types = o.Obj("types", false);
         if (types != null)
         {
@@ -358,7 +382,7 @@ public sealed class Rdv3Data
                 string reference = types.Order[i];
                 Rdv3Json at = types.Member(reference);
                 at.Check(delegate {
-                Rdv3ColumnRef column = ParseRef(d, reference, at);
+                Rdv3ColumnRef column = ParseLedgerRef(d, reference, at);
                 at.Only("type", "format");
                 Rdv3ColumnTypeDef type = new Rdv3ColumnTypeDef();
                 type.Ref = column.Ref;
@@ -381,25 +405,6 @@ public sealed class Rdv3Data
             }
         }
 
-        List<Rdv3Json> jobs = o.Objs("jobs", true);
-        if (jobs.Count == 0) { throw o.Member("jobs").Fail("holds no job"); }
-        int jobErrors = o.ErrorCount;
-        for (int i = 0; i < jobs.Count; i++)
-        {
-            jobs[i].Check(delegate {
-            Rdv3ProcessJobDef job = ReadJob(d, jobs[i]);
-            if (d.JobOf(job.Id) != null) { throw jobs[i].Member("id").Fail(job.Id + " is used by another job"); }
-            d.Jobs.Add(job);
-            if (job.Kind == "update" && d.UpdateJob == null) { d.UpdateJob = job; }
-            });
-        }
-        o.Guard(jobErrors, "data.ledger and job references (incomplete job definitions)");
-        if (d.UpdateJob == null) { throw o.Member("jobs").Fail("must contain at least one update job"); }
-        if (d.UpdateJob.FinalKind != "ledger")
-        {
-            throw jobNodesFor(d, jobs, d.UpdateJob).Member("steps").Fail("the automatic update job must produce ledger");
-        }
-
         Rdv3Json ledger = o.Obj("ledger", true);
         ledger.Only("identity", "search", "columns");
         Rdv3Json columnGroups = ledger.Obj("columns", true);
@@ -409,7 +414,7 @@ public sealed class Rdv3Data
         Rdv3Json colsNode = columnGroups.Member("source");
         for (int i = 0; i < cols.Length; i++)
         {
-            Rdv3ColumnRef c = ParseRef(d, cols[i], colsNode.At(i));
+            Rdv3ColumnRef c = ParseLedgerRef(d, cols[i], colsNode.At(i));
             if (d.IndexOf(c.Ref) >= 0) { throw colsNode.At(i).Fail(c.Ref + " is listed twice"); }
             d.Columns.Add(c);
         }
@@ -436,23 +441,31 @@ public sealed class Rdv3Data
         }
         for (int i = 0; i < d.Jobs.Count; i++) { d.Jobs[i].OnSourceChange = d.WorkStateOnSourceChange; }
 
+        // The identity is any set of saved columns, including columns the
+        // update job makes (a group key after aggregate). Its uniqueness is
+        // enforced on the merge source and on the finished ledger, not by
+        // requiring it to be one input table's key. When it IS exactly one
+        // table's key, that table is the spine of the optional left-join plan.
         string[] identityRefs = ReadColumnNames(ledger.Member("identity"));
-        Rdv3ColumnRef identityRef = ParseRef(d, identityRefs[0], ledger.Member("identity"));
-        Rdv3TableDef identityTable = d.TableOf(identityRef.Table);
-        if (identityTable == null || identityRefs.Length != identityTable.KeyColumns.Length)
-        {
-            throw ledger.Member("identity").Fail("must include all columns of one table's key, in the same order");
-        }
         d.IdentityCols = new int[identityRefs.Length];
         for (int k = 0; k < identityRefs.Length; k++)
         {
-            if (identityRefs[k] != identityTable.Id + "." + identityTable.KeyColumns[k])
-            { throw ledger.Member("identity").Fail("must include all columns of one table's key, in the same order"); }
-            d.IdentityCols[k] = d.IndexOf(identityRefs[k]);
-            if (d.IdentityCols[k] < 0) { throw colsNode.Fail("must include the update key " + identityRefs[k] + " (the row identity)"); }
+            Rdv3ColumnRef identityRef = ParseLedgerRef(d, identityRefs[k], ledger.Member("identity"));
+            identityRefs[k] = identityRef.Ref;
+            d.IdentityCols[k] = d.IndexOf(identityRef.Ref);
+            if (d.IdentityCols[k] < 0) { throw colsNode.Fail("must include the update key " + identityRef.Ref + " (the row identity)"); }
         }
-        d.Spine = identityRef.Table;
-        d.SpineOrd = identityRef.TableOrd;
+        d.Spine = "";
+        d.SpineOrd = -1;
+        for (int t = 0; t < d.Tables.Count; t++)
+        {
+            Rdv3TableDef table = d.Tables[t];
+            if (table.KeyColumns.Length != identityRefs.Length) { continue; }
+            bool same = true;
+            for (int k = 0; k < identityRefs.Length && same; k++)
+            { if (identityRefs[k] != table.Id + "." + table.KeyColumns[k]) { same = false; } }
+            if (same) { d.Spine = table.Id; d.SpineOrd = table.Ord; break; }
+        }
         for (int i = 0; i < d.Jobs.Count; i++)
         {
             if (d.Jobs[i].Kind == "update")
@@ -475,7 +488,7 @@ public sealed class Rdv3Data
         List<int> searchCols = new List<int>();
         for (int i = 0; i < searchRefs.Length; i++)
         {
-            Rdv3ColumnRef c = ParseRef(d, searchRefs[i], search.Member("columns").At(i));
+            Rdv3ColumnRef c = ParseLedgerRef(d, searchRefs[i], search.Member("columns").At(i));
             int col = d.IndexOf(c.Ref);
             if (col < 0) { throw search.Member("columns").At(i).Fail(c.Ref + " must be one of the ledger source columns"); }
             if (d.SearchRefs.Contains(c.Ref)) { throw search.Member("columns").At(i).Fail(c.Ref + " is listed twice"); }

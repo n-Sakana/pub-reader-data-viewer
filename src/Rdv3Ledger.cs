@@ -101,13 +101,15 @@ public static class Rdv3Ledger
         {
             long m = Rdv3Clock.Now();
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
-                d.Tables[t].Enc, d.Tables[t].KeyColumns, d.Tables[t].KeyValidation, d.Tables[t].EncodingSetting, d.SourceReferences(d.Tables[t].Id));
+                d.Tables[t].Enc, d.Tables[t].KeyColumns, d.Tables[t].KeyValidation, d.Tables[t].EncodingSetting, d.SourceReferences(d.Tables[t].Id),
+                d.Tables[t].HeaderRow);
             tables[t].AddWarnings(r.Warnings);
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
         }
         // the definition's names against the headers actually read
         d.Bind(heads);
+        d.ConvertWorkbookDates(tables);
         d.ValidateTypes(tables);
         for (int t = 0; t < nt; t++)
         {
