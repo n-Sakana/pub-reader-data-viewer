@@ -32,6 +32,7 @@ public static class Rdv3Program
         try { settingsDir = Path.GetDirectoryName(Path.GetFullPath(configPath)); } catch (Exception) { }
         try
         {
+            Rdv3Log.Phase("window settings " + configPath);
             cfg = Rdv3Config.Load(configPath);
         }
         catch (Rdv3LoadError ex)
@@ -70,6 +71,7 @@ public static class Rdv3Program
             for (int t = 0; t < cfg.Data.Tables.Count; t++)
             {
                 string p = Path.Combine(dataDir, cfg.Data.Tables[t].File);
+                Rdv3Log.Phase("window input header " + p);
                 if (!File.Exists(p)) { throw new Rdv3DataError(Rdv3Text.ErrNoData + p); }
                 heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Tables[t].Enc, cfg.Data.Tables[t].EncodingSetting);
             }
@@ -160,11 +162,15 @@ public static class Rdv3Program
             }
 
             Application application = new Application();
+            application.DispatcherUnhandledException += delegate(object sender, System.Windows.Threading.DispatcherUnhandledExceptionEventArgs e)
+            { Rdv3Log.Error("UI dispatcher", e.Exception); };
+            Rdv3Log.MonitorUi(delegate(Action action) { application.Dispatcher.BeginInvoke(action); });
             application.ShutdownMode = ShutdownMode.OnMainWindowClose;
             ReaderDataViewer.MainWindow window = new ReaderDataViewer.MainWindow(cfg.Screen);
             Rdv3Form form = new Rdv3Form(window, cfg.Screen);
             Rdv3App app = new Rdv3App(form, baseDir, dataDir, ledgerPath, logPath, cfg, pending, shared, initialMarker);
             app.LogBoot(compileMs);
+            Rdv3Log.Phase("window event loop");
             application.Run(window);
             return window.ExitCode;
             }

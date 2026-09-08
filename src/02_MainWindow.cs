@@ -364,6 +364,8 @@ namespace ReaderDataViewer
                 webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
                 webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                webView.CoreWebView2.ProcessFailed += delegate(object source, CoreWebView2ProcessFailedEventArgs failure)
+                { Rdv3Log.Feedback("WEBVIEW PROCESS FAILED", "main: " + failure.ProcessFailedKind); };
                 webView.CoreWebView2.Navigate(StartPage);
             }
             catch (Exception exception)
@@ -715,10 +717,13 @@ namespace ReaderDataViewer
                 webView.CoreWebView2.NewWindowRequested += OnNewWindowRequested;
                 webView.CoreWebView2.NavigationCompleted += OnNavigationCompleted;
                 webView.CoreWebView2.WebMessageReceived += OnWebMessageReceived;
+                webView.CoreWebView2.ProcessFailed += delegate(object source, CoreWebView2ProcessFailedEventArgs failure)
+                { Rdv3Log.Feedback("WEBVIEW PROCESS FAILED", "dialog: " + failure.ProcessFailedKind); };
                 webView.CoreWebView2.Navigate(startPage);
             }
-            catch
+            catch (Exception error)
             {
+                Rdv3Log.Error("dialog initialization", error);
                 RaiseFailed();
             }
         }
@@ -727,7 +732,11 @@ namespace ReaderDataViewer
             object sender,
             CoreWebView2NavigationCompletedEventArgs eventArgs)
         {
-            if (!eventArgs.IsSuccess) { RaiseFailed(); return; }
+            if (!eventArgs.IsSuccess)
+            {
+                Rdv3Log.Feedback("ERROR", "dialog navigation: " + eventArgs.WebErrorStatus);
+                RaiseFailed(); return;
+            }
             pageLoaded = true;
             PostJson(initJson);
             if (pendingOpen != null)

@@ -1,6 +1,18 @@
 (function () {
   'use strict';
 
+  function logClientError(kind, message, file, line, column, stack) {
+    try { post({ type: 'clientError', kind: kind, message: String(message || ''),
+      file: file || '', line: line || 0, column: column || 0, stack: String(stack || '') }); }
+    catch (ignored) { /* The native process failure event covers a lost bridge. */ }
+  }
+  window.addEventListener('error', function (event) {
+    logClientError('error', event.message, event.filename, event.lineno, event.colno, event.error && event.error.stack);
+  });
+  window.addEventListener('unhandledrejection', function (event) {
+    logClientError('promise', event.reason, '', 0, 0, event.reason && event.reason.stack);
+  });
+
   var stage = document.querySelector('.stage');
   var input = null;
   var statusSegments = [];

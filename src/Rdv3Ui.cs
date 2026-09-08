@@ -307,6 +307,7 @@ public sealed class Rdv3Form
     public void Error(string text)
     {
         if (string.IsNullOrEmpty(text)) { return; }
+        Rdv3Log.Feedback("UI ERROR", text);
         Ui(delegate
         {
             Rdv3ConfirmForm.Tell(this, Rdv3Text.AppTitle, text);
@@ -479,6 +480,7 @@ public sealed class Rdv3Form
                     if (handler != null) { handler(this, EventArgs.Empty); }
                 }
             }
+            else if (type == "clientError") { Rdv3Log.Feedback("JAVASCRIPT ERROR", json); }
             else if (type == "key")
             {
                 keyText = Text(root, "value");

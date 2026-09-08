@@ -29,6 +29,15 @@ namespace ReaderDataViewer
         [STAThread]
         public static int Run(string baseDirectory)
         {
+            Rdv3Log.Begin("window", "app=" + baseDirectory);
+            int code = 3;
+            try { code = RunApplication(baseDirectory); return code; }
+            catch (Exception error) { Rdv3Log.Error("window lifetime", error); throw; }
+            finally { Rdv3Log.End(code); }
+        }
+
+        private static int RunApplication(string baseDirectory)
+        {
             BaseDirectory = Path.GetFullPath(baseDirectory);
             InstallAssemblyResolver();
 
@@ -145,32 +154,8 @@ namespace ReaderDataViewer
 
         private static void WriteStartupError(string message, Exception error)
         {
-            try
-            {
-                string localData = Environment.GetFolderPath(
-                    Environment.SpecialFolder.LocalApplicationData);
-                if (string.IsNullOrWhiteSpace(localData)) { return; }
-                string logDirectory = Path.Combine(
-                    localData,
-                    "ReaderDataViewer",
-                    "logs");
-                Directory.CreateDirectory(logDirectory);
-                string logPath = Path.Combine(
-                    logDirectory,
-                    "reader-data-viewer_" +
-                        DateTime.Now.ToString("yyyyMMdd") + ".log");
-                string detail = error == null ? message : error.ToString();
-                string line = string.Format(
-                    "[{0:HH:mm:ss}] [ERROR] desktop startup error: {1}{2}",
-                    DateTime.Now,
-                    detail,
-                    Environment.NewLine);
-                File.AppendAllText(
-                    logPath,
-                    line,
-                    new UTF8Encoding(false));
-            }
-            catch { }
+            if (error == null) { Rdv3Log.Feedback("ERROR", "startup: " + message); }
+            else { Rdv3Log.Error("startup: " + message, error); }
         }
     }
 }

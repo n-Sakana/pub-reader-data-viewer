@@ -102,19 +102,22 @@ public sealed class Rdv3Worker
             }
             try
             {
+                Rdv3Log.Phase("job " + job.RunId + " " + job.Kind);
                 job.Work();
             }
             catch (Exception ex)
             {
+                Rdv3Log.Error("job " + job.RunId + " " + job.Kind, ex);
                 Action<Rdv3Job, Exception> h = OnError;
                 if (h != null)
                 {
                     try { h(job, ex); }
-                    catch (Exception) { }
+                    catch (Exception notification) { Rdv3Log.Error("job error notification", notification); }
                 }
             }
             finally
             {
+                Rdv3Log.Phase("job returned " + job.RunId + " " + job.Kind);
                 lock (gate) { current = null; }
             }
         }

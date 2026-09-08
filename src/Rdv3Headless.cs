@@ -14,6 +14,7 @@ public static class Rdv3Headless
         string stage = "settings file and definitions";
         try
         {
+            Rdv3Log.Phase((execute ? "RunUpdate" : "ValidateOnly") + " settings " + configPath);
             Rdv3Config cfg = Rdv3Config.Load(configPath, !execute);
             stage = "paths, input files and job preparation";
             dataDir = Rdv3Files.Full(string.IsNullOrEmpty(dataDir) ? cfg.DataDir : dataDir, appDir);
@@ -25,7 +26,12 @@ public static class Rdv3Headless
                 { throw new IOException("-Output must differ from -BaselineLedger"); }
             }
             string report = Evaluate(cfg, appDir, dataDir, execute, baselinePath);
-            if (execute) { Rdv3Files.WriteNewText(outputPath, report, false); }
+            if (execute)
+            {
+                Rdv3Log.Phase("writing report " + outputPath);
+                Rdv3Files.WriteNewText(outputPath, report, false);
+            }
+            Rdv3Log.Feedback("PASS", (execute ? "RunUpdate " : "ValidateOnly ") + configPath);
             // The console stays small; complete rows and intermediate values are
             // in the report, where a caller can compare them without a GUI.
             Rdv3Json parsed = Rdv3Json.Parse(report);
@@ -45,20 +51,24 @@ public static class Rdv3Headless
         }
         catch (Exception error)
         {
+            StringBuilder feedback = new StringBuilder();
             Rdv3ValidationError validation = error as Rdv3ValidationError;
             if (validation == null)
             {
-                Console.Error.WriteLine("FAIL 1 error");
-                Console.Error.WriteLine("  " + configPath + ": " + error.Message);
-                Console.Error.WriteLine("STOP " + stage + "; subsequent checks were not performed.");
+                feedback.AppendLine("FAIL 1 error");
+                feedback.AppendLine("  " + configPath + ": " + error.Message);
+                feedback.AppendLine("STOP " + stage + "; subsequent checks were not performed.");
             }
             else
             {
-                Console.Error.WriteLine("FAIL " + N(validation.Errors.Length) + " errors");
-                foreach (string detail in validation.Errors) { Console.Error.WriteLine("  " + configPath + ": " + detail); }
-                Console.Error.WriteLine("STOP " + validation.Stage);
-                foreach (string remaining in validation.Unchecked) { Console.Error.WriteLine("NOT CHECKED " + remaining); }
+                feedback.AppendLine("FAIL " + N(validation.Errors.Length) + " errors");
+                foreach (string detail in validation.Errors) { feedback.AppendLine("  " + configPath + ": " + detail); }
+                feedback.AppendLine("STOP " + validation.Stage);
+                foreach (string remaining in validation.Unchecked) { feedback.AppendLine("NOT CHECKED " + remaining); }
             }
+            Rdv3Log.Feedback("VALIDATION", feedback.ToString());
+            Rdv3Log.Error(stage, error);
+            Console.Error.Write(feedback.ToString());
             return 3;
         }
     }
@@ -77,6 +87,7 @@ public static class Rdv3Headless
         {
             Rdv3TableDef def = data.Tables[i];
             Action read = delegate {
+            Rdv3Log.Phase("reading input " + def.Id + " " + Rdv3Files.Full(def.File, dataDir));
             tables[i] = Rdv3Table.Read(Rdv3Files.Full(def.File, dataDir), def.Id, def.Enc,
                 def.KeyColumns, def.KeyValidation, def.EncodingSetting);
             heads[i] = tables[i].Head;
@@ -87,6 +98,7 @@ public static class Rdv3Headless
             else { validation.Check("input " + def.Id + " (" + def.File + ")", read); }
         }
         if (validation != null) { validation.Finish("input files", "input columns/types and job preparation"); }
+        Rdv3Log.Phase("input columns and types");
         data.Bind(heads, validation);
         data.ValidateTypes(tables, validation);
         if (validation != null) { validation.Finish("input types", "job preparation"); }
@@ -95,6 +107,7 @@ public static class Rdv3Headless
         for (int j = 0; j < data.Jobs.Count; j++)
         {
             Action prepare = delegate {
+            Rdv3Log.Phase("preparing job " + data.Jobs[j].Id);
             Rdv3PreparedProcess prepared = Rdv3Process.Prepare(data, data.Jobs[j], dataDir, tables);
             warnings.AddRange(prepared.Warnings);
             if (data.Jobs[j] == data.UpdateJob) { update = prepared; inputs.AddRange(prepared.InputResults); }
@@ -106,10 +119,12 @@ public static class Rdv3Headless
         string[] before = new string[0], states = new string[0];
         if (execute && !string.IsNullOrEmpty(baselinePath))
         {
+            Rdv3Log.Phase("reading baseline " + baselinePath);
             Rdv3LedgerSnapshot snapshot = new Rdv3LedgerStore(baselinePath, data, cfg.Screen.Work, null).Read(data.Head);
             before = snapshot.Lines; states = snapshot.States;
             if (snapshot.Warning.Length > 0) { warnings.Add(snapshot.Warning); }
         }
+        Rdv3Log.Phase(execute ? "executing update job " + data.UpdateJob.Id : "validation finished");
         Rdv3ProcessResult result = execute
             ? Rdv3Process.Execute(update, before, states, cfg.Screen.Work.InitialStored, true) : null;
         if (result != null) { warnings.AddRange(result.Warnings); }

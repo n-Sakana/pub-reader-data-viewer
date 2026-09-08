@@ -91,6 +91,7 @@ public sealed class Rdv3Log
 
     public static void End(int code)
     {
+        if (completed) { return; }
         completed = true;
         Timer timer = heartbeat;
         if (timer != null) { timer.Dispose(); }
