@@ -644,7 +644,7 @@
         "type": "columns",
         // [K266] screen.sections[1].weights — 横並び各部品へ配る幅の比率。省略は全部1。個数はitemsと同じ、正の数。長いラベルがある側の幅も確保します。
         "weights": [1, 1],
-        // [K267] screen.sections[1].gap — 横並び部品間の隙間、0～200 CSS px。縮めると枠や文字が密集します。
+        // [K267] screen.sections[1].gap — 横並び部品間の隙間、0～200 CSS px、省略17。card.gapとは別。縮めると枠や文字が密集します。
         "gap": 8,
         // [K268] screen.sections[1].items — 横並びに置くfieldList/textBoxの配列。1個以上、weightsの個数と揃えます。
         "items": [
@@ -932,7 +932,7 @@
       "title": "候補一覧",
       // [K369] screen.candidates.hint — 一覧で選ぶ人への補足説明、省略空文字。何を見比べて選ぶかを短く書きます。
       "hint": "行をクリックするとレコード詳細を表示します",
-      // [K370] screen.candidates.width — この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。
+      // [K370] screen.candidates.width — 候補ダイアログの幅、300～4000 CSS px、省略980。各列の必要幅も確保し、実際の窓幅・DPIで収まりを確認。
       "width": 744,
       // [K371] screen.candidates.maxHeight — 候補一覧本体の最大高さ、60～4000 CSS px、省略340。超えた分はスクロール。表示件数上限とは別。
       "maxHeight": 168,

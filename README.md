@@ -525,7 +525,7 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 | sendBar | value、sendChangesボタン1つ | height |
 | statusBar | 下部区画 | segments:[{prefix,value,dot}]、buttons、height |
 
-全部品に`margin`を指定できます。padding/marginは数値1つ、またはCSSと同じ1～4要素の配列です。columnsのgap省略は共通gapから導かれ、stackBelow省略は0。候補列のwidth省略は自動幅、align省略はleft、render省略はtext。`render:tag`と`looks:{"値":"accent","*":"neutral"}`で値別の見せ方を選べます。
+全部品に`margin`を指定できます。padding/marginは数値1つ、またはCSSと同じ1～4要素の配列です。columnsのgap省略は17、stackBelow省略は760 CSS pxです。card.gapとcolumns.gapは別の値です。候補列のwidth省略は自動幅、align省略はleft、render省略はtext。`render:tag`と`looks:{"値":"accent","*":"neutral"}`で値別の見せ方を選べます。
 
 `judgments`はsourceの値に対してrulesを上から試し、最初に当たるresultを採用します。equals配列／pattern正規表現／empty:trueは、同じ規則内ではORです。各resultの`text`と`look:ok/ng/undefined/error`をresultsへ書きます。規則不一致はundefined、読めない値はerror。意味のある「要確認」等の文言を、省略のために成功表示へ置き換えないでください。
 
@@ -831,7 +831,7 @@ CSV出力は現在このPCに見えている台帳と未送信の状態です。
 | <a id="k264"></a>K264 `screen.sections[0].buttons[2].action` | 押したときの動作。search/clear/workState/tableExport/updateRecords/deleteRecords/sendChanges/refreshLedger/settings。更新・削除はjobも指定。 |
 | <a id="k265"></a>K265 `screen.sections[1].type` | 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。 |
 | <a id="k266"></a>K266 `screen.sections[1].weights` | 横並び各部品へ配る幅の比率。省略は全部1。個数はitemsと同じ、正の数。長いラベルがある側の幅も確保します。 |
-| <a id="k267"></a>K267 `screen.sections[1].gap` | 横並び部品間の隙間、0～200 CSS px。縮めると枠や文字が密集します。 |
+| <a id="k267"></a>K267 `screen.sections[1].gap` | 横並び部品間の隙間、0～200 CSS px、省略17。card.gapとは別。縮めると枠や文字が密集します。 |
 | <a id="k268"></a>K268 `screen.sections[1].items` | 横並びに置くfieldList/textBoxの配列。1個以上、weightsの個数と揃えます。 |
 | <a id="k269"></a>K269 `screen.sections[1].items[0].type` | 部品の種類。titleBar/keyPanel/columns/fieldList/textBox/statusBand/sendBar/statusBar。columnsのitemsにはfieldList/textBoxだけ置けます。 |
 | <a id="k270"></a>K270 `screen.sections[1].items[0].title` | この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。 |
@@ -934,7 +934,7 @@ CSV出力は現在このPCに見えている台帳と未送信の状態です。
 | <a id="k367"></a>K367 `screen.candidates` | 複数該当したときに人が選ぶ一覧。キー以外の見分ける情報も載せます。必須。 |
 | <a id="k368"></a>K368 `screen.candidates.title` | この枠・一覧の見出し。省略時の既定名または空文字。長くする場合は幅と高さを確認。 |
 | <a id="k369"></a>K369 `screen.candidates.hint` | 一覧で選ぶ人への補足説明、省略空文字。何を見比べて選ぶかを短く書きます。 |
-| <a id="k370"></a>K370 `screen.candidates.width` | この入力欄・候補列・一覧の幅、CSS px。候補列の0または省略は自動幅。狭いと文字が収まらなくなるため実データで確認。 |
+| <a id="k370"></a>K370 `screen.candidates.width` | 候補ダイアログの幅、300～4000 CSS px、省略980。各列の必要幅も確保し、実際の窓幅・DPIで収まりを確認。 |
 | <a id="k371"></a>K371 `screen.candidates.maxHeight` | 候補一覧本体の最大高さ、60～4000 CSS px、省略340。超えた分はスクロール。表示件数上限とは別。 |
 | <a id="k372"></a>K372 `screen.candidates.rowHeight` | 一覧の1行の高さ、20～200 CSS px。文字の大きさと改行が収まる値へ。省略はfieldList44、候補46。 |
 | <a id="k373"></a>K373 `screen.candidates.headerHeight` | 候補一覧の見出し行の高さ、16～200 CSS px、省略38。大きな文字を使う場合は高さも確認。 |
