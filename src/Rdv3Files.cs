@@ -133,7 +133,7 @@ public static class Rdv3Files
         return "\"" + text.Replace("\"", "\"\"") + "\"";
     }
 
-    public static void WriteNewText(string path, string text)
+    public static void WriteNewText(string path, string text, bool utf8Bom = true)
     {
         string directory = Path.GetDirectoryName(Path.GetFullPath(path));
         Directory.CreateDirectory(directory);
@@ -142,7 +142,7 @@ public static class Rdv3Files
         {
             using (FileStream stream = new FileStream(temp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
             {
-                using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(true, true), 65536, true))
+                using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(utf8Bom, true), 65536, true))
                 { writer.Write(text); }
                 stream.Flush(true);
             }

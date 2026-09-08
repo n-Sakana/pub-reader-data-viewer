@@ -23,7 +23,7 @@ public static class Rdv3Headless
                 { throw new IOException("-Output must differ from -BaselineLedger"); }
             }
             string report = Evaluate(cfg, appDir, dataDir, execute, baselinePath);
-            if (execute) { Rdv3Files.WriteNewText(outputPath, report); }
+            if (execute) { Rdv3Files.WriteNewText(outputPath, report, false); }
             // The console stays small; complete rows and intermediate values are
             // in the report, where a caller can compare them without a GUI.
             Rdv3Json parsed = Rdv3Json.Parse(report);
