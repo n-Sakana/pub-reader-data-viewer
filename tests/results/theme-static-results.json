@@ -1,38 +1,7 @@
 {
-  "scope": "Source fingerprints, configuration, sampled contrast and JS syntax. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-07T23:00:40.528669+00:00",
-  "details": {
-    "apple-sampled-text-contrast": {
-      "body": 16.83,
-      "muted": 5.743,
-      "primary": 5.567,
-      "selected-label": 4.974
-    },
-    "material-sampled-text-contrast": {
-      "body": 16.483,
-      "muted": 8.357,
-      "primary": 6.386,
-      "selected-label": 4.919
-    },
-    "fluent-sampled-text-contrast": {
-      "body": 15.523,
-      "muted": 6.923,
-      "primary": 6.308,
-      "selected-label": 5.529
-    },
-    "carbon-sampled-text-contrast": {
-      "body": 18.096,
-      "muted": 7.104,
-      "primary": 5.002,
-      "selected-label": 6.452
-    },
-    "spectrum-sampled-text-contrast": {
-      "body": 15.91,
-      "muted": 6.711,
-      "primary": 5.388,
-      "selected-label": 4.68
-    }
-  },
+  "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
+  "utc": "2026-09-08T14:16:49.250884+00:00",
+  "details": {},
   "tests": [
     {
       "name": "preserved:LICENSE",
@@ -228,36 +197,13 @@
       "status": "PASS"
     },
     {
-      "name": "six-theme-catalog",
+      "name": "win98-only-presentation",
       "status": "PASS"
     },
     {
-      "name": "classic-default-theme-markers",
-      "status": "PASS"
-    },
-    {
-      "name": "apple:sampled-text-contrast",
-      "status": "PASS"
-    },
-    {
-      "name": "material:sampled-text-contrast",
-      "status": "PASS"
-    },
-    {
-      "name": "fluent:sampled-text-contrast",
-      "status": "PASS"
-    },
-    {
-      "name": "carbon:sampled-text-contrast",
-      "status": "PASS"
-    },
-    {
-      "name": "spectrum:sampled-text-contrast",
-      "status": "PASS"
-    },
-    {
-      "name": "presentation-script-syntax-and-boundaries",
-      "status": "PASS"
+      "name": "classic-no-presentation-motion",
+      "status": "FAIL",
+      "detail": "Unexpected Win98 motion"
     },
     {
       "name": "no-new-network-assets",
@@ -268,6 +214,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 57,
-  "failed": 1
+  "passed": 50,
+  "failed": 2
 }

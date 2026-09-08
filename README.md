@@ -1,22 +1,20 @@
-# Reader Data Viewer — マルチデザイン・選択式ビルド版
+# Reader Data Viewer
 
 2026-09-08 改訂。CSV／XLSXを設定に従って統合し、検索、作業状態の変更、共有台帳への送信を行うWindows用アプリです。ソースを起動時にWindows PowerShellでコンパイルし、WPFとWebView2で画面を表示します。
 
-> **Windows 98 の外観を既定のまま維持し、Apple / Material / Fluent（Win10・11風）/ Carbon / Spectrum の５系統を追加しました。ビルドは複数選択式です。** Windows での C# コンパイル、TUI 実機操作、WPF / WebView2 起動、実際の共有台帳試験はこの環境では未実施です。今回の検証範囲は [docs/theme-validation.md](docs/theme-validation.md) を確認してください。
+画面は **Windows 98 Classicの1種類**です。配布物の作成方法は [docs/design-build.md](docs/design-build.md) にあります。旧6テーマ版はタグ `v-multidesign-20260908` に残しています。
 
-## デザインを選んで出力する
+## 配布物を作る
 
-ZIP を展開して **`build.bat`** を実行します。上下キー＋Spaceで複数選択、Aで全選択、Enterで出力します。Mで演出の有効／無効を選べます。旧 Win98 版は常に無演出です。通常はコンパイル検査後、`releases/build-日時-ID/` に選択した版のフォルダーと ZIP を生成します。
+`build.bat` を実行すると、出力形式・サンプルCSVの同梱・C#回帰試験の有無を選べます。通常はコンパイル検査後、`releases/build-日時-ID/` にWin98版のフォルダーとZIPを作ります。
 
 ```bat
 build.bat
-build.bat package -All
-build.bat package -Theme "apple,fluent" -Motion off
+build.bat package -Theme win98
+build.bat package -Format zip -Data none -RunTests
 ```
 
-詳しい操作・配布時の注意は [docs/design-build.md](docs/design-build.md)、画面見本は [docs/theme-gallery.html](docs/theme-gallery.html) にあります。検索・状態変更・送信・設定などの業務処理は共通です。各社の公式ライブラリーではなく、設計指針を参照した独自の外観実装です。単体 EXE 化ではなく、元の起動時コンパイル方式を維持します。
-
-**生成パッケージは現在の業務設定をそのままコピーしますが、実運用の台帳・ログ・未送信変更はコピーしません。** 同梱できるのは隔離試験用のサンプルCSVだけです。本番パスを設定したまま別テーマの試運転をしないでください。
+**設定はそのままコピーし、実運用の台帳・ログ・未送信変更はコピーしません。** 同梱するCSVは隔離試験用の4本だけです。設定に本番パスを記入している場合は、試運転する前に試験用のパスへ変更してください。
 
 ## 維持した修正版の業務動作
 
@@ -44,7 +42,7 @@ build.bat test
 ReaderDataViewer.cmd
 ```
 
-`compile` はコンパイルのみ、`test` は隔離したサンプルを使うC#の回帰試験です。どちらも本番台帳を更新しません。ただし、この報告時点でWindows上での合否は未確認です。`build.bat` の引数省略はデザイン選択 TUI です（`compile` の明示指定は従来どおりです）。元READMEにあった `build.bat data` や未同梱のデータ生成・過去版復元機能は提供していません。
+`compile` はコンパイルのみ、`test` は隔離したサンプルを使うC#の回帰試験です。どちらも本番台帳を更新しません。検査結果は `tests/results/` に出力されます。`build.bat` の引数省略は配布条件を選ぶメニューです。元READMEにあった `build.bat data` や未同梱のデータ生成・過去版復元機能は提供していません。
 
 通常起動は `ReaderDataViewer.vbs`、起動メッセージをコンソールで確認する場合は `ReaderDataViewer.cmd` を利用します。32ビットの起動元から呼ばれた場合も、存在すればSysnative経由で64ビットPowerShellを選択します。組織の実行制御により起動が制限される場合は管理者に確認してください。
 
@@ -73,8 +71,8 @@ src/                          アプリC# 24ファイルと起動PowerShell
 web/                          HTML、JavaScript、CSS
 lib/                          元ZIPのWebView2 DLL・表示文書
 data/                         元ZIPの入力CSVとログ（内容維持）
-build.bat / tools/            デザイン選択TUI / package / compile / test
-design/                       ６種類のカタログ
+build.bat / tools/            配布条件の選択 / package / compile / test
+design/                       元配布物の保全確認用ハッシュ
 AUDIT_REPORT.md                点検・修正・検証結果
 docs/                         設定、共有運用、原README、変更一覧
 tests/                        C#、ブラウザー、静的検査、隔離サンプル、検証結果
