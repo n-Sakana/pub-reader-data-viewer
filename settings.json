@@ -93,7 +93,7 @@
     "tables": {
       // [K039] data.tables.A — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
       "A": {
-        // [K040] data.tables.A.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        // [K040] data.tables.A.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表A",
         // [K041] data.tables.A.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
         "file": "tableA.csv",
@@ -102,7 +102,7 @@
       },
       // [K043] data.tables.B — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
       "B": {
-        // [K044] data.tables.B.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        // [K044] data.tables.B.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表B",
         // [K045] data.tables.B.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
         "file": "tableB.csv",
@@ -116,7 +116,7 @@
       },
       // [K049] data.tables.C — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
       "C": {
-        // [K050] data.tables.C.label — 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。
+        // [K050] data.tables.C.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表C",
         // [K051] data.tables.C.file — 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。
         "file": "tableC.csv",
@@ -130,21 +130,21 @@
       "A.a_date": {
         // [K055] data.types["A.a_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
         "type": "date",
-        // [K056] data.types["A.a_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        // [K056] data.types["A.a_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K057] data.types["B.b_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "B.b_date": {
         // [K058] data.types["B.b_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
         "type": "date",
-        // [K059] data.types["B.b_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        // [K059] data.types["B.b_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K060] data.types["C.c_exp"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "C.c_exp": {
         // [K061] data.types["C.c_exp"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
         "type": "date",
-        // [K062] data.types["C.c_exp"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。
+        // [K062] data.types["C.c_exp"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K063] data.types["A.a_rate"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。

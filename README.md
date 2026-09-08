@@ -400,6 +400,8 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 ## 処理をつなぐ
 
+[4表の完成例](#four-tables)では、CSV4本と設定全文、集計・左結合・取消フラグによる状態リセットまでの操作と期待値を一緒に確認できます。
+
 `data.jobs[]`の`id`は全ジョブで一意、`name`は省略するとid、`kind`は`update`か`delete`です。**先頭のupdateジョブが起動時の確認と`-RunUpdate`に使われ、最後の結果はledgerでなければなりません。** 画面から実行するジョブはボタンの`job`で結びます。利用者にジョブを選ばせる画面はありません。
 
 `inputs`には登録表を`{"table":"A"}`で指定できます。この形には他のキーを足しません。外部ファイルを1列の条件値一覧として読む場合は次の形です。省略時は`data.encoding`、明記すればその入力だけ上書きします。
@@ -482,6 +484,144 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 **台帳のsourceに書ける参照は、登録表の実在する見出しです。** 任意に作った`total.sum`等をそのまま新しい台帳列として保存できるとは仮定しないでください。派生列は後段の計算・結合・抽出に使えますが、保存時は宣言済み列への対応を揃えます。上例のように既存の列へ集計結果を置く方法を使えます。
 
 例えば同じidの`"¥66,131"`と`(500)`の合計は65631、別idの`２５０`は250。Aにだけあるidの合計欄は空です。完全重複の再送行は入力時点で除かれるので、再送を二重加算する動作にはなりません。
+
+<a id="four-tables"></a>
+
+## 4表を集計・左結合し、内容変更で確認状態を戻す完成例
+
+特定の業務に依存しない、4件のレコードとその補助表の例です。**この節の設定は単独で起動できます。** 新しい試験用のアプリ一式へ配置してください。既存の出荷設定や実運用データへ上書きしません。
+
+4本ともUTF-8で保存します。表AのIDを台帳の1行にし、表Bの数値をIDごとに集計、表Cの分類名、表Dの取消フラグを左結合します。相手の無いAの行も残ります。取消フラグは保存する普通の入力列です。空から`1`へ変わるとsourceの変更になり、確認済みの行を初期状態へ戻します。取消以外の保存列が変わった場合も同じ規則です。
+
+`data/A.csv` — 基準の4行。日付は日本語の年月日書式です。
+
+```csv
+id,group,date
+R01,G1,2026年9月9日
+R02,G2,2026年10月1日
+R03,G1,2026年12月31日
+R04,G2,2026年1月2日
+```
+
+`data/B.csv` — 集計前は`id`と`part`の組合せで一意です。R01の合計は80、R03は1200、R02とR04には行がありません。
+
+```csv
+id,part,amount
+R01,01,100
+R01,02,(20)
+R03,01,"¥1,200"
+```
+
+`data/C.csv` — 分類名を対応づけます。
+
+```csv
+group,name
+G1,分類1
+G2,分類2
+```
+
+`data/D.csv` — 最初は見出しだけです。データ0件の通知は出ますが、左結合なのでAの行は残ります。
+
+```csv
+id,cancel
+```
+
+アプリ直下の`settings.json`へ次を保存します。省略した項目は既定値で動きます。`tables.*.label`で表名を定義しているので、`labels`へ`A/B/C/D`を重ねて書きません。
+
+```jsonc
+{
+  "schema": 3,
+  "paths": {"dataDir":"data", "ledger":"data/ReaderDataViewer-Ledger.xlsx", "log":"data/ReaderDataViewer.log"},
+  "search": {"pattern":"R[0-9]{2}"},
+  "watch": {"targets":[]},
+  "data": {
+    "encoding":"utf-8",
+    "tables": {
+      "A":{"label":"基準表", "file":"A.csv", "key":"id", "keyValidation":{"length":"variable"}},
+      "B":{"label":"数値表", "file":"B.csv", "key":["id","part"], "keyValidation":{"length":"variable"}},
+      "C":{"label":"分類表", "file":"C.csv", "key":"group", "keyValidation":{"length":"variable"}},
+      "D":{"label":"変更表", "file":"D.csv", "key":"id", "keyValidation":{"length":"variable"}}
+    },
+    "types": {"A.date":{"type":"date","format":"yyyy年M月d日"}, "B.amount":{"type":"number"}},
+    "labels": {
+      "A.id":"識別子", "A.group":"分類番号", "A.date":"日付",
+      "B.id":"対応する識別子", "B.part":"枝番", "B.amount":"合計値",
+      "C.group":"分類番号", "C.name":"分類名", "D.id":"対象識別子", "D.cancel":"取消フラグ",
+      "AB":"数値を結合", "ABC":"分類を結合", "ABCD":"変更を結合", "ledger":"台帳"
+    },
+    "jobs":[{
+      "id":"update", "kind":"update",
+      "inputs":[{"table":"A"},{"table":"B"},{"table":"C"},{"table":"D"}],
+      "steps":[
+        // Bの行をidごとに1行へ。既存のamount列名を使うので台帳へB.amountとして保存できる。
+        {"operation":"aggregate", "target1":"B", "groupBy":["B.id"],
+         "aggregates":[{"function":"sum","column":"B.amount","as":"amount"}], "output":"B"},
+        {"operation":"join", "target1":"A", "target2":"B", "keys":["A.id","B.id"], "condition":"left", "output":"AB"},
+        {"operation":"join", "target1":"AB", "target2":"C", "keys":["A.group","C.group"], "condition":"left", "output":"ABC"},
+        {"operation":"join", "target1":"ABC", "target2":"D", "keys":["A.id","D.id"], "condition":"left", "output":"ABCD"},
+        // 元にない台帳の行は保持。変わったsource列だけを更新する。
+        {"operation":"merge", "target1":"ABCD", "target2":"ledger", "keys":["A.id","A.id"],
+         "sourceOnly":"add", "both":"update", "targetOnly":"keep", "output":"ledger"}
+      ]
+    }],
+    "ledger": {
+      "identity":"A.id", "search":{"columns":["A.id"],"match":"exact"},
+      "columns": {
+        "source":["A.id","A.group","A.date","B.id","B.amount","C.name","D.cancel"],
+        "application":[{"name":"workState","onSourceChange":"reset"}]
+      }
+    }
+  },
+  "screen": {
+    "card":{"startSize":[818,636],"font":"Meiryo UI","fontSize":10,"gap":8,"padding":[8]},
+    "workState": {
+      "trigger":"manual", "store":{"column":"確認状態"},
+      "states":[{"id":"todo","text":"未確認","stored":"FALSE"},{"id":"done","text":"確認済","stored":"TRUE","look":"accent"}],
+      "initial":"todo", "transitions":[{"from":"todo","to":"done"},{"from":"done","to":"todo"}]
+    },
+    "export":{"defaultFields":["A.id","A.group","A.date","B.id","B.amount","C.name","D.cancel","$work"]},
+    "candidates":{"columns":[{"header":"識別子","value":{"field":"A.id"}},{"header":"分類名","value":{"field":"C.name"}}]},
+    "sections":[
+      {"type":"keyPanel","title":"検索","figure":{"label":"識別子","value":{"field":"A.id"}},
+       "input":{"label":"検索値","maxLength":3},
+       "buttons":[{"action":"search","text":"検索"},{"action":"clear","text":"クリア"},{"action":"workState"}]},
+      {"type":"fieldList","title":"レコード","rowHeight":30,"rows":[
+        {"label":"分類名","value":{"field":"C.name"}},
+        {"label":"日付","value":{"field":"A.date","format":{"kind":"date","from":"yyyy年M月d日","to":"yyyy-MM-dd"}}},
+        {"label":"合計値","value":{"field":"B.amount"}},
+        {"label":"数値表の識別子","value":{"field":"B.id","empty":"相手なし"}},
+        {"label":"取消フラグ","value":{"field":"D.cancel","empty":""}}
+      ]},
+      {"type":"sendBar","value":{"state":"pendingCount"},"buttons":[{"action":"sendChanges","text":"変更を送信"}]},
+      {"type":"statusBar","segments":[{"value":{"state":"appState"}},{"value":{"state":"ledgerRows"}}],
+       "buttons":[{"action":"updateRecords","text":"レコード更新","job":"update"},{"action":"tableExport","text":"テーブル出力"},{"action":"settings","text":"設定"}]}
+    ]
+  }
+}
+```
+
+最初の答え合わせは次です。相手の有無は`B.amount`の0ではなく`B.id`の空欄で判定します。合計0の行が存在する場合と、相手がいない場合を区別するためです。
+
+| A.id | B.id | B.amount | C.name | D.cancel | 状態 |
+|---|---|---|---|---|---|
+| R01 | R01 | 80 | 分類1 | 空 | FALSE |
+| R02 | 空 | 空 | 分類2 | 空 | FALSE |
+| R03 | R03 | 1200 | 分類1 | 空 | FALSE |
+| R04 | 空 | 空 | 分類2 | 空 | FALSE |
+
+`-ValidateOnly`、次に`-RunUpdate -Output C:/trial/first.json`を実行します（配置に合わせて`-Config/-DataDir`も指定）。期待値は`summary.rows=4`、`skippedEmpty=0`、`skippedDuplicate=0`、`resetRows=0`。`joins`の`AB/ABC/ABCD`は順に`unmatchedLeft=2/0/4`です。
+
+次に、試験用のアプリを起動して台帳を作成し、R01・R02を検索してそれぞれ確認済みにして送信します。台帳の控えを`C:/trial/before.xlsx`として残します。手元で状態を倒しただけでは台帳へ入らないので、**控えを取る前に送信してください。** アプリを終了してから、試験用D.csvだけを次へ入れ替えます。
+
+```csv
+id,cancel
+R02,1
+```
+
+`-RunUpdate -BaselineLedger C:/trial/before.xlsx -Output C:/trial/second.json`を実行すると、行数は4のまま、`resetRows=1`、戻った行はR02だけです。R01のTRUEは残り、R02のD.cancelは`1`、状態はFALSEになります。`ABCD.unmatchedLeft=3`です。窓でも「レコード更新」を実行し、戻った行の通知とR02の表示を確認できます。同じ内容をもう一度更新しても、新たな戻りは0件です。
+
+この例は取消の行を台帳から削除しません。取消を表す値を保存して再確認を促す構成です。削除したい場合は一般操作の`delete`を明示して別の手順にします。
+
 
 <a id="ledger"></a>
 
@@ -640,29 +780,29 @@ OSがPowerShellの開始を拒む場合、スクリプト自体の構文・引�
 | <a id="k037"></a>K037 `data.encoding` | CSVの既定文字コード、省略utf-8。各tables.<ID>.encodingで上書き可。BOMは自動切替ではなく一致確認に使います。XLSXには適用しません。 |
 | <a id="k038"></a>K038 `data.tables` | 入力表を短いIDで登録。1表以上必須。IDにドットや空白は使わず、ledgerは予約名。ここに登録した全表を起動時に確認します。 |
 | <a id="k039"></a>K039 `data.tables.A` | この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。 |
-| <a id="k040"></a>K040 `data.tables.A.label` | 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。 |
+| <a id="k040"></a>K040 `data.tables.A.label` | 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。 |
 | <a id="k041"></a>K041 `data.tables.A.file` | 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。 |
 | <a id="k042"></a>K042 `data.tables.A.key` | 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。 |
 | <a id="k043"></a>K043 `data.tables.B` | この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。 |
-| <a id="k044"></a>K044 `data.tables.B.label` | 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。 |
+| <a id="k044"></a>K044 `data.tables.B.label` | 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。 |
 | <a id="k045"></a>K045 `data.tables.B.file` | 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。 |
 | <a id="k046"></a>K046 `data.tables.B.key` | 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。 |
 | <a id="k047"></a>K047 `data.tables.B.keyValidation` | キーの検証規則。省略はASCII・列ごとの固定長・内容が違う重複をエラー・空キーは除外。文字列を整形して別のキーを作る指定ではありません。 |
 | <a id="k048"></a>K048 `data.tables.B.keyValidation.empty` | skip（省略時）は空キーを含む行を除外して件数を通知、errorはそのファイルと行・列を示して停止。複合キーではどれか1列が空なら対象。 |
 | <a id="k049"></a>K049 `data.tables.C` | この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。 |
-| <a id="k050"></a>K050 `data.tables.C.label` | 表の画面向け名。省略すると表ID。列名や結合条件は変わりません。 |
+| <a id="k050"></a>K050 `data.tables.C.label` | 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。 |
 | <a id="k051"></a>K051 `data.tables.C.file` | 入力CSVまたはXLSXのファイル名、必須。相対名はpaths.dataDir基準、絶対パスも可。 |
 | <a id="k052"></a>K052 `data.tables.C.key` | 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。 |
 | <a id="k053"></a>K053 `data.types` | 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。 |
 | <a id="k054"></a>K054 `data.types["A.a_date"]` | この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。 |
 | <a id="k055"></a>K055 `data.types["A.a_date"].type` | date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。 |
-| <a id="k056"></a>K056 `data.types["A.a_date"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。 |
+| <a id="k056"></a>K056 `data.types["A.a_date"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。 |
 | <a id="k057"></a>K057 `data.types["B.b_date"]` | この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。 |
 | <a id="k058"></a>K058 `data.types["B.b_date"].type` | date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。 |
-| <a id="k059"></a>K059 `data.types["B.b_date"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。 |
+| <a id="k059"></a>K059 `data.types["B.b_date"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。 |
 | <a id="k060"></a>K060 `data.types["C.c_exp"]` | この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。 |
 | <a id="k061"></a>K061 `data.types["C.c_exp"].type` | date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。 |
-| <a id="k062"></a>K062 `data.types["C.c_exp"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd。1列に1書式で、自動判別や複数書式混在ではありません。 |
+| <a id="k062"></a>K062 `data.types["C.c_exp"].format` | 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。 |
 | <a id="k063"></a>K063 `data.types["A.a_rate"]` | この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。 |
 | <a id="k064"></a>K064 `data.types["A.a_rate"].type` | date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。 |
 | <a id="k065"></a>K065 `data.types["A.a_amount"]` | この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。 |
