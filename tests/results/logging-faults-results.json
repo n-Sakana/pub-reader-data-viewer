@@ -1,0 +1,81 @@
+{
+  "passed": 9,
+  "failed": 0,
+  "tests": [
+    {
+      "name": "unhandled-worker-exception",
+      "status": "PASS",
+      "detail": {
+        "exit": 3762504530,
+        "token": "e51f12f2-1a55-4b55-98fc-15e0977da50f"
+      }
+    },
+    {
+      "name": "silent-exit-zero",
+      "status": "PASS",
+      "detail": {
+        "exit": 0,
+        "token": "19f9ed16-ea7b-4d93-b8aa-8f6993a7b8e7"
+      }
+    },
+    {
+      "name": "unfinished-phase-heartbeat",
+      "status": "PASS",
+      "detail": {
+        "exit": 0,
+        "token": "4137df4d-a72a-4be9-86ac-a5dc900de8a1"
+      }
+    },
+    {
+      "name": "bounded-rotation-keeps-three-previous-files",
+      "status": "PASS",
+      "detail": {
+        "files": 4,
+        "bytes": [
+          2097163,
+          2097163,
+          2097163,
+          2097163
+        ],
+        "total": 8388652
+      }
+    },
+    {
+      "name": "cross-process-log-writes",
+      "status": "PASS",
+      "detail": {
+        "processes": 4,
+        "records": 1000
+      }
+    },
+    {
+      "name": "unwritable-primary-uses-temp-file",
+      "status": "PASS",
+      "detail": {
+        "token": "7454345d-f470-423a-9b03-97526b4594b6",
+        "file": "C:\\Users\\ynisi\\AppData\\Local\\Temp\\ReaderDataViewer\\logs\\feedback.log"
+      }
+    },
+    {
+      "name": "unwritable-configured-log-keeps-local-feedback",
+      "status": "PASS",
+      "detail": "2e5bac6e-fdde-46b7-9f7c-c88f2ac9b20a"
+    },
+    {
+      "name": "unknown-arguments-before-csharp",
+      "status": "PASS",
+      "detail": {
+        "exit": 2,
+        "bytes": 252
+      }
+    },
+    {
+      "name": "compiler-failure-before-csharp",
+      "status": "PASS",
+      "detail": {
+        "exit": 3,
+        "bytes": 929
+      }
+    }
+  ]
+}
