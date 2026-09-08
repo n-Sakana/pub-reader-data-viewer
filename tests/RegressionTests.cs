@@ -432,7 +432,7 @@ public static class Rdv3RegressionTests
                 Check((bool)args[4] && body.Contains("12") && body.Contains("990"), "process dialog lost accepted input report");
                 string deletePath = Path.Combine(dir, "delete.csv"); File.AppendAllText(deletePath, ",\n,\n", Encoding.UTF8);
                 Rdv3ProcessJobDef deletion = c.Data.Jobs.Find(delegate(Rdv3ProcessJobDef j) { return j.Kind == "delete"; });
-                Rdv3DeleteResult deleted = Rdv3Ledger.ApplyDelete(c.Data, deletion, dir, clean.Lines, new string[clean.Rows], c.Screen.WorkState.InitialStored);
+                Rdv3DeleteResult deleted = Rdv3Ledger.ApplyDelete(c.Data, deletion, dir, clean.Lines, new string[clean.Rows], c.Screen.Work.InitialStored);
                 Check(deleted.Warnings.Exists(delegate(string s) { return s.Contains("delete.csv") && s.Contains("2"); }), "delete discarded input silently");
             });
             Test("config-optional-sections-save-and-external-edit-guard", delegate {

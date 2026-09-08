@@ -1,4 +1,4 @@
-UTC 2026-09-08T17:08:30.9145298Z
+UTC 2026-09-08T17:20:29.4319348Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -50,6 +50,15 @@ PASS config-save-cas
 PASS config-protected-paths
 PASS config-file-only-job-input-protected
 PASS supplied-data-pipeline-readonly
+PASS input-padding-wide-digits-and-quoted-newlines
+PASS input-identical-retransmission-counts-and-source-rows
+PASS input-key-errors-identify-source-and-fix
+PASS input-invalid-bytes-and-shape-explain-repair
+PASS input-search-normalization-without-changing-stored-snapshot
+PASS input-numeric-values-reach-expression-aggregate-and-export
+PASS input-dirty-join-preserves-990-records-and-reports-discards
+PASS config-optional-sections-save-and-external-edit-guard
+PASS config-text-type-and-enum-padding
 PASS apply-reloads-state-after-lock-wait
 PASS apply-rejects-changed-preview-and-creation-races
 PASS apply-read-failure-never-overwrites-ledger
@@ -63,4 +72,4 @@ PASS write-guard-local-outcome-controls-close
 PASS write-guard-close-and-acquisition-are-exclusive
 PASS write-guard-overdue-worker-remains-held-until-return
 PASS eight-thread-shared-ledger-simulation
-TOTAL passed=63 failed=0
+TOTAL passed=72 failed=0
