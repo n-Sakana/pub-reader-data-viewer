@@ -1,6 +1,6 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-08T16:12:05.333863+00:00",
+  "utc": "2026-09-08T16:40:11.459149+00:00",
   "details": {
     "excludedFingerprints": [
       "data/ReaderDataViewer.log",

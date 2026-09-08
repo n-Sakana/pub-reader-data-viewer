@@ -191,7 +191,7 @@
     },
     {
       "path": "tests/test_web.py",
-      "sha256": "889742a2c45e2274b386780c819a98f3f14f1f56f89de176089546532288e6c9"
+      "sha256": "e15d1be7d95d6ac0ec0c622dd9353d4b9e16d6ee0de4efdd18c368c946432af9"
     },
     {
       "path": "web/app.css",
@@ -199,7 +199,7 @@
     },
     {
       "path": "web/app.js",
-      "sha256": "d479e0b3b2f122f7e1a417076bbbc20e5e0efaaca4c6b6052430f2994c46c89e",
+      "sha256": "dbe0e19c121afe110c8edb08000b40be260f0e49636de64bde545e881946c9d6",
       "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
     },
     {

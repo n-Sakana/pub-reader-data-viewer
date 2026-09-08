@@ -1,7 +1,7 @@
 {
   "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
   "baseline_reproduction": false,
-  "utc": "2026-09-08T16:37:31.738961+00:00",
+  "utc": "2026-09-08T16:39:02.310202+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
   "tests": [
     {
@@ -70,9 +70,7 @@
     },
     {
       "name": "export-text-filters-and-removal",
-      "status": "FAIL",
-      "detail": "filter labels or literal text lost",
-      "page_errors": []
+      "status": "PASS"
     },
     {
       "name": "export-number-and-date-filters",
@@ -88,6 +86,6 @@
     }
   ],
   "browser": "145.0.7632.6",
-  "passed": 19,
-  "failed": 1
+  "passed": 20,
+  "failed": 0
 }
