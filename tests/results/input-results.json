@@ -1,0 +1,187 @@
+{
+  "utc": "2026-09-08T17:26:48.430164+00:00",
+  "scope": "Direct product C# CSV/type/index/pipeline scenarios. Not native UI, real IME or production SMB.",
+  "baselineCommit": "d76807930c283327ab4a69411974cefd73d6d683",
+  "command": "powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File work/tobe-dirty-20260909/Run.ps1 -TestCore",
+  "probe": "work/tobe-dirty-20260909/DirtyProbe.cs",
+  "probeEditsAfterCreation": 0,
+  "before": {
+    "passed": 6,
+    "failed": 12,
+    "results": [
+      {
+        "case": "header-trailing-space",
+        "pass": true
+      },
+      {
+        "case": "value-trailing-space",
+        "pass": false,
+        "detail": "trailing space still changes the value"
+      },
+      {
+        "case": "key-trailing-space",
+        "pass": false,
+        "detail": "key-space.csv の 3 行目: キー列 id の幅が最初の有効行 (4 文字) と違います"
+      },
+      {
+        "case": "space-after-quote",
+        "pass": false,
+        "detail": "quote-space.csv: row 2: unexpected text after closing quote"
+      },
+      {
+        "case": "fullwidth-key",
+        "pass": false,
+        "detail": "wide-key.csv の 2 行目: キー列 id に ASCII 以外の文字があります"
+      },
+      {
+        "case": "fullwidth-number",
+        "pass": false,
+        "detail": "number-1-4.csv の 2 行目: 列 T.value の実際の値「１２３」を 数値 として読めません"
+      },
+      {
+        "case": "yen-and-grouping",
+        "pass": false,
+        "detail": "number-1-5.csv の 2 行目: 列 T.value の実際の値「¥1,234」を 数値 として読めません"
+      },
+      {
+        "case": "fullwidth-yen-number",
+        "pass": false,
+        "detail": "number-1-6.csv の 2 行目: 列 T.value の実際の値「￥１，２３４」を 数値 として読めません"
+      },
+      {
+        "case": "accounting-negative",
+        "pass": false,
+        "detail": "number-1-7.csv の 2 行目: 列 T.value の実際の値「(500)」を 数値 として読めません"
+      },
+      {
+        "case": "bom-mixed-newlines",
+        "pass": true
+      },
+      {
+        "case": "no-bom-mixed-newlines",
+        "pass": true
+      },
+      {
+        "case": "identical-duplicate",
+        "pass": false,
+        "detail": "duplicate.csv: キー列 id の値 001 が 2 行目と 3 行目にあります (キーは一意である必要があります)"
+      },
+      {
+        "case": "empty-number",
+        "pass": true
+      },
+      {
+        "case": "space-only-number",
+        "pass": false,
+        "detail": "space-number.csv の 2 行目: 列 T.value の実際の値「  」を 数値 として読めません"
+      },
+      {
+        "case": "different-column-names-via-json",
+        "pass": true
+      },
+      {
+        "case": "blank-key-default",
+        "pass": false,
+        "detail": "blank-key.csv の 3 行目: キー列 id が空です"
+      },
+      {
+        "case": "blank-key-skip-count",
+        "pass": false,
+        "detail": "no observable skipped-empty count"
+      },
+      {
+        "case": "conflicting-duplicate-refused",
+        "pass": true
+      }
+    ]
+  },
+  "after": {
+    "passed": 18,
+    "failed": 0,
+    "results": [
+      {
+        "case": "header-trailing-space",
+        "pass": true
+      },
+      {
+        "case": "value-trailing-space",
+        "pass": true
+      },
+      {
+        "case": "key-trailing-space",
+        "pass": true
+      },
+      {
+        "case": "space-after-quote",
+        "pass": true
+      },
+      {
+        "case": "fullwidth-key",
+        "pass": true
+      },
+      {
+        "case": "fullwidth-number",
+        "pass": true
+      },
+      {
+        "case": "yen-and-grouping",
+        "pass": true
+      },
+      {
+        "case": "fullwidth-yen-number",
+        "pass": true
+      },
+      {
+        "case": "accounting-negative",
+        "pass": true
+      },
+      {
+        "case": "bom-mixed-newlines",
+        "pass": true
+      },
+      {
+        "case": "no-bom-mixed-newlines",
+        "pass": true
+      },
+      {
+        "case": "identical-duplicate",
+        "pass": true
+      },
+      {
+        "case": "empty-number",
+        "pass": true
+      },
+      {
+        "case": "space-only-number",
+        "pass": true
+      },
+      {
+        "case": "different-column-names-via-json",
+        "pass": true
+      },
+      {
+        "case": "blank-key-default",
+        "pass": true
+      },
+      {
+        "case": "blank-key-skip-count",
+        "pass": true
+      },
+      {
+        "case": "conflicting-duplicate-refused",
+        "pass": true
+      }
+    ]
+  },
+  "regression": {
+    "passed": 72,
+    "failed": 0,
+    "addedCases": 9,
+    "existingAssertionsDeleted": 0,
+    "edits": 2,
+    "corrections": 1,
+    "correctionReason": "New test referenced Screen.WorkState instead of actual Screen.Work. First run could not compile. Corrected once, then 72/72."
+  },
+  "craft": "https://docs.craft.do/editor/d/c794a201-1645-e6ee-fdb3-bb0d0000d5c5/62a5844b-3b25-8527-3568-1302f7a7c7d0",
+  "afterEvidence": "work/tobe-dirty-20260909/after-final/results.json"
+}
