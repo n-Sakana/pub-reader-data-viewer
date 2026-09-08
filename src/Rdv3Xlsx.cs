@@ -39,28 +39,31 @@ public static class Rdv3Xlsx
     // non-empty row is the header and the remaining rows are source records.
     // The saved ledger reader below deliberately remains separate because it
     // has the additional application-owned state column contract.
-    public static string[] ReadTableHead(string path, HashSet<string> references = null)
+    public static string[] ReadTableHead(string path, HashSet<string> references = null, int headerRow = 1)
     {
         string[] head;
         string[][] rows;
         string warning;
-        ReadTableCore(path, true, out head, out rows, out warning, references, null);
+        ReadTableCore(path, true, out head, out rows, out warning, references, null, headerRow);
         return head;
     }
 
     public static void ReadTable(string path, out string[] head, out string[][] rows, out string warning,
-                                  HashSet<string> references = null, Rdv3InputCounts counts = null)
+                                  HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1)
     {
-        ReadTableCore(path, false, out head, out rows, out warning, references, counts);
+        ReadTableCore(path, false, out head, out rows, out warning, references, counts, headerRow);
     }
 
+    // headerRow: the sheet row number that holds the header; rows above it
+    // (a report title, a print date) are skipped without being read.
     private static void ReadTableCore(string path, bool headOnly, out string[] head,
                                       out string[][] rows, out string warning,
-                                      HashSet<string> references, Rdv3InputCounts counts)
+                                      HashSet<string> references, Rdv3InputCounts counts, int headerRow)
     {
         warning = "";
         head = null;
         if (counts == null) { counts = new Rdv3InputCounts(); }
+        if (headerRow > 1) { counts.HeaderOffset = headerRow - 1; }
         Rdv3InputColumns columns = null;
         List<string[]> result = new List<string[]>();
         string file = Path.GetFileName(path);
@@ -111,6 +114,7 @@ public static class Rdv3Xlsx
                     if (xr.NodeType == XmlNodeType.EndElement && xr.LocalName == "row" && inRow)
                     {
                         inRow = false;
+                        if (rowNumber < headerRow) { continue; }
                         if (cells.Count == 0) { continue; }
                         string[] values = cells.ToArray();
                         for (int c = 0; c < values.Length; c++)
