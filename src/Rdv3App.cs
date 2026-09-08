@@ -1529,7 +1529,7 @@ public sealed class Rdv3App
             Rdv3Index index = BuildSearchIndex(lines);
             string[] effective = pending.Overlay(lines, states, dataDef.IdentityCol);
             List<Rdv3CandRow> resets = (marker.Kind == "update")
-                ? ResetCandidates(resetNotice.ChangedRows(ledLines, ledStates, lines, states) : new List<Rdv3CandRow>());
+                ? ResetCandidates(resetNotice.ChangedRows(ledLines, ledStates, lines, states)) : new List<Rdv3CandRow>();
             log.Write(tag, "reload", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture)
                 + " rows=" + lines.Length.ToString(CultureInfo.InvariantCulture)
                 + " reset=" + resets.Count.ToString(CultureInfo.InvariantCulture)
