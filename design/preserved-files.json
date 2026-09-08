@@ -91,7 +91,7 @@
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "4dc38e056df79176988d6793833a0f928ca5acd4d03cfa0e0a844cc7d0f931ce",
+      "sha256": "cf05a5d8b87e03435c95588f2f199a8e3c062c3e9dfbca1eddbdfc009d8695e0",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
@@ -146,7 +146,7 @@
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "9e81ee32f7e2340b8dcbc925699cce036c9f8407551b72a17f94207e9be047b2",
+      "sha256": "57c2b38fc51cabf9f3477f247c5ec50528e7c51bff49bca6736b92f3c00853d5",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {

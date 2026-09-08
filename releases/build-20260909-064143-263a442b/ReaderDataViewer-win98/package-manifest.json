@@ -1,0 +1,248 @@
+{
+    "schema":  1,
+    "application":  "ReaderDataViewer",
+    "theme":  "win98",
+    "motion":  "off",
+    "createdUtc":  "2026-09-08T21:41:43.9307478Z",
+    "data":  "sample",
+    "validation":  {
+                       "nativeCompile":  "passed",
+                       "coreTests":  "passed",
+                       "windowsUI":  "not_run_by_packager",
+                       "sharedLedger":  "not_run_by_packager"
+                   },
+    "files":  [
+                  {
+                      "path":  "data/delete.csv",
+                      "sha256":  "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520"
+                  },
+                  {
+                      "path":  "data/tableA.csv",
+                      "sha256":  "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe"
+                  },
+                  {
+                      "path":  "data/tableB.csv",
+                      "sha256":  "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383"
+                  },
+                  {
+                      "path":  "data/tableC.csv",
+                      "sha256":  "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6"
+                  },
+                  {
+                      "path":  "docs/design-build.md",
+                      "sha256":  "909de0bc8e99b3bbfa9378d0f655cc629d9320ebe39d46f79f0a5410a679a030"
+                  },
+                  {
+                      "path":  "docs/settings.md",
+                      "sha256":  "11d05fd7c53b998ef3c9b6e3332e1a192413af2a6f10f67215b5ed26f2403ffa"
+                  },
+                  {
+                      "path":  "docs/shared-ledger.md",
+                      "sha256":  "017b71e34379b9637017f34fdf2a1f9f0e5021e991273c4797c8fdec6b8036d7"
+                  },
+                  {
+                      "path":  "docs/theme-validation.md",
+                      "sha256":  "0bc74f1385651bd6ea06ec8e9f6e7a43fc7acae73a6a92f42079058309e97b12"
+                  },
+                  {
+                      "path":  "lib/LICENSE-Microsoft.Web.WebView2.txt",
+                      "sha256":  "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55"
+                  },
+                  {
+                      "path":  "lib/Microsoft.Web.WebView2.Core.dll",
+                      "sha256":  "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2"
+                  },
+                  {
+                      "path":  "lib/Microsoft.Web.WebView2.Wpf.dll",
+                      "sha256":  "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33"
+                  },
+                  {
+                      "path":  "lib/NOTICE-Microsoft.Web.WebView2.txt",
+                      "sha256":  "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
+                  },
+                  {
+                      "path":  "lib/WebView2Loader.dll",
+                      "sha256":  "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7"
+                  },
+                  {
+                      "path":  "LICENSE",
+                      "sha256":  "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+                  },
+                  {
+                      "path":  "PACKAGE-README.txt",
+                      "sha256":  "13b3ecc9eb3e377137af7ce33877b9f38951e9453e0b03e03d193ce3662bc279"
+                  },
+                  {
+                      "path":  "ReaderDataViewer.cmd",
+                      "sha256":  "91e06473ec77a2ee5b648f39cf3a7c54551f0038aa35430c994de8736857951a"
+                  },
+                  {
+                      "path":  "ReaderDataViewer.vbs",
+                      "sha256":  "b9c1a415f1416b449e1c5ba85ca4297838af80ab3147e10d8a7fe99c7f746fcc"
+                  },
+                  {
+                      "path":  "README.md",
+                      "sha256":  "4ec41f76cefae717259fed24d0983547858c2104af4e513b35713edc00dbd889"
+                  },
+                  {
+                      "path":  "settings.json",
+                      "sha256":  "c724c1a0d658b051cf27360d9d587d0c357f8f65d79fbd73e310e82b727f8e4b"
+                  },
+                  {
+                      "path":  "src/01_App.cs",
+                      "sha256":  "a313445f7edb7c0758da4ae520908a8caa0d7672c1fe07e7a9bb9818f9351860"
+                  },
+                  {
+                      "path":  "src/02_MainWindow.cs",
+                      "sha256":  "180b002f80cc61a3846018456d540e362d985c46be5147f13d35413af047dbcd"
+                  },
+                  {
+                      "path":  "src/03_Win98.cs",
+                      "sha256":  "f328fcfff218b3108f091b624612b829d92301897366ad5c32b6b375ab67ce84"
+                  },
+                  {
+                      "path":  "src/Rdv3App.cs",
+                      "sha256":  "8283d8ddd05cd8f324eb5a5adb9db8ffe5c412c708f06a7406db2930c67f24f4"
+                  },
+                  {
+                      "path":  "src/Rdv3Config.cs",
+                      "sha256":  "cbc0ac0fe9fcf19911552474afa392123dc6e85983e2cdbf01d378cac3e51034"
+                  },
+                  {
+                      "path":  "src/Rdv3Core.cs",
+                      "sha256":  "9a943952a269ade016937d0e8356ee82676ab0ad90a0b5cac06991f3fc5e641a"
+                  },
+                  {
+                      "path":  "src/Rdv3Csv.cs",
+                      "sha256":  "30b056e9b484be6f44b4d9d9f4754876c307a3c1035a0b4562564a3b61392243"
+                  },
+                  {
+                      "path":  "src/Rdv3Data.cs",
+                      "sha256":  "cf05a5d8b87e03435c95588f2f199a8e3c062c3e9dfbca1eddbdfc009d8695e0"
+                  },
+                  {
+                      "path":  "src/Rdv3Expression.cs",
+                      "sha256":  "3aa7e69640f4624b3243f4c21df89aa7fecf7124f1d777657b3715e2292ed09d"
+                  },
+                  {
+                      "path":  "src/Rdv3Files.cs",
+                      "sha256":  "53cd344a53b583f1b30d36217ae766c6431e8d3ea61604ca088591e530864a04"
+                  },
+                  {
+                      "path":  "src/Rdv3Headless.cs",
+                      "sha256":  "4832d316cd9d6ab0d880acc88bde76ea16d68eb530144c05b0d9d8ad68711f5d"
+                  },
+                  {
+                      "path":  "src/Rdv3Index.cs",
+                      "sha256":  "e49d4e6e888046cee2104f40c539a9f94ce7824804996c703c7039a604a5a033"
+                  },
+                  {
+                      "path":  "src/Rdv3Input.cs",
+                      "sha256":  "19bfd15c7b6b77716e3d89f30f3761d64e5e7b59806bcbbcb655d2a4ca6006ee"
+                  },
+                  {
+                      "path":  "src/Rdv3Jobs.cs",
+                      "sha256":  "1a390d92e5282cd2480b8f02bd889861aa8a6d2b37271991f683ce0e9ad2e722"
+                  },
+                  {
+                      "path":  "src/Rdv3Json.cs",
+                      "sha256":  "e7226c1aea63813b5f557aab583d7843920671b700a2268f576f04f730cbba16"
+                  },
+                  {
+                      "path":  "src/Rdv3Key.cs",
+                      "sha256":  "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
+                  },
+                  {
+                      "path":  "src/Rdv3Ledger.cs",
+                      "sha256":  "81f838a040305d77d58e6b5b8457a84f410ac386ad3e0238b6a5f5b8b692c5db"
+                  },
+                  {
+                      "path":  "src/Rdv3LedgerStore.cs",
+                      "sha256":  "1ffd8f5aad6b6b90cf4595d03cb9d34e656facbe6e59411c33fce836d0c4eea4"
+                  },
+                  {
+                      "path":  "src/Rdv3Log.cs",
+                      "sha256":  "e255779cb9c272484c1895338016d43aa778e1d483e1c7964dfd1a2a3e5616b0"
+                  },
+                  {
+                      "path":  "src/Rdv3Modals.cs",
+                      "sha256":  "cf38bbf735a4b61ae282125e7f9f8bd0778b83d2b43a4f2acd7aa9b85aa44095"
+                  },
+                  {
+                      "path":  "src/Rdv3Process.cs",
+                      "sha256":  "c0170391ba88a15d57a28f12a5c7b6cf3dd37c6aa385253dc3f6ab40ca26e624"
+                  },
+                  {
+                      "path":  "src/Rdv3Program.cs",
+                      "sha256":  "35abddfa047a22d183cacc520819b9858e0e4592be013d5974ba3d5bcb27714b"
+                  },
+                  {
+                      "path":  "src/Rdv3ResetNotice.cs",
+                      "sha256":  "9558c3d1197048e7353a65f84e352101f9789897a6aa6c8998aeb980515ddb6a"
+                  },
+                  {
+                      "path":  "src/Rdv3Screen.cs",
+                      "sha256":  "890d7e66096161785f55daa077ce4bba58223099141b7134bb3ed3dc2873b109"
+                  },
+                  {
+                      "path":  "src/Rdv3Settings.cs",
+                      "sha256":  "8596244ecb19e810e337800b7a120521bc742f4e3906c3a7d2065ead21e4982c"
+                  },
+                  {
+                      "path":  "src/Rdv3Shared.cs",
+                      "sha256":  "f56951a63e5ceb0bed6be668eb9616d3b35c59f2702550929a2ad562e97cf300"
+                  },
+                  {
+                      "path":  "src/Rdv3Text.cs",
+                      "sha256":  "57c2b38fc51cabf9f3477f247c5ec50528e7c51bff49bca6736b92f3c00853d5"
+                  },
+                  {
+                      "path":  "src/Rdv3Ui.cs",
+                      "sha256":  "c152b18048fa383a24e4b93b3fbcc5f48efa0bcc77a584041ca650d2c24ca1b6"
+                  },
+                  {
+                      "path":  "src/Rdv3Uia.cs",
+                      "sha256":  "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e"
+                  },
+                  {
+                      "path":  "src/Rdv3Validation.cs",
+                      "sha256":  "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901"
+                  },
+                  {
+                      "path":  "src/Rdv3Values.cs",
+                      "sha256":  "153dda5de3377e09a0721b5f570b79497ce213a64b1eb218fabe8a22e2325177"
+                  },
+                  {
+                      "path":  "src/Rdv3Watch.cs",
+                      "sha256":  "7ac394ca6b0f5996cccbdc119c10bfc05cebd0086441d350e1a235c6b7ed45c0"
+                  },
+                  {
+                      "path":  "src/Rdv3WriteGuard.cs",
+                      "sha256":  "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96"
+                  },
+                  {
+                      "path":  "src/Rdv3Xlsx.cs",
+                      "sha256":  "4259ddb455a81373fe3e0ea2d50dba8b4ee8a61a6e836e5f159f320abe5327f9"
+                  },
+                  {
+                      "path":  "src/ReaderDataViewer.ps1",
+                      "sha256":  "be0f975d0c991efc81784f9316053399900382b85a49a264c8b5d1ca5558d9ca"
+                  },
+                  {
+                      "path":  "THIRD-PARTY-NOTICES.md",
+                      "sha256":  "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2"
+                  },
+                  {
+                      "path":  "web/app.css",
+                      "sha256":  "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d"
+                  },
+                  {
+                      "path":  "web/app.js",
+                      "sha256":  "6d490b42200435eda53d5d97282da44b4f09a2e05eafd3948ffc9506823fdcfa"
+                  },
+                  {
+                      "path":  "web/index.html",
+                      "sha256":  "214e946ed00ecaab3876de3adeaa79cd80701d29ea5b7dbf850b3eb1a6d95d8a"
+                  }
+              ]
+}
