@@ -277,7 +277,7 @@ public sealed class Rdv3Config
 
     // ---- reading -----------------------------------------------------------
     // The whole file, or an Rdv3LoadError that says what is wrong and where.
-    public static Rdv3Config Load(string path)
+    public static Rdv3Config Load(string path, bool collectErrors = false)
     {
         if (path == null || path.Length == 0 || !File.Exists(path))
         {
@@ -286,71 +286,92 @@ public sealed class Rdv3Config
         string text;
         try { text = File.ReadAllText(path, new UTF8Encoding(false, true)); }
         catch (Exception ex) { throw new Rdv3LoadError("the file cannot be read: " + ex.Message, 0); }
-        Rdv3Config c = Parse(text);
+        Rdv3Config c = Parse(text, collectErrors);
         c.SourcePath = path;
         return c;
     }
 
-    public static Rdv3Config Parse(string text)
+    public static Rdv3Config Parse(string text, bool collectErrors = false)
     {
         Rdv3Json root = Rdv3Json.Parse(text);
         if (!root.IsObject) { throw new Rdv3LoadError("the top level is not an object", root.Line); }
+        if (collectErrors) { root.CollectErrors(new Rdv3Validation()); }
         root.Only("schema", "paths", "search", "watch", "jobs", "data", "screen");
         Rdv3Config c = new Rdv3Config();
 
+        root.Check(delegate {
         int schema = root.Int("schema", 1, 1000);
         if (schema != Schema)
         {
             throw root.Member("schema").Fail("this program reads schema " + N(Schema)
                 + "; the file says " + N(schema) + " (docs/settings.md)");
         }
+        });
 
+        root.Check(delegate {
         Rdv3Json p = OptionalObject(root, "paths");
         p.Only("dataDir", "ledger", "log");
+        p.Check(delegate {
         c.DataDir = p.StrOr("dataDir", c.DataDir);
-        c.Ledger = p.StrOr("ledger", c.Ledger);
-        c.Log = p.StrOr("log", c.Log);
         if (c.DataDir.Trim().Length == 0) { throw p.Member("dataDir").Fail("must not be blank"); }
+        });
+        p.Check(delegate {
+        c.Ledger = p.StrOr("ledger", c.Ledger);
         if (c.Ledger.Trim().Length == 0) { throw p.Member("ledger").Fail("must not be blank"); }
+        });
+        p.Check(delegate {
+        c.Log = p.StrOr("log", c.Log);
         if (c.Log.Trim().Length == 0) { throw p.Member("log").Fail("must not be blank"); }
+        });
         c.pathsNode = p;
+        });
 
+        root.Check(delegate {
         Rdv3Json s = OptionalObject(root, "search");
         s.Only("pattern", "candidateRowsShown");
+        s.Check(delegate {
         c.KeyPattern = s.StrOr("pattern", DefaultKeyPattern);
         string why = PatternError(c.KeyPattern);
         if (why != null) { throw s.Member("pattern").Fail("is not a usable regular expression (" + why + ")"); }
-        c.CandidateRowsShown = s.IntOr("candidateRowsShown", c.CandidateRowsShown, 1, 1000);
+        });
+        s.Check(delegate { c.CandidateRowsShown = s.IntOr("candidateRowsShown", c.CandidateRowsShown, 1, 1000); });
         c.searchNode = s;
+        });
 
+        root.Check(delegate {
         Rdv3Json w = OptionalObject(root, "watch");
         w.Only("pollMs", "stableMs", "rebindMs", "preferFocusedWindow", "targets");
-        c.PollMs = w.IntOr("pollMs", c.PollMs, 5, 5000);
-        c.StableMs = w.IntOr("stableMs", c.StableMs, 0, 60000);
-        c.RebindMs = w.IntOr("rebindMs", c.RebindMs, 50, 60000);
-        c.PreferFocusedWindow = w.BoolOr("preferFocusedWindow", c.PreferFocusedWindow);
+        w.Check(delegate { c.PollMs = w.IntOr("pollMs", c.PollMs, 5, 5000); });
+        w.Check(delegate { c.StableMs = w.IntOr("stableMs", c.StableMs, 0, 60000); });
+        w.Check(delegate { c.RebindMs = w.IntOr("rebindMs", c.RebindMs, 50, 60000); });
+        w.Check(delegate { c.PreferFocusedWindow = w.BoolOr("preferFocusedWindow", c.PreferFocusedWindow); });
         // the file decides what is watched -- down to "nothing" (an empty list).
         // A target the operator turned OFF is kept: it is still theirs, the
         // dialog still lists it, and the next save still writes it.
         List<Rdv3Json> ts = w.Objs("targets", false);
-        for (int i = 0; i < ts.Count; i++) { c.Targets.Add(Rdv3Target.Read(ts[i])); }
+        for (int i = 0; i < ts.Count; i++) { ts[i].Check(delegate { c.Targets.Add(Rdv3Target.Read(ts[i])); }); }
         c.watchNode = w;
+        });
 
+        root.Check(delegate {
         Rdv3Json j = OptionalObject(root, "jobs");
         j.Only("checkTimeoutMs", "searchTimeoutMs", "saveTimeoutMs", "markOverdueMs", "pumpMs", "lockRetryMs", "lockStaleMs", "markerPollMs");
-        c.CheckTimeoutMs = j.IntOr("checkTimeoutMs", c.CheckTimeoutMs, 1000, 3600000);
-        c.SearchTimeoutMs = j.IntOr("searchTimeoutMs", c.SearchTimeoutMs, 1000, 3600000);
-        c.SaveTimeoutMs = j.IntOr("saveTimeoutMs", c.SaveTimeoutMs, 1000, 3600000);
-        c.MarkOverdueMs = j.IntOr("markOverdueMs", c.MarkOverdueMs, 1000, 3600000);
-        c.PumpMs = j.IntOr("pumpMs", c.PumpMs, 100, 60000);
-        c.LockRetryMs = j.IntOr("lockRetryMs", c.LockRetryMs, 50, 5000);
-        c.LockStaleMs = j.IntOr("lockStaleMs", c.LockStaleMs, 60000, 86400000);
-        c.MarkerPollMs = j.IntOr("markerPollMs", c.MarkerPollMs, 500, 60000);
+        j.Check(delegate { c.CheckTimeoutMs = j.IntOr("checkTimeoutMs", c.CheckTimeoutMs, 1000, 3600000); });
+        j.Check(delegate { c.SearchTimeoutMs = j.IntOr("searchTimeoutMs", c.SearchTimeoutMs, 1000, 3600000); });
+        j.Check(delegate { c.SaveTimeoutMs = j.IntOr("saveTimeoutMs", c.SaveTimeoutMs, 1000, 3600000); });
+        j.Check(delegate { c.MarkOverdueMs = j.IntOr("markOverdueMs", c.MarkOverdueMs, 1000, 3600000); });
+        j.Check(delegate { c.PumpMs = j.IntOr("pumpMs", c.PumpMs, 100, 60000); });
+        j.Check(delegate { c.LockRetryMs = j.IntOr("lockRetryMs", c.LockRetryMs, 50, 5000); });
+        j.Check(delegate { c.LockStaleMs = j.IntOr("lockStaleMs", c.LockStaleMs, 60000, 86400000); });
+        j.Check(delegate { c.MarkerPollMs = j.IntOr("markerPollMs", c.MarkerPollMs, 500, 60000); });
+        });
 
-        c.Data = Rdv3Data.Read(root.Obj("data", true));
-        c.Screen = Rdv3Screen.Read(root.Obj("screen", true));
+        root.Check(delegate { c.Data = Rdv3Data.Read(root.Obj("data", true)); });
+        root.Check(delegate { c.Screen = Rdv3Screen.Read(root.Obj("screen", true)); });
         // the screen names ledger columns; they have to be the data's
-        c.Screen.Check(c.Data);
+        if (c.Data != null && c.Screen != null) { c.Screen.Check(c.Data, root.Validation); }
+        else if (root.Validation != null) { root.Validation.Skip("screen references to data (incomplete data or screen definition)"); }
+        if (root.Validation != null) { root.Validation.Finish("settings", "input files, input columns/types and job preparation"); }
         c.sourceDigest = Rdv3PendingStore.DigestOf(text);
         return c;
     }
@@ -362,6 +383,7 @@ public sealed class Rdv3Config
         value = Rdv3Json.Parse("{}");
         value.Path = name;
         value.Start = value.End = -1;
+        value.CollectErrors(root.Validation);
         return value;
     }
 

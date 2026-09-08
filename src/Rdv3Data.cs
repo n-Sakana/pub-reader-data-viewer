@@ -285,10 +285,12 @@ public sealed class Rdv3Data
 
         Rdv3Json tables = o.Obj("tables", true);
         if (tables.Order.Count == 0) { throw tables.Fail("names no table"); }
+        int tableErrors = o.ErrorCount;
         for (int i = 0; i < tables.Order.Count; i++)
         {
             string id = tables.Order[i];
             Rdv3Json to = tables.Member(id);
+            to.Check(delegate {
             if (id.Trim().Length == 0 || id.IndexOf('.') >= 0 || id.IndexOf(' ') >= 0)
             {
                 throw to.Fail("a table id must be a word without . or spaces");
@@ -298,26 +300,32 @@ public sealed class Rdv3Data
             to.Only("label", "file", "key", "keyValidation", "encoding");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
-            t.Label = to.StrOr("label", id);
-            t.File = to.Need("file");
-            t.KeyColumns = ReadColumnNames(to.Member("key"));
-            t.KeyValidation = ReadKeyValidation(to);
-            t.Enc = ReadEncoding(to, d.Enc);
+            int before = to.ErrorCount;
+            to.Check(delegate { t.Label = to.StrOr("label", id); });
+            to.Check(delegate { t.File = to.Need("file"); });
+            to.Check(delegate { t.KeyColumns = ReadColumnNames(to.Member("key")); });
+            to.Check(delegate { t.KeyValidation = ReadKeyValidation(to); });
+            to.Check(delegate { t.Enc = ReadEncoding(to, d.Enc); });
+            to.Guard(before, to.Path + " registration and references");
             t.EncodingSetting = EncodingSetting(to);
             t.Ord = d.Tables.Count;
             d.Tables.Add(t);
             d.Labels.Add(t.Id, t.Label);
+            });
         }
+        o.Guard(tableErrors, "data labels, types, jobs and ledger (incomplete table definitions)");
 
         Rdv3Json labels = o.Obj("labels", true);
         for (int i = 0; i < labels.Order.Count; i++)
         {
             string key = labels.Order[i];
             Rdv3Json val = labels.Member(key);
+            val.Check(delegate {
             if (val.Kind != Rdv3Json.TString || val.Str.Trim().Length == 0) { throw val.Fail("must be a non-blank display label"); }
             if (d.Labels.ContainsKey(key)) { throw val.Fail(key + " already has a table label"); }
             d.Labels.Add(key, val.Str);
             d.LabelOrder.Add(key);
+            });
         }
 
         Rdv3Json types = o.Obj("types", false);
@@ -327,6 +335,7 @@ public sealed class Rdv3Data
             {
                 string reference = types.Order[i];
                 Rdv3Json at = types.Member(reference);
+                at.Check(delegate {
                 Rdv3ColumnRef column = ParseRef(d, reference, at);
                 at.Only("type", "format");
                 Rdv3ColumnTypeDef type = new Rdv3ColumnTypeDef();
@@ -346,18 +355,23 @@ public sealed class Rdv3Data
                 }
                 d.Types.Add(type.Ref, type);
                 d.TypeOrder.Add(type);
+                });
             }
         }
 
         List<Rdv3Json> jobs = o.Objs("jobs", true);
         if (jobs.Count == 0) { throw o.Member("jobs").Fail("holds no job"); }
+        int jobErrors = o.ErrorCount;
         for (int i = 0; i < jobs.Count; i++)
         {
+            jobs[i].Check(delegate {
             Rdv3ProcessJobDef job = ReadJob(d, jobs[i]);
             if (d.JobOf(job.Id) != null) { throw jobs[i].Member("id").Fail(job.Id + " is used by another job"); }
             d.Jobs.Add(job);
             if (job.Kind == "update" && d.UpdateJob == null) { d.UpdateJob = job; }
+            });
         }
+        o.Guard(jobErrors, "data.ledger and job references (incomplete job definitions)");
         if (d.UpdateJob == null) { throw o.Member("jobs").Fail("must contain at least one update job"); }
         if (d.UpdateJob.FinalKind != "ledger")
         {
@@ -1010,8 +1024,10 @@ public sealed class Rdv3Data
                 Rdv3ProcessInputDef input = job.Inputs[i];
                 if (!input.IsTable)
                 {
+                    node.Member("inputs").At(i).Check(delegate {
                     Rdv3ColumnRef key = ParseRef(d, input.Key, node.Member("inputs").At(i).Member("key"));
                     if (d.IndexOf(key.Ref) < 0) { throw node.Member("inputs").At(i).Member("key").Fail(key.Ref + " must be one of the ledger source columns"); }
+                    });
                 }
             }
             for (int i = 0; i < job.Steps.Count; i++)
@@ -1035,7 +1051,7 @@ public sealed class Rdv3Data
                 if (step.Column.Length > 0)
                 {
                     RequireLabel(d, step.Output + "." + step.Column, sn.Member("column"));
-                    RequireExpressionLabels(d, step.Expression, sn.Member("expression"));
+                    sn.Member("expression").Check(delegate { RequireExpressionLabels(d, step.Expression, sn.Member("expression")); });
                 }
                 for (int g = 0; g < step.GroupBy.Count; g++) { RequireLabel(d, step.GroupBy[g], sn.Member("groupBy").At(g)); }
                 for (int a = 0; a < step.Aggregates.Count; a++)
@@ -1053,8 +1069,9 @@ public sealed class Rdv3Data
                 for (int x = 0; x < step.Set.Count; x++)
                 {
                     RequireLabel(d, step.Set[x].Column, sn.Member("set").At(x).Member("column"));
-                    RequireExpressionLabels(d, step.Set[x].Expression,
-                                            sn.Member("set").At(x).Member("expression"));
+                    sn.Member("set").At(x).Check(delegate {
+                        RequireExpressionLabels(d, step.Set[x].Expression, sn.Member("set").At(x).Member("expression"));
+                    });
                 }
             }
         }
@@ -1062,7 +1079,7 @@ public sealed class Rdv3Data
 
     private static void RequireLabel(Rdv3Data d, string name, Rdv3Json at)
     {
-        if (d.LabelOf(name).Length == 0) { throw at.Fail(name + " has no screen label under data.labels or tables.*.label"); }
+        if (d.LabelOf(name).Length == 0) { at.Report(at.Fail(name + " has no screen label under data.labels or tables.*.label")); }
     }
 
     private static void RequireExpressionLabels(Rdv3Data d, string expression, Rdv3Json at)
