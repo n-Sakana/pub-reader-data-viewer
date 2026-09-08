@@ -1,0 +1,74 @@
+{
+  "mode": "update",
+  "job": "update",
+  "summary": {
+    "rows": 1,
+    "skippedEmpty": 0,
+    "skippedDuplicate": 0,
+    "skippedShort": 0,
+    "skippedBlank": 0,
+    "skippedColumns": 2,
+    "baselineRows": 0,
+    "resetRows": 0
+  },
+  "inputs": [
+    {
+      "id": "A",
+      "file": "C:\\Users\\ynisi\\AppData\\Local\\Temp\\rdv-structural-tcgqhwu9\\unused-xlsx\\rows.xlsx",
+      "rows": 1,
+      "skippedEmpty": 0,
+      "skippedDuplicate": 0,
+      "skippedShort": 0,
+      "skippedBlank": 0,
+      "skippedColumns": 2
+    }
+  ],
+  "warnings": [
+    "rows.xlsx: 設定から参照されていない重複見出し「unused」の 2 列をすべて除外しました。"
+  ],
+  "joins": [],
+  "columns": [
+    "A.id",
+    "A.name"
+  ],
+  "rows": [
+    [
+      "001",
+      "one"
+    ]
+  ],
+  "states": [
+    "FALSE"
+  ],
+  "resetRows": [],
+  "values": {
+    "A": {
+      "kind": "table",
+      "count": 1,
+      "columns": [
+        "A.name",
+        "A.id"
+      ],
+      "rows": [
+        [
+          "one",
+          "001"
+        ]
+      ]
+    },
+    "ledger": {
+      "kind": "ledger",
+      "count": 1,
+      "columns": [
+        "A.id",
+        "A.name"
+      ],
+      "rows": [
+        [
+          "001",
+          "one"
+        ]
+      ]
+    }
+  }
+}

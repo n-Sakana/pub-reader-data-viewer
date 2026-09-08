@@ -1,0 +1,58 @@
+{
+  "mode": "update",
+  "job": "update",
+  "summary": {
+    "rows": 0,
+    "skippedEmpty": 0,
+    "skippedDuplicate": 0,
+    "skippedShort": 2,
+    "skippedBlank": 0,
+    "skippedColumns": 0,
+    "baselineRows": 0,
+    "resetRows": 0
+  },
+  "inputs": [
+    {
+      "id": "A",
+      "file": "C:\\Users\\ynisi\\AppData\\Local\\Temp\\rdv-structural-tcgqhwu9\\all-short\\rows.csv",
+      "rows": 0,
+      "skippedEmpty": 0,
+      "skippedDuplicate": 0,
+      "skippedShort": 2,
+      "skippedBlank": 0,
+      "skippedColumns": 0
+    }
+  ],
+  "warnings": [
+    "rows.csv: 見出しより列が少ない 2 行と空行 0 行を除外しました。不足セルの補完はしていません。",
+    "rows.csv: 除外後のデータ行は 0 件です。入力ファイルと除外件数を確認してください。"
+  ],
+  "joins": [],
+  "columns": [
+    "A.id",
+    "A.name"
+  ],
+  "rows": [],
+  "states": [],
+  "resetRows": [],
+  "values": {
+    "A": {
+      "kind": "table",
+      "count": 0,
+      "columns": [
+        "A.id",
+        "A.name"
+      ],
+      "rows": []
+    },
+    "ledger": {
+      "kind": "ledger",
+      "count": 0,
+      "columns": [
+        "A.id",
+        "A.name"
+      ],
+      "rows": []
+    }
+  }
+}

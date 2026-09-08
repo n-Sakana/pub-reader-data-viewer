@@ -1,0 +1,87 @@
+{
+  "mode": "update",
+  "job": "update",
+  "summary": {
+    "rows": 2,
+    "skippedEmpty": 0,
+    "skippedDuplicate": 0,
+    "skippedShort": 1,
+    "skippedBlank": 1,
+    "skippedColumns": 0,
+    "baselineRows": 0,
+    "resetRows": 0
+  },
+  "inputs": [
+    {
+      "id": "A",
+      "file": "C:\\Users\\ynisi\\AppData\\Local\\Temp\\rdv-structural-tcgqhwu9\\short-quoted\\rows.csv",
+      "rows": 2,
+      "skippedEmpty": 0,
+      "skippedDuplicate": 0,
+      "skippedShort": 1,
+      "skippedBlank": 1,
+      "skippedColumns": 0
+    }
+  ],
+  "warnings": [
+    "rows.csv: 見出しより列が少ない 1 行と空行 1 行を除外しました。不足セルの補完はしていません。"
+  ],
+  "joins": [],
+  "columns": [
+    "A.id",
+    "A.name"
+  ],
+  "rows": [
+    [
+      "001",
+      "one\nline"
+    ],
+    [
+      "003",
+      "three"
+    ]
+  ],
+  "states": [
+    "FALSE",
+    "FALSE"
+  ],
+  "resetRows": [],
+  "values": {
+    "A": {
+      "kind": "table",
+      "count": 2,
+      "columns": [
+        "A.id",
+        "A.name"
+      ],
+      "rows": [
+        [
+          "001",
+          "one\nline"
+        ],
+        [
+          "003",
+          "three"
+        ]
+      ]
+    },
+    "ledger": {
+      "kind": "ledger",
+      "count": 2,
+      "columns": [
+        "A.id",
+        "A.name"
+      ],
+      "rows": [
+        [
+          "001",
+          "one\nline"
+        ],
+        [
+          "003",
+          "three"
+        ]
+      ]
+    }
+  }
+}

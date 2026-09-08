@@ -44,7 +44,7 @@ with tempfile.TemporaryDirectory(prefix='rdv-input-boundaries-') as temporary:
 
     for name,head,mode in [('csv-fast','id,name,name','-RunUpdate'),('csv-quoted','id,name,"name"','-RunUpdate'),('csv-validate','id,name,name','-ValidateOnly')]:
         msg=execute(name,minimal,{'rows.csv':head+'\n001,left,right\n'},3,mode)
-        check('1 行目、列 3' in msg and 'Remove duplicate columns only if they are unused' in msg and 'JSON labels or select cannot' in msg,'missing header location/remedy')
+        check('1 行目、列 3' in msg and 'Duplicate headers used' in msg and 'JSON labels or select cannot' in msg,'missing header location/remedy')
         passed(name,'exit 3; row 1 column 3; correction and unsupported JSON workaround stated')
 
     workbook=folder/'duplicate.xlsx'
@@ -56,7 +56,7 @@ with tempfile.TemporaryDirectory(prefix='rdv-input-boundaries-') as temporary:
     cfg=copy.deepcopy(minimal)
     cfg['data']['tables']['A']['file']='duplicate.xlsx'
     msg=execute('xlsx-header-row',cfg,{'duplicate.xlsx':workbook.read_bytes()},3)
-    check('5 行目、列 3' in msg and 'Remove duplicate columns' in msg,'XLSX actual header position/remedy')
+    check('5 行目、列 3' in msg and 'rename them in the source' in msg,'XLSX actual header position/remedy')
     passed('xlsx-header-row','exit 3; actual header row 5 column 3; same correction')
 
     cfg=copy.deepcopy(minimal)
