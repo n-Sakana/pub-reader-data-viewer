@@ -6,7 +6,7 @@ using System.Text;
 // snapshots: changing those would invalidate their conflict baselines.
 public static class Rdv3Input
 {
-    public static void ValidateEncoding(byte[] bytes, Encoding encoding, string path)
+    public static void ValidateEncoding(byte[] bytes, Encoding encoding, string path, string encodingSetting = "data.encoding")
     {
         Encoding strict = (Encoding)encoding.Clone();
         strict.DecoderFallback = DecoderFallback.ExceptionFallback;
@@ -30,7 +30,7 @@ public static class Rdv3Input
                 }
             }
             throw Error(path, row, column.ToString(CultureInfo.InvariantCulture), encoding.WebName,
-                "bytes " + BitConverter.ToString(ex.BytesUnknown), Rdv3Text.InputFixUnknownEncoding);
+                "bytes " + BitConverter.ToString(ex.BytesUnknown), Rdv3Text.InputFixUnknownEncoding.Replace("{setting}", encodingSetting));
         }
     }
 

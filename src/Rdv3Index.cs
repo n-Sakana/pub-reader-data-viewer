@@ -145,12 +145,13 @@ public sealed class Rdv3Index
         return rows;
     }
 
-    // Fixed ASCII tables retain the width check and ASCII decoder. Relaxed
-    // tables decode the actual slice with the declared data encoding.
-    public int FindBytes(byte[] buf, int off, int len, out List<int> rows)
+    // Bytes belong to the source table, which can use a different encoding
+    // from the indexed table. The key's character constraints still apply.
+    public int FindBytes(byte[] buf, int off, int len, out List<int> rows, Encoding sourceEncoding = null)
     {
-        if (keyEncoding == null) { rows = null; return 0; }
-        string k = Rdv3Input.Cell(keyEncoding.GetString(buf, off, len));
+        Encoding encoding = sourceEncoding ?? keyEncoding;
+        if (encoding == null) { rows = null; return 0; }
+        string k = Rdv3Input.Cell(encoding.GetString(buf, off, len));
         if (fixedAscii && k.Length != keyLen) { rows = null; return 0; }
         if (fixedAscii)
         {

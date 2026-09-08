@@ -101,7 +101,7 @@ public static class Rdv3Ledger
         {
             long m = Rdv3Clock.Now();
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
-                d.Enc, d.Tables[t].Key, d.Tables[t].KeyValidation);
+                d.Tables[t].Enc, d.Tables[t].Key, d.Tables[t].KeyValidation, d.Tables[t].EncodingSetting);
             tables[t].AddWarnings(r.Warnings);
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
@@ -162,7 +162,7 @@ public static class Rdv3Ledger
                     int p = spine.FieldAt(i, jd.OnField, out len);
                     if (p >= 0 && len > 0)
                     {
-                        int c = ix.FindBytes(spine.Buf, p, len, out found);
+                        int c = ix.FindBytes(spine.Buf, p, len, out found, spine.Enc);
                         if (c > 0) { rc = found[0]; matched++; }
                     }
                 }

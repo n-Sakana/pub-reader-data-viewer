@@ -108,7 +108,7 @@ public sealed class Rdv3Table
 
     // the header row only (for the start-up check of the definition against
     // the data, before the full read in the worker)
-    public static string[] ReadHead(string path, Encoding enc)
+    public static string[] ReadHead(string path, Encoding enc, string encodingSetting = "data.encoding")
     {
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
@@ -117,7 +117,7 @@ public sealed class Rdv3Table
         string[] head;
         string[][] rows;
         int[] rowNumbers;
-        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers);
+        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers, encodingSetting);
         return head;
     }
 
@@ -159,12 +159,12 @@ public sealed class Rdv3Table
     }
 
     public static Rdv3Table Read(string path, string name, Encoding enc, string keyName,
-                                 Rdv3KeyValidation validation)
+                                 Rdv3KeyValidation validation, string encodingSetting = "data.encoding")
     {
         if (validation == null) { validation = new Rdv3KeyValidation(); }
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return ReadDecoded(path, name, enc, keyName, validation, true);
+            return ReadDecoded(path, name, enc, keyName, validation, true, encodingSetting);
         }
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -172,8 +172,8 @@ public sealed class Rdv3Table
         t.Enc = enc;
         t.KeyValidation = validation;
         t.Buf = File.ReadAllBytes(path);
-        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, keyName, validation, false); }
-        Rdv3Input.ValidateEncoding(t.Buf, enc, path);
+        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, keyName, validation, false, encodingSetting); }
+        Rdv3Input.ValidateEncoding(t.Buf, enc, path, encodingSetting);
         string file = System.IO.Path.GetFileName(path);
 
         byte[] b = t.Buf;
@@ -272,7 +272,7 @@ public sealed class Rdv3Table
             {
                 // Unicode digits occupy several bytes. Validate their normalized
                 // characters, rather than guessing widths from the encoded bytes.
-                if (b[k] > 127) { return ReadDecoded(path, name, enc, keyName, validation, false); }
+                if (b[k] > 127) { return ReadDecoded(path, name, enc, keyName, validation, false, encodingSetting); }
             }
             int klen = keyEnd - keyAt;
             if (klen <= 0)
@@ -324,7 +324,7 @@ public sealed class Rdv3Table
     }
 
     private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string keyName,
-                                          Rdv3KeyValidation validation, bool workbook)
+                                          Rdv3KeyValidation validation, bool workbook, string encodingSetting)
     {
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -334,7 +334,7 @@ public sealed class Rdv3Table
         string warning = "";
         int[] originalRows = null;
         if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning); }
-        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows); }
+        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting); }
         t.ControlCharacterWarning = warning;
         t.KeyCol = t.ColumnOf(keyName);
         if (t.KeyCol < 0)

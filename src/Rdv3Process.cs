@@ -118,7 +118,7 @@ public static class Rdv3Process
             if (table == null)
             {
                 string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
-                table = Rdv3Table.Read(path, input.Id, data.Enc, input.Column, input.KeyValidation);
+                table = Rdv3Table.Read(path, input.Id, input.Enc, input.Column, input.KeyValidation, input.EncodingSetting);
                 new Rdv3Index(table);                    // enforce the configured duplicate rule
                 table.AddWarnings(prepared.Warnings);
             }

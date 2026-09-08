@@ -15,6 +15,8 @@ using System.Text;
 
 public sealed class Rdv3TableDef
 {
+    public Encoding Enc = new UTF8Encoding(false);
+    public string EncodingSetting = "data.encoding";
     public string Id = "";
     public string Label = "";
     public string File = "";
@@ -108,6 +110,8 @@ public sealed class Rdv3ProcessSetDef
 
 public sealed class Rdv3ProcessInputDef
 {
+    public Encoding Enc = new UTF8Encoding(false);
+    public string EncodingSetting = "data.encoding";
     public string Id = "";
     public string Label = "";
     public string Table = "";
@@ -262,12 +266,7 @@ public sealed class Rdv3Data
         o.Only("encoding", "tables", "labels", "types", "jobs", "ledger");
 
         d.EncodingName = o.StrOr("encoding", "utf-8");
-        try
-        {
-            d.Enc = (string.Equals(d.EncodingName, "utf-8", StringComparison.OrdinalIgnoreCase))
-                ? (Encoding)new UTF8Encoding(false) : Encoding.GetEncoding(d.EncodingName);
-        }
-        catch (Exception ex) { throw o.Member("encoding").Fail("is not an encoding this machine knows (" + ex.Message + ")"); }
+        d.Enc = ReadEncoding(o, d.Enc);
 
         Rdv3Json tables = o.Obj("tables", true);
         if (tables.Order.Count == 0) { throw tables.Fail("names no table"); }
@@ -281,13 +280,15 @@ public sealed class Rdv3Data
             }
             if (id == "ledger") { throw to.Fail("ledger is a reserved value name"); }
             if (to.Kind != Rdv3Json.TObject) { throw to.Fail("must be an object { label, file, key }"); }
-            to.Only("label", "file", "key", "keyValidation");
+            to.Only("label", "file", "key", "keyValidation", "encoding");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
             t.Label = to.StrOr("label", id);
             t.File = to.Need("file");
             t.Key = to.Need("key");
             t.KeyValidation = ReadKeyValidation(to);
+            t.Enc = ReadEncoding(to, d.Enc);
+            t.EncodingSetting = EncodingSetting(to);
             t.Ord = d.Tables.Count;
             d.Tables.Add(t);
             d.Labels.Add(t.Id, t.Label);
@@ -435,6 +436,18 @@ public sealed class Rdv3Data
         return nodes[0];
     }
 
+    private static Encoding ReadEncoding(Rdv3Json owner, Encoding fallback)
+    {
+        if (!owner.Has("encoding")) { return fallback; }
+        string name = owner.StrOr("encoding", "").Trim();
+        try { return Encoding.GetEncoding(name); }
+        catch (ArgumentException)
+        { throw owner.Member("encoding").Fail(Rdv3Text.InputUnknownEncoding.Replace("{value}", name)); }
+    }
+
+    private static string EncodingSetting(Rdv3Json owner)
+    { return owner.Has("encoding") ? owner.Member("encoding").Path : "data.encoding"; }
+
     private static Rdv3ProcessJobDef ReadJob(Rdv3Data d, Rdv3Json o)
     {
         o.Only("id", "name", "kind", "inputs", "steps");
@@ -463,17 +476,21 @@ public sealed class Rdv3Data
                 input.Column = table.Key;
                 input.Key = table.Id + "." + table.Key;
                 input.KeyValidation = table.KeyValidation;
+                input.Enc = table.Enc;
+                input.EncodingSetting = table.EncodingSetting;
                 input.TableOrd = table.Ord;
             }
             else
             {
-                io.Only("id", "label", "file", "column", "key", "keyValidation");
+                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding");
                 input.Id = io.Need("id");
                 input.Label = io.StrOr("label", input.Id);
                 input.File = io.Need("file");
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");
                 input.KeyValidation = ReadKeyValidation(io);
+                input.Enc = ReadEncoding(io, d.Enc);
+                input.EncodingSetting = EncodingSetting(io);
             }
             if (input.Id == "ledger") { throw io.Fail("ledger is a reserved value name"); }
             if (inputNames.ContainsKey(input.Id)) { throw io.Fail(input.Id + " is listed twice in inputs"); }

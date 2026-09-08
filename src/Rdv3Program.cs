@@ -71,7 +71,7 @@ public static class Rdv3Program
             {
                 string p = Path.Combine(dataDir, cfg.Data.Tables[t].File);
                 if (!File.Exists(p)) { throw new Rdv3DataError(Rdv3Text.ErrNoData + p); }
-                heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Enc);
+                heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Tables[t].Enc, cfg.Data.Tables[t].EncodingSetting);
             }
             cfg.Data.Bind(heads);
             if (cfg.Data.TypeOrder.Count > 0)
@@ -83,7 +83,7 @@ public static class Rdv3Program
                     if (typedTables[tableOrd] != null) { continue; }
                     Rdv3TableDef table = cfg.Data.Tables[tableOrd];
                     typedTables[tableOrd] = Rdv3Table.Read(Path.Combine(dataDir, table.File),
-                        table.Id, cfg.Data.Enc, table.Key, table.KeyValidation);
+                        table.Id, table.Enc, table.Key, table.KeyValidation, table.EncodingSetting);
                 }
                 cfg.Data.ValidateTypes(typedTables);
             }

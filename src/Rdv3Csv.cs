@@ -22,7 +22,7 @@ public static class Rdv3Csv
     }
 
     public static void Read(string path, Encoding encoding, bool headOnly,
-                            out string[] head, out string[][] rows, out int[] rowNumbers)
+                            out string[] head, out string[][] rows, out int[] rowNumbers, string encodingSetting = "data.encoding")
     {
         head = null;
         List<string[]> data = new List<string[]>();
@@ -41,7 +41,7 @@ public static class Rdv3Csv
             else if (n >= 2 && bom[0] == 254 && bom[1] == 255) { cp = 1201; skip = 2; }
             if (cp != 0 && cp != encoding.CodePage)
             { throw Rdv3Input.Error(path, 1, "BOM", encoding.WebName, Encoding.GetEncoding(cp).WebName,
-                Rdv3Text.InputFixEncoding.Replace("{encoding}", Encoding.GetEncoding(cp).WebName)); }
+                Rdv3Text.InputFixEncoding.Replace("{encoding}", Encoding.GetEncoding(cp).WebName).Replace("{setting}", encodingSetting)); }
             stream.Position = skip;
             using (StreamReader reader = new StreamReader(stream, strict, false, 65536))
             {
@@ -58,7 +58,7 @@ public static class Rdv3Csv
                         // decoder's buffered read may run ahead of this record.
                         stream.Position = 0;
                         using (MemoryStream copy = new MemoryStream())
-                        { stream.CopyTo(copy); Rdv3Input.ValidateEncoding(copy.ToArray(), encoding, path); }
+                        { stream.CopyTo(copy); Rdv3Input.ValidateEncoding(copy.ToArray(), encoding, path, encodingSetting); }
                         throw;
                     }
                     if (cells == null) { break; }

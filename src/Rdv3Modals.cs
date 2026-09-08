@@ -184,9 +184,10 @@ public static class Rdv3ProcessForm
                     Rdv3Table table = Rdv3Table.Read(
                         path,
                         input.Id,
-                        data.Enc,
+                        input.Enc,
                         input.Column,
-                        input.KeyValidation);
+                        input.KeyValidation,
+                        input.EncodingSetting);
                     new Rdv3Index(table);
                     rows = table.Rows.ToString("N0", CultureInfo.InvariantCulture);
                     List<string> warnings = new List<string>();

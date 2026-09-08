@@ -24,8 +24,9 @@ public static class Rdv3Text
     public const string InputFixKey = "入力値を直してください。この形を許す定義なら、settings.json の {path} を \"{choice}\" にします。";
     public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。";
     public const string InputFixType = " 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"{ref}\"].type を \"text\" にします。";
-    public const string InputFixEncoding = "settings.json の data.encoding を \"{encoding}\" に合わせるか、入力ファイルを指定した文字コードで保存してください。";
-    public const string InputFixUnknownEncoding = "このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の data.encoding に指定するか、ファイルをその文字コードで保存し直してください。";
+    public const string InputFixEncoding = "settings.json の {setting} を \"{encoding}\" に合わせるか、入力ファイルを指定した文字コードで保存してください。";
+    public const string InputFixUnknownEncoding = "このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の {setting} に指定するか、ファイルをその文字コードで保存し直してください。";
+    public const string InputUnknownEncoding = "文字コード「{value}」を利用できません。encoding に \"utf-8\"、\"shift_jis\"、\"utf-16\" など、この端末で利用できる文字コード名を指定してください。";
     public const string InputExpectHeader = "空でなく重複しない列名";
     public const string InputFixHeader = "CSV の先頭行を列名にし、空の列にも別々の名前を付けてください。設定の列参照は、その列名に合わせます。";
     public const string InputExpectQuote = "セル全体を囲む二重引用符と閉じ引用符";
