@@ -81,7 +81,7 @@
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "8b267bbf3e3fbabf1e0b97ba3bdcbd05f485f46f3997f8152d0e35e432341fae",
+      "sha256": "9a943952a269ade016937d0e8356ee82676ab0ad90a0b5cac06991f3fc5e641a",
       "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
     },
     {
@@ -146,7 +146,7 @@
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "1dbeedc14ea50ce12eb2f609f9f494005f1b3fa3cdc9d8a07bec7416fcaa08df",
+      "sha256": "9e81ee32f7e2340b8dcbc925699cce036c9f8407551b72a17f94207e9be047b2",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -170,7 +170,8 @@
     },
     {
       "path": "src/Rdv3Xlsx.cs",
-      "sha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
+      "sha256": "4259ddb455a81373fe3e0ea2d50dba8b4ee8a61a6e836e5f159f320abe5327f9",
+      "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
     },
     {
       "path": "src/ReaderDataViewer.ps1",
@@ -250,7 +251,7 @@
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "cebfab4384c10cf5dcd1c7d60c114724e3a20f84d0434bcd59bdca95e8e9abb9",
+      "sha256": "131936664b4ea3ea87ab6f8b997d2c6f2353bf222ddd3d282b5398899db1e4fe",
       "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
     },
     {
@@ -298,6 +299,14 @@
     {
       "path": "tests/test_readme_example.py",
       "sha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce"
+    },
+    {
+      "path": "tests/test_feedback_hints.py",
+      "sha256": "0f0f7ebf4a3c6641bfdbe231a6eee8cddf349876eda2958697dd65af4da9d58c"
+    },
+    {
+      "path": "tests/test_input_boundaries.py",
+      "sha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9"
     }
   ]
 }
