@@ -3,7 +3,7 @@
 //
 // The browser owns pixels and focus.  Rdv3App still owns every operation and
 // state transition; this class only serializes screen state and turns browser
-// messages back into the same actions used by the former desktop surface.
+// messages into application actions.
 // C# 5, ASCII source.
 // ============================================================================
 

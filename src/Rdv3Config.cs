@@ -1,26 +1,8 @@
-// ============================================================================
-// Rdv3Config.cs -- settings.json, the ONE file next to the .cmd. The
-// distribution is the program and this file:
-//
-//   ReaderDataViewer.cmd     the program
-//   settings.json            paths, search, watch, jobs   (Rdv3Config, below)
-//                            data                         (Rdv3Data.cs)
-//                            screen                       (Rdv3Screen.cs)
-//
-// The file is read once, at start-up, and it is read STRICTLY: it must exist,
-// parse, and pass every check, or the app does not start -- with the file,
-// the line and the reason on screen and in the log. There is no built-in
-// default to fall back on, no member that is quietly ignored, no value that is
-// quietly corrected. A file that half-applies would leave the operator
-// believing an edit is in effect when it is not.
-//
-// The settings dialog writes back only the members it edits (paths, search,
-// watch). It re-reads the file first -- a file that no longer loads is not
-// written over -- and then replaces just the text of those three members, so
-// everything else in the file, comments included, stays byte for byte.
-//
-// C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
-// ============================================================================
+// Configuration for paths, search, monitoring and job timing. Data and screen
+// definitions are validated by their own readers before any settings apply.
+// The settings dialog replaces only paths/search/watch, preserving other text.
+// Re-reading and comparing the original content prevents a stale dialog from
+// silently overwriting an edit made by another window or a text editor.
 
 using System;
 using System.Collections.Generic;

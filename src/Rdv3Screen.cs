@@ -1,30 +1,8 @@
-// ============================================================================
-// Rdv3Screen.cs -- the "screen" member of settings.json: what the screen shows.
-//
-// The screen is not written into the program. It is composed from a small set
-// of parts that the file arranges, names and binds to data:
-//
-//   sections      titleBar | keyPanel | columns | fieldList | textBox |
-//                 statusBand | sendBar | statusBar  (in display order)
-//   values        { field } | { fields, joiner } | { state }   + format, empty
-//   judgments     a source value, ordered rules, named results with a look.
-//                 No rule matching is "undefined"; a source that cannot be
-//                 read is "error". Neither is ever shown as OK.
-//   workState     the states a record can be in (todo / done ...), what
-//                 each is stored as, the transitions a button may make, and
-//                 the ledger column they live in.
-//   candidates    the columns of the candidate list.
-//
-// There is no expression language and no code in the file: every member is a
-// literal that one of the parts above understands, and the program does the
-// reading, judging, saving and drawing. The reader is strict (Rdv3Json): a
-// member the program does not know, a value of the wrong kind, a name that
-// refers to nothing -- a state, a judgment, a ledger column -- is an
-// Rdv3LoadError, and the app does not start. There is no built-in screen to
-// fall back on; the shipped settings.json is the only definition there is.
-//
-// C# 5 only, no verbatim strings, ASCII only outside Rdv3Text.cs.
-// ============================================================================
+// Screen sections bind saved columns or application values to display parts.
+// Bindings are checked against the ledger before the window opens, so an
+// unknown field cannot silently appear as an empty, apparently valid value.
+// A judgment without a matching rule is undefined; an unreadable source is
+// error. Neither may be presented as OK.
 
 using System;
 using System.Collections.Generic;
@@ -637,8 +615,7 @@ public sealed class Rdv3CandidatesDef
 public sealed class Rdv3Screen
 {
     public double CardWidth = 1240;
-    // the window's client size at start-up, CSS px (the reference's 1240 is
-    // the design width; the operator works in a smaller window)
+    // Client size in CSS px; window borders and physical DPI are separate.
     public double StartWidth = 840;
     public double StartHeight = 830;
     public double Gap = 17;
