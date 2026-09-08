@@ -1,0 +1,53 @@
+{
+  "utc": "2026-09-08T17:23:34.878785+00:00",
+  "kind": "actual WPF/WebView2 export operation",
+  "package": "releases/build-20260909-013958-18aa64b7/ReaderDataViewer-win98",
+  "monitor": {
+    "model": "EV2740S",
+    "serial": "26025105",
+    "dpi": 144
+  },
+  "processId": 21668,
+  "operations": [
+    "create ledger from bundled fixtures",
+    "open export",
+    "move field right and left",
+    "reset selected fields",
+    "add and remove filter",
+    "toggle Excel-safe off and on",
+    "cancel invalid typing attempt",
+    "reopen export",
+    "submit blank filter and observe validation",
+    "select quantity as sixth field",
+    "save default destination CSV",
+    "close window normally"
+  ],
+  "savedCsv": "work/tobe-export-native-20260909/app/output/export-20260909-015520.csv",
+  "independentReadback": {
+    "path": "work\\tobe-export-native-20260909\\app\\output\\export-20260909-015520.csv",
+    "headers": [
+      "key1",
+      "key2",
+      "a_name",
+      "b_status",
+      "処理済み",
+      "b_qty"
+    ],
+    "rows": 990,
+    "columns": 6,
+    "all990RowsMatchInputKeyStatusQuantity": true,
+    "stateValues": [
+      "FALSE"
+    ]
+  },
+  "screenshot": "work/tobe-export-native-20260909/export-saved.png",
+  "notVerified": [
+    "native successful typed filter",
+    "native output destination edit",
+    "real Japanese IME",
+    "other DPI factors",
+    "dirty input changes in the subsequently built 022143 package"
+  ],
+  "automationLimit": "UIA SetValue input readback contained unexpected characters. Foreground-gated SendKeys sent no keys when foreground ownership could not be confirmed. WM_CHAR readback also differed. Invalid typing attempt was cancelled, and final export used the default path and no filters. No input harness was repaired after its initial creation.",
+  "closedNormally": true
+}
