@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix='rdv-input-boundaries-') as temporary:
     workbook=folder/'duplicate.xlsx'
     with zipfile.ZipFile(workbook,'w') as book:
         book.writestr('xl/workbook.xml','<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Data" sheetId="1" r:id="rId1"/></sheets></workbook>')
-        book.writestr('xl/_rels/workbook.xml.rels','<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>')
+        book.writestr('xl/_rels/workbook.xml.rels','<Relationships><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>')
         cells=''.join('<c r="'+letter+'5" t="inlineStr"><is><t>'+name+'</t></is></c>' for letter,name in zip('ABC',['id','name','name']))
         book.writestr('xl/worksheets/sheet1.xml','<worksheet><sheetData><row r="5">'+cells+'</row></sheetData></worksheet>')
     cfg=copy.deepcopy(minimal)

@@ -30,8 +30,37 @@ public static class Rdv3Input
                 }
             }
             throw Error(path, row, column.ToString(CultureInfo.InvariantCulture), encoding.WebName,
-                "bytes " + BitConverter.ToString(ex.BytesUnknown), Rdv3Text.InputFixUnknownEncoding.Replace("{setting}", encodingSetting));
+                "bytes " + BitConverter.ToString(ex.BytesUnknown), Rdv3Text.InputFixUnknownEncoding.Replace("{setting}", encodingSetting)
+                + EncodingHint(bytes, encodingSetting));
         }
+    }
+
+    // A byte pattern is evidence for a suggestion, never permission to decode
+    // with a different encoding or silently change the configured table.
+    private static string EncodingHint(byte[] bytes, string setting)
+    {
+        if (bytes.Length < 16 || bytes.Length % 2 != 0) { return ""; }
+        int length = Math.Min(bytes.Length, 8192), even = 0, odd = 0;
+        for (int i = 0; i < length; i += 2)
+        { if (bytes[i] == 0) { even++; } if (bytes[i + 1] == 0) { odd++; } }
+        bool little = odd >= 4 && odd >= (even + 1) * 4;
+        bool big = even >= 4 && even >= (odd + 1) * 4;
+        if (!little && !big) { return ""; }
+        try
+        {
+            Encoding candidate = new UnicodeEncoding(big, false, true);
+            candidate.GetCharCount(bytes);
+            // Do not cut a surrogate pair at the end of the sampled prefix.
+            int last = big ? (bytes[length - 2] << 8) | bytes[length - 1] : (bytes[length - 1] << 8) | bytes[length - 2];
+            if (last >= 0xd800 && last <= 0xdbff) { length -= 2; }
+            string sample = candidate.GetString(bytes, 0, length);
+            if (sample.IndexOf(',') < 0 || (sample.IndexOf('\n') < 0 && sample.IndexOf('\r') < 0)) { return ""; }
+            foreach (char c in sample) { if (c < ' ' && c != '\r' && c != '\n' && c != '\t') { return ""; } }
+            return " Possible " + (little ? "UTF-16LE" : "UTF-16BE")
+                + " without BOM (alternating zero bytes and valid UTF-16 CSV text). Confirm the source encoding and set "
+                + setting + " to \"" + (little ? "utf-16" : "utf-16BE") + "\". The encoding was not changed automatically.";
+        }
+        catch (DecoderFallbackException) { return ""; }
     }
 
     public static Rdv3DataError Error(string file, int row, string column, string expected, string actual, string fix)

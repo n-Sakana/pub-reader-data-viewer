@@ -1,0 +1,37 @@
+[
+  {
+    "name": "csv-fast",
+    "status": "PASS",
+    "detail": "exit 3; row 1 column 3; correction and unsupported JSON workaround stated"
+  },
+  {
+    "name": "csv-quoted",
+    "status": "PASS",
+    "detail": "exit 3; row 1 column 3; correction and unsupported JSON workaround stated"
+  },
+  {
+    "name": "csv-validate",
+    "status": "PASS",
+    "detail": "exit 3; row 1 column 3; correction and unsupported JSON workaround stated"
+  },
+  {
+    "name": "xlsx-header-row",
+    "status": "PASS",
+    "detail": "exit 3; actual header row 5 column 3; same correction"
+  },
+  {
+    "name": "normalized-key",
+    "status": "PASS",
+    "detail": "2 matches/1 missing; original padded identities preserved"
+  },
+  {
+    "name": "padding-expression",
+    "status": "PASS",
+    "detail": "README expression: 1/23/zero/max padded to 8 digits"
+  },
+  {
+    "name": "padding-overflow",
+    "status": "PASS",
+    "detail": "exit 3; 9 digits rejected before truncation"
+  }
+]

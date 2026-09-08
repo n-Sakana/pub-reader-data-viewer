@@ -22,7 +22,7 @@ public static class Rdv3Text
     public const string InputExpectKey = "空でないキー";
     public const string InputExpectWidth = "最初の有効行と同じ {n} 文字のキー";
     public const string InputFixKey = "入力値を直してください。この形を許す定義なら、settings.json の {path} を \"{choice}\" にします。";
-    public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。";
+    public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。 If multiple detail rows are intentional, first use a unique detail key (for example, an ID plus a sequence/date column), then use aggregate with groupBy at the required matching level. Input keys are checked before aggregate runs. duplicates:distinct keeps the first row; it does not sum values. If no suitable detail key exists, report that this input cannot be represented without changing the source; do not discard required rows.";
     public const string InputFixType = " 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"{ref}\"].type を \"text\" にします。";
     public const string InputFixEncoding = "settings.json の {setting} を \"{encoding}\" に合わせるか、入力ファイルを指定した文字コードで保存してください。";
     public const string InputFixUnknownEncoding = "このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の {setting} に指定するか、ファイルをその文字コードで保存し直してください。";
