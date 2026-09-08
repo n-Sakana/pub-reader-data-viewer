@@ -237,8 +237,20 @@ function New-DesignPackages($Catalog, $Options) {
             [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
             if ($Options.Data -eq 'sample') {
                 # Deliberate allow-list: NEVER copy the active data/ directory.
+                # Sample CSVs are a convenience, not a build requirement. A missing
+                # fixture warns and produces a package without sample data; it never
+                # fails the build (2026-09-08).
+                $missing = @()
                 foreach ($csv in @('tableA.csv','tableB.csv','tableC.csv','delete.csv')) {
-                    Copy-SafeFile (Join-Path $script:Root ('tests/fixtures/data/' + $csv)) (Join-Path $package ('data/' + $csv))
+                    $fixture = Join-Path $script:Root ('tests/fixtures/data/' + $csv)
+                    if (Test-Path -LiteralPath $fixture -PathType Leaf) {
+                        Copy-SafeFile $fixture (Join-Path $package ('data/' + $csv))
+                    } else {
+                        $missing += $csv
+                    }
+                }
+                if ($missing.Count -gt 0) {
+                    Write-Warning ('Sample CSVs not found in tests/fixtures/data: ' + ($missing -join ', ') + '. The package is built without them; run build/gen_data2.ps1 to regenerate.')
                 }
             }
             $effectiveMotion = 'off'; if ($definition.modern) { $effectiveMotion = $Options.Motion }

@@ -7,8 +7,13 @@
 #                 build/out/samples/           サンプル (build\gen_samples.ps1)
 #                 build/out/work/              検査の一時領域 (成功したら消える)
 #                 build/out/data-100k/         -OutDir を付けたときの生成先
-data/
+/data/
 build/out/
+
+# tools/Build.ps1 は -Data sample のとき tests/fixtures/data/ の CSV 4 本を
+# 配布物へ入れる。上の data/ を先頭スラッシュ無しで書いていたため、この
+# fixtures まで追跡から外れてビルドが失敗していた (2026-09-08 に先生が発見)。
+!tests/fixtures/data/
 
 # 退役した WinForms 版が残している配布物
 dist/
