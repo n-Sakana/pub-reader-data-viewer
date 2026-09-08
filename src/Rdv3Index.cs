@@ -33,7 +33,7 @@ public sealed class Rdv3Index
         scanLines = null;
         scanColumns = null;
         contains = false;
-        fixedAscii = t.KeyValidation.UsesFixedAsciiPath;
+        fixedAscii = t.KeyCols.Length == 1 && t.KeyValidation.UsesFixedAsciiPath;
         keyLen = fixedAscii ? t.KeyLen : 0;
         keyEncoding = t.Enc;
         map = new Dictionary<string, List<int>>(t.Rows, StringComparer.Ordinal);
@@ -50,7 +50,7 @@ public sealed class Rdv3Index
                 {
                     throw new Rdv3DataError(Rdv3Text.DataDupKey
                         .Replace("{file}", System.IO.Path.GetFileName(t.Path))
-                        .Replace("{name}", t.Head[t.KeyCol])
+                        .Replace("{name}", t.KeyLabel)
                         .Replace("{key}", k)
                         .Replace("{row1}", t.SourceRow(rows[0]).ToString(CultureInfo.InvariantCulture))
                         .Replace("{row2}", t.SourceRow(i).ToString(CultureInfo.InvariantCulture))

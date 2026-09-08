@@ -83,7 +83,7 @@ public static class Rdv3Program
                     if (typedTables[tableOrd] != null) { continue; }
                     Rdv3TableDef table = cfg.Data.Tables[tableOrd];
                     typedTables[tableOrd] = Rdv3Table.Read(Path.Combine(dataDir, table.File),
-                        table.Id, table.Enc, table.Key, table.KeyValidation, table.EncodingSetting);
+                        table.Id, table.Enc, table.KeyColumns, table.KeyValidation, table.EncodingSetting);
                 }
                 cfg.Data.ValidateTypes(typedTables);
             }

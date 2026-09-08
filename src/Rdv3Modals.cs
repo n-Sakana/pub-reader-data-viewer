@@ -185,7 +185,7 @@ public static class Rdv3ProcessForm
                         path,
                         input.Id,
                         input.Enc,
-                        input.Column,
+                        input.Columns ?? new string[] { input.Column },
                         input.KeyValidation,
                         input.EncodingSetting);
                     new Rdv3Index(table);
@@ -255,7 +255,12 @@ public static class Rdv3ProcessForm
     private static string DisplayKey(Rdv3Data data, Rdv3ProcessStepDef step)
     {
         List<string> values = new List<string>();
-        for (int i = 0; i < step.Keys.Length; i++) { values.Add(Display(data, step.Keys[i])); }
+        for (int i = 0; i < step.Keys.Length; i++)
+        {
+            List<string> parts = new List<string>();
+            foreach (string reference in step.KeySide(i)) { parts.Add(Display(data, reference)); }
+            values.Add(string.Join(" + ", parts.ToArray()));
+        }
         if (values.Count > 0) { return string.Join(" = ", values.ToArray()); }
         if (step.Operation == "select" || step.Operation == "distinct")
         {
