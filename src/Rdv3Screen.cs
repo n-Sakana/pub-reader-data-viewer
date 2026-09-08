@@ -665,14 +665,17 @@ public sealed class Rdv3Screen
     // ---- reading the "screen" member -------------------------------------------
     public static Rdv3Screen Read(Rdv3Json root)
     {
+        int before = root.ErrorCount;
         root.Only("card", "judgments", "workState", "export", "sections", "candidates");
         Rdv3Screen s = new Rdv3Screen();
+        root.Check(delegate {
         Rdv3Json card = root.Obj("card", false);
         if (card != null)
         {
             card.Only("width", "startSize", "gap", "padding", "font", "fontSize",
                       "keyValueFontSize", "judgmentFontSize", "unsearchedFontSize");
-            s.CardWidth = card.DblOr("width", s.CardWidth, 600, 4000);
+            card.Check(delegate { s.CardWidth = card.DblOr("width", s.CardWidth, 600, 4000); });
+            card.Check(delegate {
             double[] start = card.Box("startSize");
             if (start != null)
             {
@@ -680,50 +683,67 @@ public sealed class Rdv3Screen
                 s.StartWidth = Math.Max(480, start[0]);
                 s.StartHeight = Math.Max(300, start[1]);
             }
-            s.Gap = card.DblOr("gap", s.Gap, 0, 200);
+            });
+            card.Check(delegate { s.Gap = card.DblOr("gap", s.Gap, 0, 200); });
+            card.Check(delegate {
             double[] pad = card.Box("padding");
             if (pad != null) { s.Padding = pad; }
+            });
+            card.Check(delegate {
             s.FontFamily = card.StrOr("font", s.FontFamily);
             if (s.FontFamily.Trim().Length == 0) { throw card.Member("font").Fail("must name a font"); }
-            s.FontSize = card.DblOr("fontSize", s.FontSize, 6, 24);
-            s.KeyValueFontSize = card.DblOr("keyValueFontSize", s.KeyValueFontSize, 6, 36);
-            s.JudgmentFontSize = card.DblOr("judgmentFontSize", s.JudgmentFontSize, 6, 36);
-            s.UnsearchedFontSize = card.DblOr("unsearchedFontSize", s.UnsearchedFontSize, 6, 36);
+            });
+            card.Check(delegate { s.FontSize = card.DblOr("fontSize", s.FontSize, 6, 24); });
+            card.Check(delegate { s.KeyValueFontSize = card.DblOr("keyValueFontSize", s.KeyValueFontSize, 6, 36); });
+            card.Check(delegate { s.JudgmentFontSize = card.DblOr("judgmentFontSize", s.JudgmentFontSize, 6, 36); });
+            card.Check(delegate { s.UnsearchedFontSize = card.DblOr("unsearchedFontSize", s.UnsearchedFontSize, 6, 36); });
         }
+        });
+        root.Check(delegate {
         Rdv3Json js = root.Obj("judgments", false);
         if (js != null)
         {
             for (int i = 0; i < js.Order.Count; i++)
             {
-                s.Judgments[js.Order[i]] = Rdv3Judgment.Read(js.Order[i], js.Member(js.Order[i]));
+                js.Member(js.Order[i]).Check(delegate {
+                    s.Judgments[js.Order[i]] = Rdv3Judgment.Read(js.Order[i], js.Member(js.Order[i]));
+                });
             }
         }
-        s.Work = Rdv3WorkState.Read(root.Obj("workState", true));
+        });
+        root.Check(delegate { s.Work = Rdv3WorkState.Read(root.Obj("workState", true)); });
+        root.Check(delegate {
         Rdv3Json export = root.Obj("export", true);
         export.Only("defaultFields");
         s.ExportDefaultFields = export.Strs("defaultFields", true);
         s.exportLine = export.Line;
         if (s.ExportDefaultFields.Length == 0) { throw export.Member("defaultFields").Fail("names no field"); }
-        s.Candidates = Rdv3CandidatesDef.Read(root.Obj("candidates", true));
+        });
+        root.Check(delegate { s.Candidates = Rdv3CandidatesDef.Read(root.Obj("candidates", true)); });
 
+        root.Check(delegate {
         List<Rdv3Json> secs = root.Objs("sections", true);
         if (secs.Count == 0) { throw root.Member("sections").Fail("holds no section"); }
-        for (int i = 0; i < secs.Count; i++) { s.Sections.Add(Rdv3Section.Read(secs[i], false)); }
-        for (int i = 0; i < s.Sections.Count; i++)
+        for (int i = 0; i < secs.Count; i++)
         {
-            Rdv3Section sec = s.Sections[i];
+            secs[i].Check(delegate {
+            Rdv3Section sec = Rdv3Section.Read(secs[i], false);
+            s.Sections.Add(sec);
             if (sec.Type == "statusBand" && s.JudgmentOf(sec.Judgment) == null)
             {
                 throw new Rdv3LoadError(secs[i].Path + ".judgment: " + sec.Judgment + " is not defined under judgments", sec.Line);
             }
+            });
         }
+        });
+        root.Guard(before, "screen references (incomplete screen definition)");
         return s;
     }
 
     // ---- the screen against the data definition ---------------------------------
     // Every "<table>.<column>" the screen names -- in a value, a judgment source,
     // a confirm text -- must be one of data.ledger.columns.
-    public void Check(Rdv3Data data)
+    public void Check(Rdv3Data data, Rdv3Validation validation = null)
     {
         List<Rdv3Bind> all = AllBindings();
         for (int i = 0; i < all.Count; i++)
@@ -734,15 +754,15 @@ public sealed class Rdv3Screen
             {
                 if (data.IndexOf(b.Fields[k]) < 0)
                 {
-                    throw new Rdv3LoadError("screen: " + b.Fields[k] + " is not one of data.ledger.columns", b.Line);
+                    Report(validation, new Rdv3LoadError("screen: " + b.Fields[k] + " is not one of data.ledger.columns", b.Line));
                 }
             }
         }
         for (int i = 0; i < Work.Transitions.Count; i++)
         {
             Rdv3Transition t = Work.Transitions[i];
-            CheckTemplate(t.Confirm, data, t.Line);
-            CheckTemplate(t.Done, data, t.Line);
+            CheckTemplate(t.Confirm, data, t.Line, validation);
+            CheckTemplate(t.Done, data, t.Line, validation);
         }
         HashSet<string> exportSeen = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < ExportDefaultFields.Length; i++)
@@ -751,17 +771,20 @@ public sealed class Rdv3Screen
             bool available = reference == "$work" || data.IndexOf(reference) >= 0;
             if (!available)
             {
-                throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is not an export field", exportLine);
+                Report(validation, new Rdv3LoadError("screen.export.defaultFields: " + reference + " is not an export field", exportLine));
             }
             if (!exportSeen.Add(reference))
             {
-                throw new Rdv3LoadError("screen.export.defaultFields: " + reference + " is listed twice", exportLine);
+                Report(validation, new Rdv3LoadError("screen.export.defaultFields: " + reference + " is listed twice", exportLine));
             }
         }
-        for (int i = 0; i < Sections.Count; i++) { CheckButtons(Sections[i], data); }
+        for (int i = 0; i < Sections.Count; i++) { CheckButtons(Sections[i], data, validation); }
     }
 
-    private static void CheckButtons(Rdv3Section section, Rdv3Data data)
+    private static void Report(Rdv3Validation validation, Rdv3LoadError error)
+    { if (validation == null) { throw error; } validation.Add(error); }
+
+    private static void CheckButtons(Rdv3Section section, Rdv3Data data, Rdv3Validation validation)
     {
         for (int i = 0; i < section.Buttons.Count; i++)
         {
@@ -769,19 +792,19 @@ public sealed class Rdv3Screen
             bool process = button.Action == "updateRecords" || button.Action == "deleteRecords";
             if (!process)
             {
-                if (button.Job.Length > 0) { throw new Rdv3LoadError("screen: only updateRecords/deleteRecords buttons may name a job", section.Line); }
+                if (button.Job.Length > 0) { Report(validation, new Rdv3LoadError("screen: only updateRecords/deleteRecords buttons may name a job", section.Line)); }
                 continue;
             }
             Rdv3ProcessJobDef job = data.JobOf(button.Job);
             string kind = (button.Action == "updateRecords") ? "update" : "delete";
-            if (job == null) { throw new Rdv3LoadError("screen: button job " + button.Job + " is not one of data.jobs", section.Line); }
-            if (job.Kind != kind) { throw new Rdv3LoadError("screen: button job " + button.Job + " is " + job.Kind + ", not " + kind, section.Line); }
-            if (job.FinalKind != "ledger") { throw new Rdv3LoadError("screen: button job " + button.Job + " does not produce ledger", section.Line); }
+            if (job == null) { Report(validation, new Rdv3LoadError("screen: button job " + button.Job + " is not one of data.jobs", section.Line)); continue; }
+            if (job.Kind != kind) { Report(validation, new Rdv3LoadError("screen: button job " + button.Job + " is " + job.Kind + ", not " + kind, section.Line)); }
+            if (job.FinalKind != "ledger") { Report(validation, new Rdv3LoadError("screen: button job " + button.Job + " does not produce ledger", section.Line)); }
         }
-        for (int i = 0; i < section.Items.Count; i++) { CheckButtons(section.Items[i], data); }
+        for (int i = 0; i < section.Items.Count; i++) { CheckButtons(section.Items[i], data, validation); }
     }
 
-    private static void CheckTemplate(string text, Rdv3Data data, int line)
+    private static void CheckTemplate(string text, Rdv3Data data, int line, Rdv3Validation validation)
     {
         int i = 0;
         while (text != null && i < text.Length)
@@ -789,11 +812,11 @@ public sealed class Rdv3Screen
             int open = text.IndexOf('{', i);
             if (open < 0) { return; }
             int close = text.IndexOf('}', open + 1);
-            if (close < 0) { throw new Rdv3LoadError("screen.workState: a { without } in " + text, line); }
+            if (close < 0) { Report(validation, new Rdv3LoadError("screen.workState: a { without } in " + text, line)); return; }
             string name = text.Substring(open + 1, close - open - 1).Trim();
             if (name != "state" && name != "key" && data.IndexOf(name) < 0)
             {
-                throw new Rdv3LoadError("screen.workState: {" + name + "} is neither {state}, {key} nor a ledger column", line);
+                Report(validation, new Rdv3LoadError("screen.workState: {" + name + "} is neither {state}, {key} nor a ledger column", line));
             }
             i = close + 1;
         }
