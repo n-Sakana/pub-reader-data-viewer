@@ -121,18 +121,22 @@ with tempfile.TemporaryDirectory(prefix='rdv-structural-') as scratch:
         cfg['data']['labels'].update({'A.unused':'Unused','subset':'Subset','sums':'Sums','sums.total':'Total','A.derived':'Derived'})
         job=cfg['data']['jobs'][0]
         step=None
-        if kind=='key': cfg['data']['tables']['A']['key']='unused'
+        if kind=='key':
+            cfg['data']['tables']['A']['key']='unused'
+            cfg['data']['ledger']['identity']='A.unused'
+            cfg['data']['ledger']['columns']['source'].append('A.unused')
+            job['steps'][-1]['keys']=['A.unused','A.unused']
         elif kind=='type': cfg['data']['types']={'A.unused':{'type':'text'}}
         elif kind=='ledger': cfg['data']['ledger']['columns']['source'].append('A.unused')
         elif kind in ('expression','later-job'):
             step={'operation':'calculate','target1':'A','column':'derived','expression':'A.unused + 1','output':'A'}
         elif kind in ('where','set'):
             step={'operation':'extract','target1':'A','where':{'column':'A.unused' if kind=='where' else 'A.id','operator':'notEmpty'},'output':'subset'}
-        elif kind=='select': step={'operation':'select','target1':'A','columns':['A.id','A.name','A.unused'],'output':'A'}
+        elif kind=='select': step={'operation':'select','target1':'A','columns':[{'column':c} for c in ('A.id','A.name','A.unused')],'output':'A'}
         elif kind in ('groupBy','aggregate'):
             step={'operation':'aggregate','target1':'A','groupBy':['A.unused' if kind=='groupBy' else 'A.id'],
                   'aggregates':[{'function':'sum','column':'A.unused','as':'total'}],'output':'sums'}
-        elif kind=='order': step={'operation':'sort','target1':'A','orderBy':[{'column':'A.unused','direction':'ascending'}],'output':'A'}
+        elif kind=='order': step={'operation':'sort','target1':'A','orders':[{'column':'A.unused','direction':'ascending'}],'output':'A'}
         if kind=='later-job':
             later=copy.deepcopy(job)
             later['id']='later'
