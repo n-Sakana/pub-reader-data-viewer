@@ -219,7 +219,7 @@ public sealed class Rdv3Data
     public Rdv3ColumnTypeDef TypeOf(string reference)
     {
         Rdv3ColumnTypeDef type;
-        return reference != null && Types.TryGetValue(reference, out type) ? type : null;
+        return reference != null && Types.TryGetValue(reference, out type) && type.Type != "text" ? type : null;
     }
 
     public string[] ColumnRefs
@@ -316,7 +316,7 @@ public sealed class Rdv3Data
                 Rdv3ColumnTypeDef type = new Rdv3ColumnTypeDef();
                 type.Ref = column.Ref;
                 type.TableOrd = column.TableOrd;
-                type.Type = at.Word("type", "", "date", "number");
+                type.Type = at.Word("type", "", "date", "number", "text");
                 type.Line = at.Line;
                 if (type.Type == "date")
                 {
@@ -1087,7 +1087,7 @@ public sealed class Rdv3Data
             Rdv3ColumnTypeDef type = TypeOrder[i];
             Rdv3Table table = (tables == null || type.TableOrd < 0 || type.TableOrd >= tables.Length)
                 ? null : tables[type.TableOrd];
-            if (table == null) { continue; }
+            if (table == null || type.Type == "text") { continue; }
             for (int row = 0; row < table.Rows; row++)
             {
                 string value = table.Field(row, type.Field);

@@ -40,7 +40,8 @@ public static class Rdv3Csv
             else if (n >= 2 && bom[0] == 255 && bom[1] == 254) { cp = 1200; skip = 2; }
             else if (n >= 2 && bom[0] == 254 && bom[1] == 255) { cp = 1201; skip = 2; }
             if (cp != 0 && cp != encoding.CodePage)
-            { throw Error(path, 1, "BOM does not match data.encoding: " + encoding.WebName); }
+            { throw Rdv3Input.Error(path, 1, "BOM", encoding.WebName, Encoding.GetEncoding(cp).WebName,
+                Rdv3Text.InputFixEncoding.Replace("{encoding}", Encoding.GetEncoding(cp).WebName)); }
             stream.Position = skip;
             using (StreamReader reader = new StreamReader(stream, strict, false, 65536))
             {
@@ -59,22 +60,26 @@ public static class Rdv3Csv
                         for (int i = 0; i < head.Length; i++)
                         {
                             head[i] = head[i].Trim();
-                            if (head[i].Length == 0 || !names.Add(head[i])) { throw Error(path, first, "blank or duplicate header"); }
+                            if (head[i].Length == 0 || !names.Add(head[i]))
+                            { throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); }
                             for (int k = 0; k < head[i].Length; k++)
-                            { if (head[i][k] < ' ') { throw Error(path, first, "control character in header"); } }
+                            { if (head[i][k] < ' ') { throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); } }
                         }
                         if (headOnly) { break; }
                     }
                     else
                     {
-                        if (cells.Length != head.Length) { throw Error(path, first, "column count differs from header"); }
+                        if (cells.Length != head.Length)
+                        { throw Failure(path, first, Math.Min(cells.Length, head.Length) + 1,
+                            Rdv3Text.InputColumnCount.Replace("{n}", head.Length.ToString(CultureInfo.InvariantCulture)),
+                            Rdv3Text.InputColumnCount.Replace("{n}", cells.Length.ToString(CultureInfo.InvariantCulture)), Rdv3Text.InputFixCsv); }
                         data.Add(cells);
                         numbers.Add(first);
                     }
                 }
             }
         }
-        if (head == null) { throw Error(path, 1, "CSV has no header"); }
+        if (head == null) { throw Failure(path, 1, 1, Rdv3Text.InputExpectHeader, "", Rdv3Text.InputFixHeader); }
         rows = data.ToArray();
         rowNumbers = numbers.ToArray();
     }
@@ -91,7 +96,7 @@ public static class Rdv3Csv
             int read = reader.Read();
             if (read < 0)
             {
-                if (quoted) { throw Error(path, recordLine, "quoted field is not closed"); }
+                if (quoted) { throw Failure(path, recordLine, cells.Count + 1, Rdv3Text.InputExpectQuote, "EOF", Rdv3Text.InputFixCsv); }
                 if (!any) { return null; }
                 cells.Add(field.ToString());
                 return cells.ToArray();
@@ -127,16 +132,16 @@ public static class Rdv3Csv
             blank = false;
             if (ch == ',') { cells.Add(field.ToString()); field.Length = 0; afterQuote = false; continue; }
             if (afterQuote && Rdv3Input.IsPadding(ch)) { continue; }
-            if (afterQuote) { throw Error(path, recordLine, "unexpected text after closing quote"); }
+            if (afterQuote) { throw Failure(path, recordLine, cells.Count + 1, Rdv3Text.InputExpectDelimiter, ch.ToString(), Rdv3Text.InputFixCsv); }
             if (ch == '"')
             {
-                if (field.Length != 0) { throw Error(path, recordLine, "quote inside an unquoted field"); }
+                if (field.Length != 0) { throw Failure(path, recordLine, cells.Count + 1, Rdv3Text.InputExpectQuote, field.ToString() + ch, Rdv3Text.InputFixCsv); }
                 quoted = true;
             }
             else { field.Append(ch); }
         }
     }
 
-    private static Rdv3DataError Error(string path, int line, string reason)
-    { return new Rdv3DataError(Path.GetFileName(path) + ": row " + line.ToString(CultureInfo.InvariantCulture) + ": " + reason); }
+    private static Rdv3DataError Failure(string path, int line, int column, string expected, string actual, string fix)
+    { return Rdv3Input.Error(path, line, column.ToString(CultureInfo.InvariantCulture), expected, actual, fix); }
 }
