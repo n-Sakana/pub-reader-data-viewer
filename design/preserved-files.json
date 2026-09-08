@@ -61,7 +61,8 @@
     },
     {
       "path": "settings.json",
-      "sha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
+      "sha256": "cb1c58186b5fea8b2b9b696520f016caee68bff6df9eeb728da529b5b3375fbb",
+      "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
       "path": "src/01_App.cs",
@@ -74,7 +75,7 @@
     },
     {
       "path": "src/Rdv3Config.cs",
-      "sha256": "db966a0608accf0faf6c4723dcb2b7103115372378d030d2635c7f2f0ab31eae",
+      "sha256": "12bdd5d3d9cbabd25ac256953d16516138f8245950ee3e6b541363466b8289de",
       "baselineSha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f"
     },
     {
@@ -94,7 +95,7 @@
     },
     {
       "path": "src/Rdv3Files.cs",
-      "sha256": "3e298282ea088e00a9280186c3e08145327d0eb2679f1b596e6f1780a2bc00bd",
+      "sha256": "53cd344a53b583f1b30d36217ae766c6431e8d3ea61604ca088591e530864a04",
       "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
     },
     {
@@ -128,7 +129,8 @@
     },
     {
       "path": "src/Rdv3Screen.cs",
-      "sha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce"
+      "sha256": "6bb3b7e37501737b1b07b0234bbef69c1e8295c8db9453f7bd702931c06dddc2",
+      "baselineSha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce"
     },
     {
       "path": "src/Rdv3Settings.cs",
@@ -146,7 +148,7 @@
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "1cc4922f6c0ee8e21b7cff7fe14ad2f05d08a9954577cacf801368f345abde20",
+      "sha256": "cf4227b4f7ccc28f022e2d3efd9689b5297733147ad59d7bbde7dc28873a78b1",
       "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
     },
     {
@@ -249,7 +251,8 @@
     },
     {
       "path": "src/Rdv3Headless.cs",
-      "sha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
+      "sha256": "d93a3ca6893017e50f9f904565e01427ca9e576fadf47f9fb32beaf30d0ab29d",
+      "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
     },
     {
       "path": "src/Rdv3Key.cs",
