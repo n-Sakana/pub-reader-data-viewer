@@ -163,7 +163,7 @@ public static class Rdv3Files
     {
         List<string> entries = new List<string>();
         entries.Add("RDV-STORAGE-1");
-        entries.Add(data.IdentityCol.ToString(CultureInfo.InvariantCulture));
+        entries.Add(string.Join(",", Array.ConvertAll(data.IdentityCols, delegate(int c) { return c.ToString(CultureInfo.InvariantCulture); })));
         entries.Add(work.Column);
         entries.Add(work.Initial);
         for (int i = 0; i < data.Columns.Count; i++) { entries.Add(data.Columns[i].Ref); }

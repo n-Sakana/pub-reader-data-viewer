@@ -3,10 +3,12 @@ using System.Collections.Generic;
 
 internal sealed class Rdv3ResetNotice
 {
-    private readonly int identityColumn;
+    private readonly int[] identityColumn;
     private readonly string initial;
 
-    public Rdv3ResetNotice(int identityCol, string initialStored)
+    public Rdv3ResetNotice(int identityCol, string initialStored) : this(new int[] { identityCol }, initialStored) { }
+
+    public Rdv3ResetNotice(int[] identityCol, string initialStored)
     {
         identityColumn = identityCol;
         initial = initialStored;
@@ -19,12 +21,12 @@ internal sealed class Rdv3ResetNotice
         Dictionary<string, int> before = new Dictionary<string, int>(StringComparer.Ordinal);
         for (int i = 0; i < beforeLines.Length; i++)
         {
-            string identity = Rdv3Ledger.FieldOf(beforeLines[i], identityColumn);
+            string identity = Rdv3Key.FromLine(beforeLines[i], identityColumn);
             if (!before.ContainsKey(identity)) { before.Add(identity, i); }
         }
         for (int i = 0; i < afterLines.Length; i++)
         {
-            string identity = Rdv3Ledger.FieldOf(afterLines[i], identityColumn);
+            string identity = Rdv3Key.FromLine(afterLines[i], identityColumn);
             int old;
             if (!before.TryGetValue(identity, out old)) { continue; }
             if (string.Equals(beforeLines[old], afterLines[i], StringComparison.Ordinal)) { continue; }
@@ -40,10 +42,10 @@ internal sealed class Rdv3ResetNotice
         // The merger sees shared states; the screen also sees pending states.
         // Either may have been reset. Keep both sources and notify each identity once.
         Dictionary<string, string> rows = new Dictionary<string, string>(StringComparer.Ordinal);
-        foreach (string line in update.ResetLines) { rows[Rdv3Ledger.FieldOf(line, identityColumn)] = line; }
+        foreach (string line in update.ResetLines) { rows[Rdv3Key.FromLine(line, identityColumn)] = line; }
         foreach (string line in ChangedRows(beforeLines, beforeStates, update.Lines, effectiveStates))
         {
-            string identity = Rdv3Ledger.FieldOf(line, identityColumn);
+            string identity = Rdv3Key.FromLine(line, identityColumn);
             if (!rows.ContainsKey(identity)) { rows.Add(identity, line); }
         }
         List<string> identities = new List<string>(rows.Keys);

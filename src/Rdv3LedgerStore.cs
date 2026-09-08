@@ -57,9 +57,9 @@ internal sealed class Rdv3LedgerStore
         string[] lines, states;
         string warning;
         Rdv3Xlsx.Read(path, head, work.Column, out lines, out states, out warning, contract);
-        string reference = data.Columns[data.IdentityCol].Ref;
-        string label = data.LabelOf(reference);
-        Rdv3Ledger.CheckIdentities(lines, data.IdentityCol, Path.GetFileName(path), label.Length == 0 ? reference : label);
+        string reference = string.Join(" / ", data.IdentityRefs);
+        string label = string.Join(" / ", Array.ConvertAll(data.IdentityRefs, data.LabelOf));
+        Rdv3Ledger.CheckIdentities(lines, data.IdentityCols, Path.GetFileName(path), label.Length == 0 ? reference : label);
         for (int i = 0; i < states.Length; i++)
         {
             if (work.ByStored(states[i]) == null)
@@ -99,7 +99,7 @@ internal sealed class Rdv3LedgerStore
             { throw new IOException(Rdv3Text.UpdateChangedDuringCheck); }
             t = Rdv3Clock.Now();
             update = source.Prepared == null
-                ? Rdv3Ledger.ApplyUpdate(source.Job, latestLines, latestStates, source.Lines, data.IdentityCol, work.InitialStored)
+                ? Rdv3Ledger.ApplyUpdate(source.Job, latestLines, latestStates, source.Lines, data.IdentityCols, work.InitialStored)
                 : Rdv3Process.Execute(source.Prepared, latestLines, latestStates, work.InitialStored, false).Update;
             string operation = source.Job.ApplyStep == null ? "pipeline" : source.Job.ApplyStep.Operation;
             trace("apply", "operation=" + operation

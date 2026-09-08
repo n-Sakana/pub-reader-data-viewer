@@ -618,7 +618,7 @@ public sealed class Rdv3Data
 
     private static string[] ReadColumnNames(Rdv3Json at)
     {
-        if (at == null) { throw new Rdv3LoadError("key: specify a column name or a non-empty array of column names"); }
+        if (at == null) { throw new Rdv3LoadError("key / identity: specify a column name or a non-empty array of column names", 0); }
         List<string> names = new List<string>();
         if (at.Kind == Rdv3Json.TString) { names.Add(at.Str.Trim()); }
         else if (at.Kind == Rdv3Json.TArray)

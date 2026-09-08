@@ -142,6 +142,9 @@ public sealed class Rdv3PendingStore
     }
 
     public string[] Overlay(string[] lines, string[] sharedStates, int identityColumn)
+    { return Overlay(lines, sharedStates, new int[] { identityColumn }); }
+
+    public string[] Overlay(string[] lines, string[] sharedStates, int[] identityColumn)
     {
         if (lines == null || sharedStates == null || lines.Length != sharedStates.Length)
         {
@@ -164,6 +167,9 @@ public sealed class Rdv3PendingStore
     }
 
     public Rdv3PendingApply PrepareSend(string[] lines, string[] sharedStates, int identityColumn, string initialStored)
+    { return PrepareSend(lines, sharedStates, new int[] { identityColumn }, initialStored); }
+
+    public Rdv3PendingApply PrepareSend(string[] lines, string[] sharedStates, int[] identityColumn, string initialStored)
     {
         Rdv3PendingApply result = new Rdv3PendingApply();
         if (lines == null || sharedStates == null || lines.Length != sharedStates.Length)

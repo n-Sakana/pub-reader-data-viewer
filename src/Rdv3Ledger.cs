@@ -262,8 +262,11 @@ public static class Rdv3Ledger
     // follows its configured on-source-change rule.
     public static Rdv3UpdateResult ApplyUpdate(Rdv3ProcessJobDef job,
                                                 string[] targetLines, string[] targetStates,
-                                                string[] sourceLines, int identityCol,
-                                                string initialStored)
+                                                string[] sourceLines, int identityCol, string initialStored)
+    { return ApplyUpdate(job, targetLines, targetStates, sourceLines, new int[] { identityCol }, initialStored); }
+
+    public static Rdv3UpdateResult ApplyUpdate(Rdv3ProcessJobDef job, string[] targetLines, string[] targetStates,
+                                                string[] sourceLines, int[] identityCol, string initialStored)
     {
         if (job == null || job.ApplyStep == null) { throw new InvalidOperationException("update job has no ledger-writing step"); }
         string[] oldLines = targetLines ?? new string[0];
@@ -290,7 +293,7 @@ public static class Rdv3Ledger
         {
             for (int i = 0; i < newLines.Length; i++)
             {
-                string identity = FieldOf(newLines[i], identityCol);
+                string identity = Rdv3Key.FromLine(newLines[i], identityCol);
                 int oldRow;
                 if (oldById.TryGetValue(identity, out oldRow))
                 {
@@ -306,7 +309,7 @@ public static class Rdv3Ledger
             }
             for (int i = 0; i < oldLines.Length; i++)
             {
-                string identity = FieldOf(oldLines[i], identityCol);
+                string identity = Rdv3Key.FromLine(oldLines[i], identityCol);
                 if (!sourceById.ContainsKey(identity)) { result.Deleted++; }
             }
         }
@@ -315,7 +318,7 @@ public static class Rdv3Ledger
             HashSet<string> consumed = new HashSet<string>(StringComparer.Ordinal);
             for (int i = 0; i < oldLines.Length; i++)
             {
-                string identity = FieldOf(oldLines[i], identityCol);
+                string identity = Rdv3Key.FromLine(oldLines[i], identityCol);
                 int sourceRow;
                 if (sourceById.TryGetValue(identity, out sourceRow))
                 {
@@ -335,7 +338,7 @@ public static class Rdv3Ledger
             {
                 for (int i = 0; i < newLines.Length; i++)
                 {
-                    string identity = FieldOf(newLines[i], identityCol);
+                    string identity = Rdv3Key.FromLine(newLines[i], identityCol);
                     if (consumed.Contains(identity)) { continue; }
                     lines.Add(newLines[i]);
                     states.Add(initialStored);
@@ -382,7 +385,7 @@ public static class Rdv3Ledger
     // Every ledger row is told apart by its identity column. One scan finds
     // the rows by identity, or the first blank / duplicated one; the two
     // callers below say it differently.
-    private static Dictionary<string, int> ScanIdentities(string[] lines, int identityCol,
+    private static Dictionary<string, int> ScanIdentities(string[] lines, int[] identityCol,
                                                           out int blankRow, out int dupFirst, out int dupSecond)
     {
         blankRow = -1;
@@ -391,7 +394,7 @@ public static class Rdv3Ledger
         Dictionary<string, int> rows = new Dictionary<string, int>(lines.Length, StringComparer.Ordinal);
         for (int i = 0; i < lines.Length; i++)
         {
-            string identity = FieldOf(lines[i], identityCol);
+            string identity = Rdv3Key.FromLine(lines[i], identityCol);
             if (identity.Length == 0) { blankRow = i; return rows; }
             int first;
             if (rows.TryGetValue(identity, out first)) { dupFirst = first; dupSecond = i; return rows; }
@@ -403,11 +406,14 @@ public static class Rdv3Ledger
     // the rows by identity, for lines the caller has already validated: a
     // blank or duplicated identity here is a broken invariant, not user data
     public static Dictionary<string, int> RowMap(string[] lines, int identityCol, string where)
+    { return RowMap(lines, new int[] { identityCol }, where); }
+
+    public static Dictionary<string, int> RowMap(string[] lines, int[] identityCol, string where)
     {
         int blank, first, second;
         Dictionary<string, int> rows = ScanIdentities(lines, identityCol, out blank, out first, out second);
         if (blank >= 0) { throw new InvalidDataException("blank row identity in " + where + " at row " + Row(blank)); }
-        if (second >= 0) { throw new InvalidDataException("duplicate row identity in " + where + ": " + FieldOf(lines[second], identityCol)); }
+        if (second >= 0) { throw new InvalidDataException("duplicate row identity in " + where + ": " + Rdv3Key.FromLine(lines[second], identityCol)); }
         return rows;
     }
 
@@ -415,6 +421,9 @@ public static class Rdv3Ledger
     // or duplicated identity (a hand edit in Excel, say) is a data error that
     // names the file, the column and the rows as the sheet numbers them
     public static void CheckIdentities(string[] lines, int identityCol, string file, string name)
+    { CheckIdentities(lines, new int[] { identityCol }, file, name); }
+
+    public static void CheckIdentities(string[] lines, int[] identityCol, string file, string name)
     {
         int blank, first, second;
         ScanIdentities(lines, identityCol, out blank, out first, out second);
@@ -427,7 +436,7 @@ public static class Rdv3Ledger
         {
             throw new Rdv3DataError(Rdv3Text.DataLedgerDupIdentity
                 .Replace("{file}", file).Replace("{name}", name)
-                .Replace("{key}", FieldOf(lines[second], identityCol))
+                .Replace("{key}", Rdv3Key.FromLine(lines[second], identityCol))
                 .Replace("{row1}", Row(first)).Replace("{row2}", Row(second)));
         }
     }
@@ -463,8 +472,11 @@ public static class Rdv3Ledger
     }
 
     public static string[] CarryStates(string[] oldLines, string[] oldStates, string[] newLines,
-                                       int identityCol, string initialStored, string onSourceChange,
-                                       CarryStats stats)
+                                       int identityCol, string initialStored, string onSourceChange, CarryStats stats)
+    { return CarryStates(oldLines, oldStates, newLines, new int[] { identityCol }, initialStored, onSourceChange, stats); }
+
+    public static string[] CarryStates(string[] oldLines, string[] oldStates, string[] newLines,
+                                       int[] identityCol, string initialStored, string onSourceChange, CarryStats stats)
     {
         if (onSourceChange != "reset" && onSourceChange != "preserve")
         {
@@ -473,7 +485,7 @@ public static class Rdv3Ledger
         Dictionary<string, int> byId = new Dictionary<string, int>(oldLines.Length, StringComparer.Ordinal);
         for (int i = 0; i < oldLines.Length; i++)
         {
-            string id = FieldOf(oldLines[i], identityCol);
+            string id = Rdv3Key.FromLine(oldLines[i], identityCol);
             // the new lines come from a table whose key the index proved unique;
             // the OLD lines are whatever the xlsx held, so a duplicate there is
             // possible (a hand edit). The first row keeps the identity and the
@@ -485,7 +497,7 @@ public static class Rdv3Ledger
         int used = 0;
         for (int i = 0; i < newLines.Length; i++)
         {
-            string id = FieldOf(newLines[i], identityCol);
+            string id = Rdv3Key.FromLine(newLines[i], identityCol);
             int oi;
             if (byId.TryGetValue(id, out oi))
             {

@@ -140,7 +140,7 @@ public sealed class Rdv3App
         pending = pendingChanges;
         shared = sharedFiles;
         ledgerStore = new Rdv3LedgerStore(ledgerPath, dataDef, work, shared);
-        resetNotice = new Rdv3ResetNotice(dataDef.IdentityCol, work.InitialStored);
+        resetNotice = new Rdv3ResetNotice(dataDef.IdentityCols, work.InitialStored);
         seenMarker = initialMarker;
         try { ledgerObservedStamp = Rdv3Files.Stamp(ledgerPath); } catch (Exception) { ledgerObservedStamp = null; }
         log.OnFail = delegate(string msg) { form.Error(Rdv3Text.ErrLogWrite + msg); };
@@ -303,7 +303,7 @@ public sealed class Rdv3App
             t = Rdv3Clock.Now();
             Rdv3UpdateResult preview = (mr.Prepared == null)
                 ? Rdv3Ledger.ApplyUpdate(process, oldLines, oldStates,
-                    mr.Lines, dataDef.IdentityCol, work.InitialStored)
+                    mr.Lines, dataDef.IdentityCols, work.InitialStored)
                 : Rdv3Process.Execute(mr.Prepared, oldLines, oldStates, work.InitialStored, false).Update;
             int firstDiff;
             Rdv3Ledger.SameContent(oldLines, preview.Lines, out firstDiff);
@@ -438,7 +438,7 @@ public sealed class Rdv3App
     {
         ledLines = lines;
         sharedStates = states;
-        ledStates = pending.Overlay(lines, states, dataDef.IdentityCol);
+        ledStates = pending.Overlay(lines, states, dataDef.IdentityCols);
         if (head != null) { ledHead = head; }
         ledIndex = BuildSearchIndex(lines);
     }
@@ -465,7 +465,7 @@ public sealed class Rdv3App
         {
             long t = Rdv3Clock.Now();
             Rdv3Index ix = BuildSearchIndex(lines);
-            string[] effective = pending.Overlay(lines, states, dataDef.IdentityCol);
+            string[] effective = pending.Overlay(lines, states, dataDef.IdentityCols);
             log.Write(rid, "index", "table=LEDGER rows=" + lines.Length.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
             form.RunOnUi(delegate
@@ -794,7 +794,7 @@ public sealed class Rdv3App
         if (state != StReady || cands == null || i < 0 || i >= cands.Count) { return; }
         long t0 = Rdv3Clock.Now();
         int row = cands[i];
-        string k2 = Rdv3Ledger.FieldOf(ledLines[row], dataDef.IdentityCol);
+        string k2 = Rdv3Key.FromLine(ledLines[row], dataDef.IdentityCols);
         form.SelectCandidate(i);
         shownRow = row;
         log.Write("S" + searchSeq.ToString(CultureInfo.InvariantCulture), "display",
@@ -867,7 +867,7 @@ public sealed class Rdv3App
             return;
         }
         Rdv3StateDef to = work.ById(tr.To);
-        string k2 = Rdv3Ledger.FieldOf(ledLines[row], dataDef.IdentityCol);
+        string k2 = Rdv3Key.FromLine(ledLines[row], dataDef.IdentityCols);
         if (!automatic && tr.Confirm.Length > 0)
         {
             string body = Rdv3Eval.Template(tr.Confirm, form.View, form.Fields, work);
@@ -1017,7 +1017,7 @@ public sealed class Rdv3App
             log.Write(tag, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
 
-            apply = pending.PrepareSend(latestLines, latestStates, dataDef.IdentityCol, work.InitialStored);
+            apply = pending.PrepareSend(latestLines, latestStates, dataDef.IdentityCols, work.InitialStored);
             if (apply.FromInitial + apply.ToInitial > 0)
             {
                 t = Rdv3Clock.Now();
@@ -1090,7 +1090,7 @@ public sealed class Rdv3App
                 string backup = pending.Path + ".discard-" + Guid.NewGuid().ToString("N") + ".bak";
                 File.Copy(pending.Path, backup, false);
                 pending.Remove(ids);
-                ledStates = pending.Overlay(ledLines, sharedStates, dataDef.IdentityCol);
+                ledStates = pending.Overlay(ledLines, sharedStates, dataDef.IdentityCols);
                 form.RunOnUi(delegate
                 {
                     EndWriteGuard(job.RunId, true);
@@ -1216,13 +1216,13 @@ public sealed class Rdv3App
             ReadLedger(ledHead, out latestLines, out latestStates);
             log.Write(tag, "load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
-            string[] beforeEffective = pending.Overlay(latestLines, latestStates, dataDef.IdentityCol);
+            string[] beforeEffective = pending.Overlay(latestLines, latestStates, dataDef.IdentityCols);
 
             t = Rdv3Clock.Now();
             result = Rdv3Ledger.ApplyDelete(dataDef, process, dataDir, latestLines, latestStates,
                                             work.InitialStored);
             for (int i = 0; i < result.Warnings.Count; i++) { log.Write(tag, "warning", result.Warnings[i]); }
-            string[] afterEffective = pending.Overlay(result.Lines, result.States, dataDef.IdentityCol);
+            string[] afterEffective = pending.Overlay(result.Lines, result.States, dataDef.IdentityCols);
             List<Rdv3CandRow> resetRows = ResetCandidates(resetNotice.ChangedRows(latestLines, beforeEffective,
                 result.Lines, afterEffective));
             bool changed = !Rdv3Ledger.SameLedger(latestLines, latestStates,
@@ -1530,7 +1530,7 @@ public sealed class Rdv3App
             if (expectedHead == null) { throw new InvalidOperationException("ledger header is not available"); }
             ReadLedger(expectedHead, out lines, out states);
             Rdv3Index index = BuildSearchIndex(lines);
-            string[] effective = pending.Overlay(lines, states, dataDef.IdentityCol);
+            string[] effective = pending.Overlay(lines, states, dataDef.IdentityCols);
             List<Rdv3CandRow> resets = (marker.Kind == "update")
                 ? ResetCandidates(resetNotice.ChangedRows(ledLines, ledStates, lines, states)) : new List<Rdv3CandRow>();
             log.Write(tag, "reload", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture)

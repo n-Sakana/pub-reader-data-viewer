@@ -66,6 +66,13 @@ internal sealed class Rdv3Relation
         return column;
     }
 
+    public int[] NeedColumns(string[] names)
+    {
+        int[] cols = new int[names.Length];
+        for (int i = 0; i < cols.Length; i++) { cols[i] = NeedColumn(names[i]); }
+        return cols;
+    }
+
     public string[] ToLines()
     {
         string[] lines = new string[Rows.Count];
@@ -315,21 +322,21 @@ public static class Rdv3Process
 
     private static void ValidateLedgerIdentity(Rdv3Data data, Rdv3ProcessJobDef job, Rdv3Relation ledger)
     {
-        string reference = data.Columns[data.IdentityCol].Ref;
-        int identity = ledger.NeedColumn(reference);
-        ValidateIdentity(data, job, ledger, identity, reference);
+        ValidateIdentity(data, job, ledger, ledger.NeedColumns(data.IdentityRefs), data.IdentityRefs);
     }
 
     private static void ValidateIdentity(Rdv3Data data, Rdv3ProcessJobDef job, Rdv3Relation relation,
-                                         int identity, string reference)
+                                         int[] identity, string[] references)
     {
         string jobName = (job.Name.Length == 0) ? job.Id : job.Name;
-        string column = data.LabelOf(reference);
-        if (column.Length == 0) { column = reference; }
+        List<string> labels = new List<string>();
+        foreach (string reference in references)
+        { string label = data.LabelOf(reference); labels.Add(label.Length == 0 ? reference : label); }
+        string column = string.Join(" / ", labels.ToArray());
         HashSet<string> seen = new HashSet<string>(StringComparer.Ordinal);
         for (int i = 0; i < relation.Rows.Count; i++)
         {
-            string value = relation.Rows[i][identity];
+            string value = Rdv3Key.FromCells(relation.Rows[i], identity);
             if (value.Length == 0)
             {
                 throw new InvalidDataException(Rdv3Text.ProcessBlankIdentity
@@ -345,8 +352,8 @@ public static class Rdv3Process
 
     private static Rdv3Relation Join(Rdv3Relation left, Rdv3Relation right, Rdv3ProcessStepDef step)
     {
-        int lc = left.NeedColumn(step.Keys[0]);
-        int rc = right.NeedColumn(step.Keys[1]);
+        int[] lc = left.NeedColumns(step.KeySide(0));
+        int[] rc = right.NeedColumns(step.KeySide(1));
         string[] columns = new string[left.Columns.Length + right.Columns.Length];
         Array.Copy(left.Columns, 0, columns, 0, left.Columns.Length);
         for (int c = 0; c < right.Columns.Length; c++)
@@ -361,7 +368,7 @@ public static class Rdv3Process
         Dictionary<string, List<int>> index = new Dictionary<string, List<int>>(StringComparer.Ordinal);
         for (int i = 0; i < right.Rows.Count; i++)
         {
-            string key = right.Rows[i][rc];
+            string key = Rdv3Key.FromCells(right.Rows[i], rc);
             if (key.Length == 0) { continue; }
             List<int> found;
             if (!index.TryGetValue(key, out found))
@@ -380,7 +387,7 @@ public static class Rdv3Process
         for (int i = 0; i < blankLeft.Length; i++) { blankLeft[i] = ""; }
         for (int i = 0; i < left.Rows.Count; i++)
         {
-            string key = left.Rows[i][lc];
+            string key = Rdv3Key.FromCells(left.Rows[i], lc);
             List<int> found;
             if (key.Length > 0 && index.TryGetValue(key, out found))
             {
@@ -450,15 +457,16 @@ public static class Rdv3Process
         }
         if (left != null && right != null)
         {
-            int lc = left.NeedColumn(step.Keys[0]);
-            int rc = right.NeedColumn(step.Keys[1]);
+            int[] lc = left.NeedColumns(step.KeySide(0));
+            int[] rc = right.NeedColumns(step.KeySide(1));
             HashSet<string> wanted = new HashSet<string>(StringComparer.Ordinal);
-            for (int i = 0; i < right.Rows.Count; i++) { wanted.Add(right.Rows[i][rc]); }
+            for (int i = 0; i < right.Rows.Count; i++) { wanted.Add(Rdv3Key.FromCells(right.Rows[i], rc)); }
             Rdv3RowSelection selected = new Rdv3RowSelection();
             selected.Table = left;
             for (int i = 0; i < left.Rows.Count; i++)
             {
-                bool found = wanted.Contains(left.Rows[i][lc]);
+                string key = Rdv3Key.FromCells(left.Rows[i], lc);
+                bool found = (lc.Length == 1 || key.Length > 0) && wanted.Contains(key);
                 if ((step.Condition == "match" && found) || (step.Condition == "exclude" && !found))
                 {
                     selected.Rows.Add(i);
@@ -810,20 +818,21 @@ public static class Rdv3Process
                                             Rdv3ProcessStepDef step, string initialStored,
                                             out Rdv3UpdateResult update)
     {
-        int targetKey = target.NeedColumn(step.Keys[1]);
-        if (targetKey != data.IdentityCol)
+        int[] targetKey = target.NeedColumns(step.KeySide(1));
+        if (!SameColumns(targetKey, data.IdentityCols))
         {
             throw new InvalidDataException("ledger write target key is not data.ledger.identity");
         }
-        int sourceKey = source.NeedColumn(step.Keys[0]);
-        ValidateIdentity(data, job, source, sourceKey, step.Keys[0]);
+        int[] sourceKey = source.NeedColumns(step.KeySide(0));
+        ValidateIdentity(data, job, source, sourceKey, step.KeySide(0));
         string[] sourceLines = new string[source.Rows.Count];
         for (int r = 0; r < source.Rows.Count; r++)
         {
             string[] row = new string[data.Columns.Count];
             for (int c = 0; c < data.Columns.Count; c++)
             {
-                int from = (c == data.IdentityCol) ? sourceKey : source.ColumnOf(data.Columns[c].Ref);
+                int identityPart = Array.IndexOf(data.IdentityCols, c);
+                int from = identityPart >= 0 ? sourceKey[identityPart] : source.ColumnOf(data.Columns[c].Ref);
                 if (from >= 0) { row[c] = source.Rows[r][from]; }
                 else { row[c] = ""; }
             }
@@ -834,7 +843,7 @@ public static class Rdv3Process
         apply.OnSourceChange = job.OnSourceChange;
         string[] targetStates = (target.States == null) ? new string[target.Rows.Count] : target.States.ToArray();
         update = Rdv3Ledger.ApplyUpdate(apply, target.ToLines(), targetStates,
-                                       sourceLines, data.IdentityCol, initialStored);
+                                       sourceLines, data.IdentityCols, initialStored);
         Rdv3Relation output = RelationOfLedger(data, update.Lines, update.States, initialStored);
         return output;
     }
@@ -846,6 +855,13 @@ public static class Rdv3Process
         output.Columns = (string[])source.Columns.Clone();
         if (source.States != null) { output.States = new List<string>(); }
         return output;
+    }
+
+    private static bool SameColumns(int[] a, int[] b)
+    {
+        if (a.Length != b.Length) { return false; }
+        for (int i = 0; i < a.Length; i++) { if (a[i] != b[i]) { return false; } }
+        return true;
     }
 
     private static string ColumnName(string reference)
