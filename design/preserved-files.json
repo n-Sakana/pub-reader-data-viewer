@@ -69,7 +69,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "e3d9db8911137942e56238a348207ac8cf8b97e720eda1b719b92a2305b00f86",
+      "sha256": "9b58d9171c94308e68ac18e52ee93b04d8bcb0fe9b600ccfaf70288d05d5fdad",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -116,7 +116,8 @@
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
+      "sha256": "24fcb2e7149fe03cd03e517981f3a91924bf0cc3e210b3967b1b4b5ee4247c88",
+      "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
       "path": "src/Rdv3Screen.cs",
@@ -198,8 +199,20 @@
     },
     {
       "path": "web/app.js",
-      "sha256": "40cdaea78d3192d9dffe048c8979f9aef592166ce2247a7b0362ab404a721ae0",
+      "sha256": "d479e0b3b2f122f7e1a417076bbbc20e5e0efaaca4c6b6052430f2994c46c89e",
       "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
+    },
+    {
+      "path": "src/Rdv3Log.cs",
+      "sha256": "6f2d8e96cc359fad00f498a1519f2905f38f6dece47395d1abb7ae9491784e04"
+    },
+    {
+      "path": "src/Rdv3Program.cs",
+      "sha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
+    },
+    {
+      "path": "src/Rdv3Expression.cs",
+      "sha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
     }
   ]
 }
