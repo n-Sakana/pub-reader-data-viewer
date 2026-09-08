@@ -1,0 +1,27 @@
+[
+  {
+    "name": "complete-json-and-japanese-dates",
+    "status": "PASS",
+    "detail": "exit 0; four dates include single- and double-digit month/day"
+  },
+  {
+    "name": "aggregate-left-joins",
+    "status": "PASS",
+    "detail": "4 rows; sums 80/1200; unmatched 2/0/4; four FALSE states"
+  },
+  {
+    "name": "cancellation-resets-only-changed-row",
+    "status": "PASS",
+    "detail": "R02 reset; R01 TRUE preserved; baseline bytes unchanged"
+  },
+  {
+    "name": "repeat-is-stable",
+    "status": "PASS",
+    "detail": "resetRows=0; all rows and states unchanged"
+  },
+  {
+    "name": "documented-table-label-rule",
+    "status": "PASS",
+    "detail": "explicit and omitted table label both reported; FAIL 2 errors; exit 3"
+  }
+]
