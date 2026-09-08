@@ -1,4 +1,4 @@
-UTC 2026-09-08T18:55:07.8705757Z
+UTC 2026-09-08T19:30:10.9781245Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -83,4 +83,12 @@ PASS composite-pending-keeps-digest-baseline-and-idempotence
 PASS composite-update-reset-and-contract-readback
 PASS single-key-array-preserves-existing-storage-contract
 PASS headless-validation-output-and-input-protection
-TOTAL passed=83 failed=0
+PASS validation-collects-duplicate-label-and-all-missing-references
+PASS validation-independent-settings-fields
+PASS validation-independent-table-definitions
+PASS validation-independent-type-definitions
+PASS validation-independent-input-files
+PASS validation-reports-each-invalid-typed-cell
+PASS validation-syntax-failure-count-and-exit
+PASS validation-valid-config-and-results-remain-equivalent
+TOTAL passed=91 failed=0

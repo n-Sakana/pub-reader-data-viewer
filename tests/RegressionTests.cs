@@ -626,6 +626,7 @@ public static class Rdv3RegressionTests
             });
             Test("eight-thread-shared-ledger-simulation", ConcurrentWriters);
             ConfigurationInputs();
+            ValidationFeedback();
         }
         finally
         {
@@ -637,6 +638,83 @@ public static class Rdv3RegressionTests
         }
         Console.WriteLine("TOTAL passed=" + passed + " failed=" + failed);
         return failed == 0 ? 0 : 1;
+    }
+
+    private static Rdv3ValidationError ValidationFailure(Action action)
+    {
+        try { action(); }
+        catch (Rdv3ValidationError error) { return error; }
+        throw new Exception("Expected collected validation errors");
+    }
+
+    private static void ValidationFeedback()
+    {
+        Test("validation-collects-duplicate-label-and-all-missing-references", delegate {
+            CompositeFixture f = new CompositeFixture();
+            string text = File.ReadAllText(f.Config.SourcePath, Encoding.UTF8)
+                .Replace("\"labels\":{", "\"labels\":{\"T\":\"duplicate\",")
+                .Replace("\"joined\":\"Joined\",", "").Replace("\"U.part\":\"Part\",", "");
+            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Config.Parse(text, true); });
+            Check(e.Errors.Length == 4 && e.Stage == "settings", "expected duplicate plus three reference locations");
+            string errors = string.Join("\n", e.Errors);
+            Check(errors.Contains("T already has a table label") && errors.Contains("joined has no screen label under data.labels or tables.*.label")
+                && errors.Contains("steps[1].target1") && errors.Contains("U.part"), "lost reason or location");
+            Throws<Rdv3LoadError>(delegate { Rdv3Config.Parse(text); });
+        });
+        Test("validation-independent-settings-fields", delegate {
+            CompositeFixture f = new CompositeFixture();
+            string text = File.ReadAllText(f.Config.SourcePath, Encoding.UTF8)
+                .Replace("\"schema\":3,", "\"schema\":3,\"watch\":{\"pollMs\":0,\"stableMs\":-1},\"search\":{\"pattern\":\"[\",\"candidateRowsShown\":0},")
+                .Replace("\"screen\":{", "\"screen\":{\"card\":{\"width\":1,\"fontSize\":1},");
+            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Config.Parse(text, true); });
+            Check(e.Errors.Length == 6, "independent fields stopped each other");
+            Check(string.Join("\n", e.Unchecked).Contains("input files"), "input stage not explicitly skipped");
+        });
+        Test("validation-independent-table-definitions", delegate {
+            CompositeFixture f = new CompositeFixture();
+            string text = File.ReadAllText(f.Config.SourcePath, Encoding.UTF8)
+                .Replace("\"file\":\"T.csv\"", "\"file\":42").Replace("\"file\":\"U.csv\"", "\"file\":false");
+            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Config.Parse(text, true); });
+            Check(e.Errors.Length == 2 && string.Join("\n", e.Errors).Contains("tables.U.file"), "second table not checked");
+            Check(string.Join("\n", e.Unchecked).Contains("incomplete table definitions"), "dependent stage not identified");
+        });
+        Test("validation-independent-type-definitions", delegate {
+            CompositeFixture f = new CompositeFixture();
+            string text = File.ReadAllText(f.Config.SourcePath, Encoding.UTF8).Replace("\"jobs\":[", "\"types\":{\"T.amount\":{\"type\":\"bad\"},\"U.value\":{\"type\":\"bad\"}},\"jobs\":[");
+            Check(ValidationFailure(delegate { Rdv3Config.Parse(text, true); }).Errors.Length == 2, "type definitions stopped each other");
+        });
+        Test("validation-independent-input-files", delegate {
+            CompositeFixture f = new CompositeFixture();
+            f.Config.Data.Tables[0].File = "missing-T.csv"; f.Config.Data.Tables[1].File = "missing-U.csv";
+            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, false, ""); });
+            Check(e.Errors.Length == 2 && e.Stage == "input files", "missing files not collected");
+            Check(string.Join("\n", e.Unchecked).Contains("input columns/types"), "claimed dependent validation");
+        });
+        Test("validation-reports-each-invalid-typed-cell", delegate {
+            CompositeFixture f = new CompositeFixture();
+            string text = File.ReadAllText(f.Config.SourcePath, Encoding.UTF8).Replace("\"jobs\":[", "\"types\":{\"T.amount\":{\"type\":\"number\"},\"U.value\":{\"type\":\"number\"}},\"jobs\":[");
+            File.WriteAllText(Path.Combine(f.Dir, "T.csv"), "id,part,amount\nAB,C,bad1\nA,BC,bad2\n", Encoding.GetEncoding(932));
+            File.WriteAllText(f.Config.SourcePath, text, new UTF8Encoding(false));
+            Rdv3Config c = Rdv3Config.Load(f.Config.SourcePath, true);
+            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Headless.Evaluate(c, f.Dir, f.Dir, false, ""); });
+            Check(e.Errors.Length == 5 && e.Stage == "input types", "invalid cells were hidden");
+            Check(string.Join("\n", e.Errors).Contains("bad2") && string.Join("\n", e.Errors).Contains("extra"), "lost actual values");
+        });
+        Test("validation-syntax-failure-count-and-exit", delegate {
+            string path = NewPath(".json"); File.WriteAllText(path, "{\"schema\":", Encoding.UTF8);
+            TextWriter previous = Console.Error; StringWriter captured = new StringWriter(); int code;
+            try { Console.SetError(captured); code = Rdv3Headless.Run(temp, path, temp, false, "", ""); }
+            finally { Console.SetError(previous); }
+            Check(code == 3 && captured.ToString().StartsWith("FAIL 1 error"), "failure count or exit changed");
+            Check(captured.ToString().Contains("subsequent checks were not performed"), "syntax failure implies complete validation");
+        });
+        Test("validation-valid-config-and-results-remain-equivalent", delegate {
+            CompositeFixture f = new CompositeFixture();
+            Rdv3Config c = Rdv3Config.Load(f.Config.SourcePath, true);
+            Check(c.Data.Describe() == f.Config.Data.Describe() && c.Screen.Describe() == f.Config.Screen.Describe(), "collection changed valid definitions");
+            Check(Rdv3Headless.Evaluate(c, f.Dir, f.Dir, false, "") == Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, false, ""), "validation results differ");
+            Check(!File.Exists(Path.Combine(f.Dir, c.Ledger)), "validation created a ledger");
+        });
     }
 
     private static void ConfigurationInputs()
