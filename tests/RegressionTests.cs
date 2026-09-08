@@ -625,6 +625,7 @@ public static class Rdv3RegressionTests
                 }
             });
             Test("eight-thread-shared-ledger-simulation", ConcurrentWriters);
+            ConfigurationInputs();
         }
         finally
         {
@@ -636,6 +637,182 @@ public static class Rdv3RegressionTests
         }
         Console.WriteLine("TOTAL passed=" + passed + " failed=" + failed);
         return failed == 0 ? 0 : 1;
+    }
+
+    private static void ConfigurationInputs()
+    {
+        Test("encoding-per-input-fast-and-general-join", delegate {
+            string dir = NewPath("-mixed"); Directory.CreateDirectory(dir);
+            string clean = NewPath("-utf8"); Directory.CreateDirectory(clean);
+            foreach (string file in new string[] { "tableA.csv", "tableB.csv", "tableC.csv", "delete.csv" })
+            {
+                string[] rows = File.ReadAllLines(Path.Combine(root, "data", file), Encoding.UTF8);
+                for (int r = 0; r < rows.Length; r++)
+                {
+                    string[] cells = rows[r].Split(',');
+                    if (r == 0 && file == "tableA.csv") { cells[2] = "\u540d\u79f0"; }
+                    if (r > 0)
+                    {
+                        if ((file == "tableA.csv" || file == "tableB.csv") && cells[0].Length > 0) { cells[0] = "\u7fa4" + cells[0]; }
+                        if (file == "tableA.csv") { cells[2] = "\u65e5\u672c" + cells[2]; }
+                        if (file == "tableB.csv") { cells[2] = "\u53c2\u7167" + cells[2]; }
+                        if (file == "delete.csv") { cells[1] = "\u53c2\u7167" + cells[1]; }
+                    }
+                    rows[r] = string.Join(",", cells);
+                }
+                File.WriteAllLines(Path.Combine(clean, file), rows, new UTF8Encoding(false));
+                File.WriteAllLines(Path.Combine(dir, file), rows, file == "tableA.csv" || file == "delete.csv" ? Encoding.GetEncoding(932) : new UTF8Encoding(file == "tableC.csv"));
+            }
+            string text = File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8)
+                .Replace("A.a_name", "A.\u540d\u79f0")
+                .Replace("\"key\": \"key1\"", "\"key\": \"key1\", \"keyValidation\": { \"characters\": \"unicode\" }")
+                .Replace("\"column\": \"b_ref\"", "\"column\": \"b_ref\", \"keyValidation\": { \"characters\": \"unicode\" }");
+            Rdv3Config canonical = Rdv3Config.Parse(text);
+            Rdv3Config mixed = Rdv3Config.Parse(text.Replace("\"file\": \"tableA.csv\"", "\"file\": \"tableA.csv\", \"encoding\": \"shift_jis\"")
+                .Replace("\"file\": \"delete.csv\"", "\"file\": \"delete.csv\", \"encoding\": \"shift_jis\""));
+            Check(mixed.Data.Tables[0].Enc.CodePage == 932 && mixed.Data.Tables[1].Enc.CodePage == 65001, "table override or fallback");
+            Check(mixed.Data.Jobs[0].Inputs[0].Enc.CodePage == 932 && mixed.Data.Jobs[1].Inputs[0].Enc.CodePage == 932, "job inherited/file encoding");
+            Check(Rdv3Table.ReadHead(Path.Combine(dir, "tableA.csv"), mixed.Data.Tables[0].Enc, mixed.Data.Tables[0].EncodingSetting)[2] == "\u540d\u79f0", "startup header encoding");
+            Rdv3MergeResult expected = Rdv3Ledger.BuildFromCsv(canonical.Data, clean);
+            Rdv3MergeResult actual = Rdv3Ledger.BuildFromCsv(mixed.Data, dir);
+            Check(mixed.Data.UpdateJob.FastJoinPlan && actual.Rows == 990, "fast path not exercised");
+            Check(string.Join("\n", actual.Lines) == string.Join("\n", expected.Lines), "mixed byte-key join changed records");
+            mixed.Data.UpdateJob.FastJoinPlan = false;
+            Check(string.Join("\n", Rdv3Ledger.BuildFromCsv(mixed.Data, dir).Lines) == string.Join("\n", expected.Lines), "general join encoding");
+            string[] initial = new string[actual.Rows]; for (int i = 0; i < initial.Length; i++) { initial[i] = "FALSE"; }
+            Rdv3DeleteResult a = Rdv3Ledger.ApplyDelete(canonical.Data, canonical.Data.Jobs[1], clean, expected.Lines, initial, "FALSE");
+            Rdv3DeleteResult b = Rdv3Ledger.ApplyDelete(mixed.Data, mixed.Data.Jobs[1], dir, actual.Lines, initial, "FALSE");
+            Check(a.Deleted > 0 && a.Deleted == b.Deleted && string.Join("\n", a.Lines) == string.Join("\n", b.Lines), "file-only mixed delete");
+            object[] args = { mixed.Data, mixed.Data.Jobs[1], dir, NewPath(".xlsx"), false };
+            typeof(Rdv3ProcessForm).GetMethod("Build", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static).Invoke(null, args);
+            Check((bool)args[4], "process preview rejected encoded file inputs");
+        });
+        Test("encoding-errors-point-to-the-effective-setting", delegate {
+            string text = File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8);
+            try { Rdv3Config.Parse(text.Replace("\"file\": \"tableA.csv\"", "\"file\": \"tableA.csv\", \"encoding\": \"not-an-encoding\"")); throw new Exception("invalid encoding accepted"); }
+            catch (Rdv3LoadError ex) { Check(ex.Message.Contains("data.tables.A.encoding") && ex.Message.Contains("utf-8"), "missing encoding repair"); }
+            string path = Csv("id,value\n001,\u65e5\u672c\n", new UTF8Encoding(true));
+            try { Rdv3Table.Read(path, "A", Encoding.GetEncoding(932), "id", null, "data.tables.A.encoding"); throw new Exception("BOM mismatch accepted"); }
+            catch (Rdv3DataError ex) { Check(ex.Message.Contains("data.tables.A.encoding"), "BOM repair points to global default"); }
+        });
+        Test("date-three-explicit-column-formats", delegate {
+            string[] formats = { "yyyyMMdd", "yyyy-MM-dd", "yyyy/MM/dd" };
+            string[] values = { "20260909", "2026-09-09", "2026/09/09" };
+            for (int i = 0; i < formats.Length; i++)
+            {
+                DateTime date;
+                Rdv3ColumnTypeDef type = new Rdv3ColumnTypeDef { Type = "date", Format = formats[i] };
+                Check(type.TryDate(values[i], out date) && date == new DateTime(2026, 9, 9), "declared date format");
+                Check(!type.TryDate(values[(i + 1) % 3], out date), "date format inferred instead of declared");
+            }
+        });
+        Test("composite-table-identities-discard-only-identical-rows", delegate {
+            CompositeFixture f = new CompositeFixture();
+            Rdv3Table t = Rdv3Table.Read(Path.Combine(f.Dir, "T.csv"), "T", Encoding.GetEncoding(932), new string[] { "id", "part" }, f.Config.Data.Tables[0].KeyValidation);
+            Check(t.Rows == 3 && t.SkippedEmptyRows == 1 && t.SkippedDuplicateRows == 1 && new Rdv3Index(t).Keys == 3, "tuple counts");
+            Check(t.Key(0) != t.Key(1) && t.Key(0) != t.Key(2), "tuple concatenation collided");
+            string conflict = Csv("id,part,value\nA,B,one\nA,B,two\n", Encoding.UTF8);
+            try { new Rdv3Index(Rdv3Table.Read(conflict, "T", Encoding.UTF8, new string[] { "id", "part" }, null)); throw new Exception("conflicting tuple accepted"); }
+            catch (Rdv3DataError ex) { Check(ex.Message.Contains("id / part") && ex.Message.Contains("2") && ex.Message.Contains("3"), "tuple conflict location"); }
+        });
+        Test("composite-key-rules-apply-to-each-component", delegate {
+            Rdv3KeyValidation rule = new Rdv3KeyValidation();
+            string skipped = Csv("id,part\nTOO-LONG,\nA,01\nB,02\n", Encoding.UTF8);
+            Check(Rdv3Table.Read(skipped, "T", Encoding.UTF8, new string[] { "id", "part" }, rule).Rows == 2, "skipped row set fixed width");
+            string bad = Csv("id,part\nA,01\nB,002\n", Encoding.UTF8);
+            try { Rdv3Table.Read(bad, "T", Encoding.UTF8, new string[] { "id", "part" }, rule); throw new Exception("part width accepted"); }
+            catch (Rdv3DataError ex) { Check(ex.Message.Contains("part") && ex.Message.Contains("variable"), "component width repair"); }
+            Throws<Rdv3DataError>(delegate { Rdv3Table.Read(Csv("id,part\nA,\u3042\n", Encoding.UTF8), "T", Encoding.UTF8, new string[] { "id", "part" }, rule); });
+        });
+        Test("composite-join-and-headless-result-show-unmatched-sides", delegate {
+            CompositeFixture f = new CompositeFixture();
+            Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, true, ""));
+            Check(report.Member("summary").Member("rows").Num == 3 && report.Member("summary").Member("skippedEmpty").Num == 1 && report.Member("summary").Member("skippedDuplicate").Num == 1, "report counts");
+            Rdv3Json join = report.Member("joins").At(0);
+            Check(join.Member("unmatchedLeft").Num == 1 && join.Member("unmatchedRight").Num == 1, "join counts");
+            Check(report.Member("rows").At(0).At(3).Str == "first" && report.Member("rows").At(1).At(3).Str == "second" && report.Member("rows").At(2).At(3).Str == "", "wrong pair joined");
+            Check(!File.Exists(f.Config.Ledger) && !File.Exists(f.Config.Ledger + ".lock"), "headless wrote a shared file");
+            Check(Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir).Rows == 3, "window update preparation disagrees");
+        });
+        Test("composite-extract-tests-the-whole-pair", delegate {
+            CompositeFixture f = new CompositeFixture();
+            Rdv3ProcessJobDef job = f.Config.Data.UpdateJob;
+            job.Steps.Clear();
+            job.Steps.Add(new Rdv3ProcessStepDef { Operation = "extract", Target1 = "T", Target2 = "U", Output = "missing", Condition = "exclude", Keys = new string[] { "T.id", "U.id" }, KeyGroups = new string[][] { new string[] { "T.id", "T.part" }, new string[] { "U.id", "U.part" } } });
+            Rdv3ProcessResult result = Rdv3Process.Run(f.Config.Data, job, f.Dir, new string[0], new string[0], "FALSE");
+            Check(result.Lines.Length == 1 && result.Lines[0].StartsWith("AB\tD\t"), "cross-pair exclusion");
+        });
+        Test("composite-pending-keeps-digest-baseline-and-idempotence", delegate {
+            int[] ids = { 0, 1 }; string[] lines = { "AB\tC\tone", "A\tBC\ttwo", "AB\tD\tthree" };
+            string[] states = { "FALSE", "HOLD", "FALSE" };
+            Rdv3PendingStore pending = Pending();
+            pending.Set(Rdv3Key.FromLine(lines[0], ids), "TRUE", lines[0], "FALSE");
+            pending.Set(Rdv3Key.FromLine(lines[1], ids), "FALSE", lines[1], "HOLD");
+            Check(pending.Overlay(lines, states, ids)[2] == "FALSE", "third tuple changed");
+            Rdv3PendingApply sent = pending.PrepareSend(lines, states, ids, "FALSE");
+            Check(sent.Resolved.Count == 2 && sent.Unmatched.Count == 0 && sent.States[0] == "TRUE" && sent.States[1] == "FALSE", "distinct tuple sends");
+            Check(pending.PrepareSend(lines, sent.States, ids, "FALSE").Resolved.Count == 2, "tuple retry not idempotent");
+            string[] changed = (string[])lines.Clone(); changed[0] += "changed";
+            Check(pending.PrepareSend(changed, states, ids, "FALSE").Unmatched[0].Reason == "changed", "content conflict lost");
+            states[0] = "HOLD";
+            Check(pending.PrepareSend(lines, states, ids, "FALSE").Unmatched[0].Reason == "state-conflict", "baseline conflict lost");
+        });
+        Test("composite-update-reset-and-contract-readback", delegate {
+            CompositeFixture f = new CompositeFixture();
+            Rdv3ProcessResult first = Rdv3Process.Run(f.Config.Data, f.Config.Data.UpdateJob, f.Dir, new string[0], new string[0], "FALSE");
+            string path = NewPath(".xlsx"); string[] states = { "TRUE", "HOLD", "FALSE" };
+            Rdv3Xlsx.Write(path, f.Config.Data.Head, f.Config.Screen.Work.Column, first.Lines, states, "baseline", Rdv3Files.StorageContract(f.Config.Data, f.Config.Screen.Work));
+            byte[] before = File.ReadAllBytes(path);
+            string u = Path.Combine(f.Dir, "U.csv"); File.WriteAllText(u, File.ReadAllText(u).Replace("first", "changed"), new UTF8Encoding(true));
+            Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, true, path));
+            Check(report.Member("summary").Member("resetRows").Num == 1 && report.Member("states").At(0).Str == "FALSE" && report.Member("states").At(1).Str == "HOLD", "wrong tuple reset");
+            Check(Convert.ToBase64String(before) == Convert.ToBase64String(File.ReadAllBytes(path)), "headless overwrote baseline");
+            string contract = Rdv3Files.StorageContract(f.Config.Data, f.Config.Screen.Work);
+            Array.Reverse(f.Config.Data.IdentityCols);
+            Check(contract != Rdv3Files.StorageContract(f.Config.Data, f.Config.Screen.Work), "tuple order not in contract");
+            Throws<InvalidDataException>(delegate { new Rdv3LedgerStore(path, f.Config.Data, f.Config.Screen.Work, null).Read(f.Config.Data.Head); });
+        });
+        Test("single-key-array-preserves-existing-storage-contract", delegate {
+            string text = File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8);
+            Rdv3Config one = Rdv3Config.Parse(text);
+            Rdv3Config array = Rdv3Config.Parse(text.Replace("\"key\": \"key2\"", "\"key\": [\"key2\"]").Replace("\"identity\": \"B.key2\"", "\"identity\": [\"B.key2\"]"));
+            Check(Rdv3Files.StorageContract(one.Data, one.Screen.Work) == Rdv3Files.StorageContract(array.Data, array.Screen.Work), "single array changed stored contract");
+            Check(Rdv3Key.FromLine("00000001\tvalue", new int[] { 0 }) == "00000001", "legacy pending representation changed");
+        });
+        Test("headless-validation-output-and-input-protection", delegate {
+            CompositeFixture f = new CompositeFixture(); string output = NewPath(".json");
+            Check(Rdv3Headless.Run(f.Dir, f.Config.SourcePath, f.Dir, false, "", "") == 0, "validate failed");
+            Check(Rdv3Headless.Run(f.Dir, f.Config.SourcePath, f.Dir, true, output, "") == 0, "run failed");
+            string original = File.ReadAllText(output);
+            Check(Rdv3Headless.Run(f.Dir, f.Config.SourcePath, f.Dir, true, output, "") != 0 && File.ReadAllText(output) == original, "report overwritten");
+            Check(Rdv3Headless.Run(f.Dir, f.Config.SourcePath, f.Dir, true, f.Config.SourcePath, "") != 0, "config writable as report");
+            File.WriteAllText(Path.Combine(f.Dir, "U.csv"), "wrong,header\n1,2\n");
+            string failed = NewPath(".json");
+            Check(Rdv3Headless.Run(f.Dir, f.Config.SourcePath, f.Dir, true, failed, "") != 0 && !File.Exists(failed), "invalid inputs published success");
+        });
+    }
+
+    private sealed class CompositeFixture
+    {
+        public readonly string Dir;
+        public readonly Rdv3Config Config;
+        public CompositeFixture()
+        {
+            Dir = NewPath("-tuple"); Directory.CreateDirectory(Dir);
+            File.WriteAllText(Path.Combine(Dir, "T.csv"), "id,part,amount\nAB,C,100\nA,BC,200\nAB,D,300\nAB,C,100\nLONG,,400\n", Encoding.GetEncoding(932));
+            File.WriteAllText(Path.Combine(Dir, "U.csv"), "id,part,value\nAB,C,first\nA,BC,second\nAB,E,extra\n", new UTF8Encoding(true));
+            string rule = "\"keyValidation\":{\"characters\":\"unicode\",\"length\":\"variable\"}";
+            string data = "{\"tables\":{\"T\":{\"file\":\"T.csv\",\"encoding\":\"shift_jis\",\"key\":[\"id\",\"part\"]," + rule + "},\"U\":{\"file\":\"U.csv\",\"key\":[\"id\",\"part\"]," + rule + "}},"
+                + "\"labels\":{\"T.id\":\"ID\",\"T.part\":\"Part\",\"T.amount\":\"Amount\",\"U.id\":\"ID\",\"U.part\":\"Part\",\"U.value\":\"Value\",\"joined\":\"Joined\",\"ledger\":\"Ledger\"},"
+                + "\"jobs\":[{\"id\":\"update\",\"kind\":\"update\",\"inputs\":[{\"table\":\"T\"},{\"table\":\"U\"}],\"steps\":["
+                + "{\"operation\":\"join\",\"target1\":\"T\",\"target2\":\"U\",\"keys\":[[\"T.id\",\"T.part\"],[\"U.id\",\"U.part\"]],\"condition\":\"left\",\"output\":\"joined\"},"
+                + "{\"operation\":\"merge\",\"target1\":\"joined\",\"target2\":\"ledger\",\"keys\":[[\"T.id\",\"T.part\"],[\"T.id\",\"T.part\"]],\"sourceOnly\":\"add\",\"both\":\"update\",\"output\":\"ledger\"}]}],"
+                + "\"ledger\":{\"identity\":[\"T.id\",\"T.part\"],\"search\":{\"columns\":[\"T.id\"]},\"columns\":{\"source\":[\"T.id\",\"T.part\",\"T.amount\",\"U.value\"],\"application\":[{\"name\":\"workState\",\"onSourceChange\":\"reset\"}]}}}";
+            string path = Path.Combine(Dir, "settings.json");
+            string screen = "{\"workState\":{\"trigger\":\"manual\",\"store\":{\"column\":\"state\"},\"states\":[{\"id\":\"todo\",\"stored\":\"FALSE\"},{\"id\":\"done\",\"stored\":\"TRUE\"},{\"id\":\"hold\",\"stored\":\"HOLD\"}],\"initial\":\"todo\"},\"export\":{\"defaultFields\":[\"T.id\"]},\"candidates\":{\"columns\":[{\"value\":{\"field\":\"T.id\"}}]},\"sections\":[{\"type\":\"titleBar\"}]}";
+            File.WriteAllText(path, "{\"schema\":3,\"data\":" + data + ",\"screen\":" + screen + "}", new UTF8Encoding(false));
+            Config = Rdv3Config.Load(path);
+        }
     }
 
     private sealed class ApplyFixture

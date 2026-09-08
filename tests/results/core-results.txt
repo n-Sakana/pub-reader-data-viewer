@@ -1,4 +1,4 @@
-UTC 2026-09-08T18:12:39.2363667Z
+UTC 2026-09-08T18:22:08.1626016Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -72,4 +72,17 @@ PASS write-guard-local-outcome-controls-close
 PASS write-guard-close-and-acquisition-are-exclusive
 PASS write-guard-overdue-worker-remains-held-until-return
 PASS eight-thread-shared-ledger-simulation
-TOTAL passed=72 failed=0
+PASS encoding-per-input-fast-and-general-join
+PASS encoding-errors-point-to-the-effective-setting
+PASS date-three-explicit-column-formats
+PASS composite-table-identities-discard-only-identical-rows
+PASS composite-key-rules-apply-to-each-component
+PASS composite-join-and-headless-result-show-unmatched-sides
+FAIL composite-extract-tests-the-whole-pair: System.Exception: cross-pair exclusion
+   at Rdv3RegressionTests.<ConfigurationInputs>b__109()
+   at Rdv3RegressionTests.Test(String name, Action action)
+PASS composite-pending-keeps-digest-baseline-and-idempotence
+PASS composite-update-reset-and-contract-readback
+PASS single-key-array-preserves-existing-storage-contract
+PASS headless-validation-output-and-input-protection
+TOTAL passed=82 failed=1
