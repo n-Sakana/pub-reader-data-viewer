@@ -63,6 +63,24 @@ public sealed class Rdv3Json
     public int Start, End;                   // the value's text in the source
     public int KeyStart = -1;                // the member name's opening quote
 
+    internal Rdv3Validation Validation;
+    internal void CollectErrors(Rdv3Validation validation)
+    {
+        Validation = validation;
+        if (Members != null) { foreach (Rdv3Json child in Members.Values) { child.CollectErrors(validation); } }
+        if (Items != null) { foreach (Rdv3Json child in Items) { child.CollectErrors(validation); } }
+    }
+    internal bool Check(Action check)
+    {
+        if (Validation != null) { return Validation.Check(Path, check); }
+        check(); return true;
+    }
+    internal void Report(Rdv3LoadError error)
+    { if (Validation == null) { throw error; } Validation.Add(error); }
+    internal int ErrorCount { get { return Validation == null ? 0 : Validation.Count; } }
+    internal void Guard(int before, string remaining)
+    { if (Validation != null) { Validation.Guard(before, remaining); } }
+
     private Rdv3Json(int kind) { Kind = kind; }
 
     // ---- shape --------------------------------------------------------------
@@ -116,7 +134,7 @@ public sealed class Rdv3Json
         {
             bool ok = false;
             for (int k = 0; k < names.Length; k++) { if (names[k] == Order[i]) { ok = true; break; } }
-            if (!ok) { throw FailAt(Order[i], "is not a member this program knows (" + string.Join(", ", names) + ")"); }
+            if (!ok) { Report(FailAt(Order[i], "is not a member this program knows (" + string.Join(", ", names) + ")")); }
         }
     }
 
