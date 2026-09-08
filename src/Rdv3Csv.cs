@@ -50,7 +50,17 @@ public static class Rdv3Csv
                 {
                     int first = physical;
                     bool blank;
-                    string[] cells = Record(reader, path, ref physical, out blank);
+                    string[] cells;
+                    try { cells = Record(reader, path, ref physical, out blank); }
+                    catch (DecoderFallbackException)
+                    {
+                        // Use the same open file to locate the invalid byte; a
+                        // decoder's buffered read may run ahead of this record.
+                        stream.Position = 0;
+                        using (MemoryStream copy = new MemoryStream())
+                        { stream.CopyTo(copy); Rdv3Input.ValidateEncoding(copy.ToArray(), encoding, path); }
+                        throw;
+                    }
                     if (cells == null) { break; }
                     if (blank) { continue; }
                     if (head == null)

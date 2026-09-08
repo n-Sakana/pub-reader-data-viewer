@@ -173,10 +173,8 @@ public sealed class Rdv3Table
         t.KeyValidation = validation;
         t.Buf = File.ReadAllBytes(path);
         if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, keyName, validation, false); }
-        t.InvalidEncodingRow = FindInvalidEncodingRow(t.Buf, enc);
+        Rdv3Input.ValidateEncoding(t.Buf, enc, path);
         string file = System.IO.Path.GetFileName(path);
-        if (t.InvalidEncodingRow != 0)
-        { throw new Rdv3DataError(file + ": invalid " + enc.WebName + " byte sequence at row " + t.InvalidEncodingRow.ToString(CultureInfo.InvariantCulture)); }
 
         byte[] b = t.Buf;
         int n = b.Length;
@@ -265,9 +263,9 @@ public sealed class Rdv3Table
             }
             if (field != cols)
             {
-                throw new Rdv3DataError(Fmt(Rdv3Text.DataColumnCount, file, row)
-                    .Replace("{n}", field.ToString(CultureInfo.InvariantCulture))
-                    .Replace("{cols}", cols.ToString(CultureInfo.InvariantCulture)));
+                throw Rdv3Input.Error(path, row, (Math.Min(field, cols) + 1).ToString(CultureInfo.InvariantCulture),
+                    Rdv3Text.InputColumnCount.Replace("{n}", cols.ToString(CultureInfo.InvariantCulture)),
+                    Rdv3Text.InputColumnCount.Replace("{n}", field.ToString(CultureInfo.InvariantCulture)), Rdv3Text.InputFixCsv);
             }
             while (keyEnd > keyAt && b[keyEnd - 1] == (byte)' ') { keyEnd--; }
             for (int k = keyAt; k < keyEnd; k++)
@@ -469,24 +467,6 @@ public sealed class Rdv3Table
     private static string ControlChar(string file, int row, int code)
     {
         return Fmt(Rdv3Text.DataControlChar, file, row).Replace("{code}", code.ToString("X2", CultureInfo.InvariantCulture));
-    }
-
-    private static int FindInvalidEncodingRow(byte[] bytes, Encoding enc)
-    {
-        Encoding strict = (Encoding)enc.Clone();
-        strict.DecoderFallback = DecoderFallback.ExceptionFallback;
-        try
-        {
-            strict.GetCharCount(bytes);
-            return 0;
-        }
-        catch (DecoderFallbackException ex)
-        {
-            int stop = Math.Max(0, Math.Min(ex.Index, bytes.Length));
-            int row = 1;
-            for (int i = 0; i < stop; i++) { if (bytes[i] == (byte)'\n') { row++; } }
-            return row;
-        }
     }
 
     // byte offset of field f in row i, -1 if the row has no such field

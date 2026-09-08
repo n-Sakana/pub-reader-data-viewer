@@ -1,10 +1,39 @@
 using System;
 using System.Globalization;
+using System.Text;
 
 // Normalize imported cells and lookup input, never persisted ledger/pending
 // snapshots: changing those would invalidate their conflict baselines.
 public static class Rdv3Input
 {
+    public static void ValidateEncoding(byte[] bytes, Encoding encoding, string path)
+    {
+        Encoding strict = (Encoding)encoding.Clone();
+        strict.DecoderFallback = DecoderFallback.ExceptionFallback;
+        try { strict.GetCharCount(bytes); }
+        catch (DecoderFallbackException ex)
+        {
+            int stop = Math.Max(0, Math.Min(ex.Index, bytes.Length));
+            string prefix = encoding.GetString(bytes, 0, stop);
+            int row = 1, column = 1;
+            bool quoted = false;
+            for (int i = 0; i < prefix.Length; i++)
+            {
+                char c = prefix[i];
+                if (c == '"') { quoted = !quoted; }
+                else if (c == ',' && !quoted) { column++; }
+                else if (c == '\r' || c == '\n')
+                {
+                    if (c == '\r' && i + 1 < prefix.Length && prefix[i + 1] == '\n') { i++; }
+                    row++;
+                    if (!quoted) { column = 1; }
+                }
+            }
+            throw Error(path, row, column.ToString(CultureInfo.InvariantCulture), encoding.WebName,
+                "bytes " + BitConverter.ToString(ex.BytesUnknown), Rdv3Text.InputFixUnknownEncoding);
+        }
+    }
+
     public static Rdv3DataError Error(string file, int row, string column, string expected, string actual, string fix)
     {
         return new Rdv3DataError(Rdv3Text.InputError.Replace("{file}", System.IO.Path.GetFileName(file))
