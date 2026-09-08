@@ -1,5 +1,5 @@
 {
-  "scope": "Expected source, runtime dependencies, launchers, settings, fixtures and tests after Win98 simplification. Intentionally changed files retain their uploaded-archive hash in baselineSha256.",
+  "scope": "Expected source, runtime dependencies, launchers, settings, fixtures and tests after shared-update restructuring. Intentionally changed files retain their uploaded-archive hash in baselineSha256.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -69,7 +69,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "9b58d9171c94308e68ac18e52ee93b04d8bcb0fe9b600ccfaf70288d05d5fdad",
+      "sha256": "f229ba78af4389c87f7386aac7778557090f54b9a05dd056b79e7bafd708b46e",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -162,7 +162,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "4e34f4d692d03f26f7b822743acace23a9bab1067bf42fd0e8f7125d7db4636f",
+      "sha256": "de671538f285431cb6aa51fcc90fb17684e1eaf629175e104c5cef70d3ac2fe5",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -213,6 +213,18 @@
     {
       "path": "src/Rdv3Expression.cs",
       "sha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
+    },
+    {
+      "path": "src/Rdv3LedgerStore.cs",
+      "sha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
+    },
+    {
+      "path": "src/Rdv3ResetNotice.cs",
+      "sha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
+    },
+    {
+      "path": "src/Rdv3WriteGuard.cs",
+      "sha256": "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96"
     }
   ]
 }

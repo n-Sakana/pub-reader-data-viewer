@@ -1,13 +1,13 @@
 {
   "scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
-  "utc": "2026-09-08T15:37:40.219781+00:00",
+  "utc": "2026-09-08T16:12:06.419502+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
-  "passed": 33,
+  "passed": 36,
   "failed": 0,
   "details": {
     "text_reference_count": 168,
     "node_version": "v24.12.0",
-    "native_test_cases_provided_not_executed": 51,
+    "native_test_cases_provided_not_executed": 63,
     "sample_data": {
       "A": {
         "source_rows": 1000,
@@ -91,6 +91,10 @@
       "status": "PASS"
     },
     {
+      "name": "csharp-lexical-delimiters:src\\Rdv3LedgerStore.cs",
+      "status": "PASS"
+    },
+    {
       "name": "csharp-lexical-delimiters:src\\Rdv3Log.cs",
       "status": "PASS"
     },
@@ -104,6 +108,10 @@
     },
     {
       "name": "csharp-lexical-delimiters:src\\Rdv3Program.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3ResetNotice.cs",
       "status": "PASS"
     },
     {
@@ -136,6 +144,10 @@
     },
     {
       "name": "csharp-lexical-delimiters:src\\Rdv3Watch.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3WriteGuard.cs",
       "status": "PASS"
     },
     {
