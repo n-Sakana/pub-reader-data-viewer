@@ -187,7 +187,8 @@ public static class Rdv3ProcessForm
                         input.Enc,
                         input.Columns ?? new string[] { input.Column },
                         input.KeyValidation,
-                        input.EncodingSetting);
+                        input.EncodingSetting,
+                        data.SourceReferences(input));
                     new Rdv3Index(table);
                     rows = table.Rows.ToString("N0", CultureInfo.InvariantCulture);
                     List<string> warnings = new List<string>();

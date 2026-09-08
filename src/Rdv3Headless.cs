@@ -89,7 +89,7 @@ public static class Rdv3Headless
             Action read = delegate {
             Rdv3Log.Phase("reading input " + def.Id + " " + Rdv3Files.Full(def.File, dataDir));
             tables[i] = Rdv3Table.Read(Rdv3Files.Full(def.File, dataDir), def.Id, def.Enc,
-                def.KeyColumns, def.KeyValidation, def.EncodingSetting);
+                def.KeyColumns, def.KeyValidation, def.EncodingSetting, data.SourceReferences(def.Id));
             heads[i] = tables[i].Head;
             new Rdv3Index(tables[i]);
             tables[i].AddWarnings(warnings);
@@ -133,10 +133,16 @@ public static class Rdv3Headless
         StringBuilder sb = new StringBuilder("{\"mode\":");
         sb.Append(Rdv3Json.Quote(execute ? "update" : "validate"));
         sb.Append(",\"job\":").Append(Rdv3Json.Quote(data.UpdateJob.Id));
-        int empty = 0, duplicate = 0;
-        foreach (Rdv3InputResult input in inputs) { empty += input.SkippedEmpty; duplicate += input.SkippedDuplicate; }
+        int empty = 0, duplicate = 0, shortRows = 0, blankRows = 0, columns = 0;
+        foreach (Rdv3InputResult input in inputs)
+        {
+            empty += input.SkippedEmpty; duplicate += input.SkippedDuplicate;
+            shortRows += input.SkippedShort; blankRows += input.SkippedBlank; columns += input.SkippedColumns;
+        }
         sb.Append(",\"summary\":{\"rows\":").Append(result == null ? "null" : N(result.Lines.Length));
         sb.Append(",\"skippedEmpty\":").Append(N(empty)).Append(",\"skippedDuplicate\":").Append(N(duplicate));
+        sb.Append(",\"skippedShort\":").Append(N(shortRows)).Append(",\"skippedBlank\":").Append(N(blankRows));
+        sb.Append(",\"skippedColumns\":").Append(N(columns));
         sb.Append(",\"baselineRows\":").Append(N(before.Length));
         sb.Append(",\"resetRows\":").Append(result == null ? "null" : N(reset.Count)).Append('}');
         sb.Append(",\"inputs\":[");
@@ -146,7 +152,9 @@ public static class Rdv3Headless
             Rdv3InputResult input = inputs[i];
             sb.Append("{\"id\":").Append(Rdv3Json.Quote(input.Id)).Append(",\"file\":").Append(Rdv3Json.Quote(input.File));
             sb.Append(",\"rows\":").Append(N(input.Rows)).Append(",\"skippedEmpty\":").Append(N(input.SkippedEmpty));
-            sb.Append(",\"skippedDuplicate\":").Append(N(input.SkippedDuplicate)).Append('}');
+            sb.Append(",\"skippedDuplicate\":").Append(N(input.SkippedDuplicate));
+            sb.Append(",\"skippedShort\":").Append(N(input.SkippedShort)).Append(",\"skippedBlank\":").Append(N(input.SkippedBlank));
+            sb.Append(",\"skippedColumns\":").Append(N(input.SkippedColumns)).Append('}');
         }
         sb.Append("],\"warnings\":").Append(Rdv3WebJson.S(new List<string>(new HashSet<string>(warnings)).ToArray()));
         sb.Append(",\"joins\":[");

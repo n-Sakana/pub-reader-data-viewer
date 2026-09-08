@@ -39,25 +39,29 @@ public static class Rdv3Xlsx
     // non-empty row is the header and the remaining rows are source records.
     // The saved ledger reader below deliberately remains separate because it
     // has the additional application-owned state column contract.
-    public static string[] ReadTableHead(string path)
+    public static string[] ReadTableHead(string path, HashSet<string> references = null)
     {
         string[] head;
         string[][] rows;
         string warning;
-        ReadTableCore(path, true, out head, out rows, out warning);
+        ReadTableCore(path, true, out head, out rows, out warning, references, null);
         return head;
     }
 
-    public static void ReadTable(string path, out string[] head, out string[][] rows, out string warning)
+    public static void ReadTable(string path, out string[] head, out string[][] rows, out string warning,
+                                  HashSet<string> references = null, Rdv3InputCounts counts = null)
     {
-        ReadTableCore(path, false, out head, out rows, out warning);
+        ReadTableCore(path, false, out head, out rows, out warning, references, counts);
     }
 
     private static void ReadTableCore(string path, bool headOnly, out string[] head,
-                                      out string[][] rows, out string warning)
+                                      out string[][] rows, out string warning,
+                                      HashSet<string> references, Rdv3InputCounts counts)
     {
         warning = "";
         head = null;
+        if (counts == null) { counts = new Rdv3InputCounts(); }
+        Rdv3InputColumns columns = null;
         List<string[]> result = new List<string[]>();
         string file = Path.GetFileName(path);
         using (FileStream fs = new FileStream(path, FileMode.Open, FileAccess.Read,
@@ -115,20 +119,23 @@ public static class Rdv3Xlsx
                         }
                         if (head == null)
                         {
-                            head = CheckTableHead(values, file, rowNumber);
+                            columns = Rdv3InputColumns.Read(values, file, rowNumber, references, counts);
+                            head = columns.Head;
                             if (headOnly) { break; }
                             continue;
                         }
-                        if (values.Length > head.Length)
+                        if (values.Length > columns.SourceCount)
                         {
                             throw new Rdv3DataError(Rdv3Text.DataColumnCount.Replace("{file}", file)
                                 .Replace("{row}", rowNumber.ToString(CultureInfo.InvariantCulture))
                                 .Replace("{n}", values.Length.ToString(CultureInfo.InvariantCulture))
-                                .Replace("{cols}", head.Length.ToString(CultureInfo.InvariantCulture)));
+                                .Replace("{cols}", columns.SourceCount.ToString(CultureInfo.InvariantCulture)));
                         }
-                        Array.Resize(ref values, head.Length);
+                        // XLSX uses explicit cell addresses; an omitted cell is
+                        // empty, unlike a short CSV record with unknown boundaries.
+                        Array.Resize(ref values, columns.SourceCount);
                         for (int c = 0; c < values.Length; c++) { if (values[c] == null) { values[c] = ""; } }
-                        result.Add(values);
+                        result.Add(columns.Project(values));
                     }
                 }
             }
@@ -138,26 +145,6 @@ public static class Rdv3Xlsx
             throw new Rdv3DataError(Rdv3Text.DataNoRows.Replace("{file}", file).Replace("{row}", "0"));
         }
         rows = result.ToArray();
-    }
-
-    private static string[] CheckTableHead(string[] values, string file, int row)
-    {
-        for (int i = 0; i < values.Length; i++)
-        {
-            values[i] = values[i].Trim();
-            if (values[i].Length == 0)
-            {
-                throw Rdv3Input.Error(file, row, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, values[i], Rdv3Text.InputFixHeader);
-            }
-            for (int k = 0; k < i; k++)
-            {
-                if (string.Equals(values[k], values[i], StringComparison.Ordinal))
-                {
-                    throw Rdv3Input.Error(file, row, (i + 1).ToString(CultureInfo.InvariantCulture), Rdv3Text.InputExpectHeader, values[i], Rdv3Text.InputFixHeader);
-                }
-            }
-        }
-        return values;
     }
 
     private static string SafeSourceCell(string value, string file, int row, ref string warning)

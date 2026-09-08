@@ -31,7 +31,9 @@ public static class Rdv3Text
     public const string InputFixUnknownEncoding = "このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の {setting} に指定するか、ファイルをその文字コードで保存し直してください。";
     public const string InputUnknownEncoding = "文字コード「{value}」を利用できません。encoding に \"utf-8\"、\"shift_jis\"、\"utf-16\" など、この端末で利用できる文字コード名を指定してください。";
     public const string InputExpectHeader = "空でなく重複しない列名";
-    public const string InputFixHeader = "Use unique, non-empty source column names. Remove duplicate columns only if they are unused; otherwise rename them and update the column references in data.tables, data.jobs, data.types, data.ledger and screen. JSON labels or select cannot disambiguate repeated source headers.";
+    public const string InputFixHeader = "Use non-empty source column names. Duplicate headers used by a key, type, job or ledger reference are ambiguous: rename them in the source and update the references in data.tables, data.jobs, data.types, data.ledger and screen. JSON labels or select cannot disambiguate repeated source headers. Unreferenced duplicate name groups are excluded automatically with a warning; empty cells do not make a referenced duplicate safe.";
+    public const string InputShapeSkipped = "{file}: 見出しより列が少ない {short} 行と空行 {blank} 行を除外しました。不足セルの補完はしていません。";
+    public const string InputHeadersSkipped = "{file}: 設定から参照されていない重複見出し「{names}」の {n} 列をすべて除外しました。";
     public const string InputExpectQuote = "セル全体を囲む二重引用符と閉じ引用符";
     public const string InputExpectDelimiter = "閉じ引用符の後のカンマまたは改行";
     public const string InputColumnCount = "{n} 列";

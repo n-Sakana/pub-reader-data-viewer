@@ -181,6 +181,28 @@ public sealed class Rdv3Data
     public Dictionary<string, Rdv3ColumnTypeDef> Types = new Dictionary<string, Rdv3ColumnTypeDef>(StringComparer.Ordinal);
     public List<Rdv3ColumnTypeDef> TypeOrder = new List<Rdv3ColumnTypeDef>();
     public List<Rdv3ProcessJobDef> Jobs = new List<Rdv3ProcessJobDef>();
+    private readonly HashSet<string> JobColumnRefs = new HashSet<string>(StringComparer.Ordinal);
+
+    public HashSet<string> SourceReferences(string table)
+    {
+        HashSet<string> result = new HashSet<string>(StringComparer.Ordinal);
+        Rdv3TableDef def = TableOf(table);
+        if (def != null) { result.UnionWith(def.KeyColumns); }
+        string prefix = table + ".";
+        foreach (string reference in JobColumnRefs)
+        { if (reference.StartsWith(prefix, StringComparison.Ordinal)) { result.Add(reference.Substring(prefix.Length)); } }
+        foreach (Rdv3ColumnRef column in Columns)
+        { if (column.Table == table) { result.Add(column.Column); } }
+        foreach (Rdv3ColumnTypeDef type in TypeOrder)
+        { if (type.Ref.StartsWith(prefix, StringComparison.Ordinal)) { result.Add(type.Ref.Substring(prefix.Length)); } }
+        return result;
+    }
+
+    public HashSet<string> SourceReferences(Rdv3ProcessInputDef input)
+    {
+        return input.IsTable ? SourceReferences(input.Table)
+            : new HashSet<string>(input.Columns ?? new string[] { input.Column }, StringComparer.Ordinal);
+    }
 
     // The first update job is the automatic/start-up job.
     public Rdv3ProcessJobDef UpdateJob;
@@ -1079,6 +1101,9 @@ public sealed class Rdv3Data
 
     private static void RequireLabel(Rdv3Data d, string name, Rdv3Json at)
     {
+        // Reuse the parsed reference walk (including expressions in every job).
+        // Merely naming a label, or quoting a literal, does not read a column.
+        d.JobColumnRefs.Add(name);
         if (d.LabelOf(name).Length > 0) { return; }
         // Table IDs are registered before labels, even when their label is empty.
         // Sending those IDs to data.labels would create a second configuration error.

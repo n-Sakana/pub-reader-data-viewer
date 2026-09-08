@@ -53,12 +53,14 @@ public sealed class Rdv3JoinResult
 internal sealed class Rdv3InputResult
 {
     public string Id, File;
-    public int Rows, SkippedEmpty, SkippedDuplicate;
+    public int Rows, SkippedEmpty, SkippedDuplicate, SkippedShort, SkippedBlank, SkippedColumns;
 
     public Rdv3InputResult(string id, Rdv3Table table)
     {
         Id = id; File = table.Path; Rows = table.Rows;
         SkippedEmpty = table.SkippedEmptyRows; SkippedDuplicate = table.SkippedDuplicateRows;
+        SkippedShort = table.InputCounts.ShortRows; SkippedBlank = table.InputCounts.BlankRows;
+        SkippedColumns = table.InputCounts.HeaderColumns;
     }
 }
 
@@ -145,7 +147,7 @@ public static class Rdv3Process
             if (table == null)
             {
                 string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
-                table = Rdv3Table.Read(path, input.Id, input.Enc, input.Columns ?? new string[] { input.Column }, input.KeyValidation, input.EncodingSetting);
+                table = Rdv3Table.Read(path, input.Id, input.Enc, input.Columns ?? new string[] { input.Column }, input.KeyValidation, input.EncodingSetting, data.SourceReferences(input));
                 new Rdv3Index(table);                    // enforce the configured duplicate rule
                 table.AddWarnings(prepared.Warnings);
             }
