@@ -1,0 +1,42 @@
+[
+  {
+    "name": "le-utf8",
+    "status": "PASS",
+    "detail": "exit 3; concrete suggested encoding; original bytes unchanged"
+  },
+  {
+    "name": "be-utf8",
+    "status": "PASS",
+    "detail": "exit 3; concrete suggested encoding; original bytes unchanged"
+  },
+  {
+    "name": "le-sjis",
+    "status": "PASS",
+    "detail": "exit 3; concrete suggested encoding; original bytes unchanged"
+  },
+  {
+    "name": "correct-le",
+    "status": "PASS",
+    "detail": "exit 0 with explicitly corrected encoding"
+  },
+  {
+    "name": "correct-be",
+    "status": "PASS",
+    "detail": "exit 0 with explicitly corrected encoding"
+  },
+  {
+    "name": "sjis-is-not-guessed-as-utf16",
+    "status": "PASS",
+    "detail": "exit 3; no unsupported UTF-16 guess"
+  },
+  {
+    "name": "binary-is-not-guessed-as-text",
+    "status": "PASS",
+    "detail": "exit 3; alternating zeros alone are insufficient"
+  },
+  {
+    "name": "duplicate-key-guidance",
+    "status": "PASS",
+    "detail": "exit 3; detail key -> aggregate/groupBy; distinct is not summing"
+  }
+]
