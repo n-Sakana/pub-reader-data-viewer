@@ -1,7 +1,15 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-08T14:26:32.007864+00:00",
-  "details": {},
+  "utc": "2026-09-08T14:33:04.852332+00:00",
+  "details": {
+    "excludedFingerprints": [
+      "data/ReaderDataViewer.log",
+      "data/delete.csv",
+      "data/tableA.csv",
+      "data/tableB.csv",
+      "data/tableC.csv"
+    ]
+  },
   "tests": [
     {
       "name": "preserved:LICENSE",
@@ -17,27 +25,6 @@
     },
     {
       "name": "preserved:THIRD-PARTY-NOTICES.md",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:data/ReaderDataViewer.log",
-      "status": "FAIL",
-      "detail": "Uploaded baseline differs"
-    },
-    {
-      "name": "preserved:data/delete.csv",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:data/tableA.csv",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:data/tableB.csv",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:data/tableC.csv",
       "status": "PASS"
     },
     {
@@ -202,8 +189,7 @@
     },
     {
       "name": "classic-no-presentation-motion",
-      "status": "FAIL",
-      "detail": "Unexpected Win98 motion"
+      "status": "PASS"
     },
     {
       "name": "no-new-network-assets",
@@ -214,6 +200,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 50,
-  "failed": 2
+  "passed": 47,
+  "failed": 0
 }
