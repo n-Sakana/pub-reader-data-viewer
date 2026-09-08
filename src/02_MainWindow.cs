@@ -29,8 +29,7 @@ namespace ReaderDataViewer
         private const int CaptionColour = 35;
         private const int TextColour = 36;
 
-        // Native caption colours follow the packaged web theme. Classic keeps
-        // the original values. On older Windows, unsupported attributes are ignored.
+        // On older Windows, unsupported colour attributes are ignored.
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(
@@ -40,11 +39,9 @@ namespace ReaderDataViewer
         {
             IntPtr handle = new WindowInteropHelper(window).Handle;
             if (handle == IntPtr.Zero) { return; }
-            RdvTheme theme = RdvTheme.Current;
-            if (theme.Modern && SystemParameters.HighContrast) { return; }
-            int face = theme.Caption;
-            int ink = theme.CaptionText;
-            int edge = theme.Border;
+            int face = Win98.Caption;
+            int ink = Win98.CaptionText;
+            int edge = Win98.Border;
             try
             {
                 // Older Windows simply reports the attribute as unsupported.
@@ -95,16 +92,16 @@ namespace ReaderDataViewer
             ResizeMode = ResizeMode.CanResize;
             WindowStartupLocation = WindowStartupLocation.CenterScreen;
             Background = new SolidColorBrush(Color.FromRgb(
-                RdvTheme.Current.Background.R,
-                RdvTheme.Current.Background.G,
-                RdvTheme.Current.Background.B));
+                Win98.Background.R,
+                Win98.Background.G,
+                Win98.Background.B));
             UseLayoutRounding = true;
             SnapsToDevicePixels = true;
 
             Grid root = new Grid();
             webView = new WebView2();
             webView.DefaultBackgroundColor =
-                RdvTheme.Current.Background;
+                Win98.Background;
             webView.SetValue(UIElement.OpacityProperty, 0.0);
             root.Children.Add(webView);
             Content = root;
@@ -557,9 +554,9 @@ namespace ReaderDataViewer
             UseLayoutRounding = true;
             SnapsToDevicePixels = true;
             Background = new SolidColorBrush(Color.FromRgb(
-                RdvTheme.Current.Background.R,
-                RdvTheme.Current.Background.G,
-                RdvTheme.Current.Background.B));
+                Win98.Background.R,
+                Win98.Background.G,
+                Win98.Background.B));
 
             // Lay the page out at a generous size off screen, then fit the
             // window to what the dialog actually measured before showing it
@@ -572,7 +569,7 @@ namespace ReaderDataViewer
 
             Grid root = new Grid();
             webView.DefaultBackgroundColor =
-                RdvTheme.Current.Background;
+                Win98.Background;
             webView.SetValue(UIElement.OpacityProperty, 0.0);
             root.Children.Add(webView);
             Content = root;
@@ -640,16 +637,9 @@ namespace ReaderDataViewer
             Height = clientHeight + frameHeight;
             Left = Owner.Left + (Owner.ActualWidth - Width) / 2;
             Top = Owner.Top + (Owner.ActualHeight - Height) / 2;
-            bool firstPresentation = !sized;
             sized = true;
             webView.SetValue(UIElement.OpacityProperty, 1.0);
             Activate();
-            // Presentation-only notification: sizing and operation never wait
-            // for animation. Repeated size reports must not restart the fade.
-            if (firstPresentation && RdvTheme.Current.Modern && RdvTheme.Current.Motion == "auto")
-            {
-                PostJson("{\"type\":\"surfaceShown\"}");
-            }
         }
 
         public void CloseSurface()
