@@ -1,18 +1,18 @@
-2026-09-09 07:11:47.227	pid=49988	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\syntax\settings.json data= output= validate=True update=False
-2026-09-09 07:11:47.266	pid=49988	PHASE	loading assemblies and compiling application sources
-2026-09-09 07:11:47.927	pid=49988	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\syntax\settings.json data= output= validate=True update=False
-2026-09-09 07:11:47.940	pid=49988	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\syntax\settings.json
-2026-09-09 07:11:47.945	pid=49988	VALIDATION	FAIL 1 error
-  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\syntax\settings.json: the file ends too early (line 1)
+2026-09-09 08:58:38.070	pid=48340	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-xfeol1id\syntax\settings.json data= output= validate=True update=False
+2026-09-09 08:58:38.105	pid=48340	PHASE	loading assemblies and compiling application sources
+2026-09-09 08:58:38.785	pid=48340	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-xfeol1id\syntax\settings.json data= output= validate=True update=False
+2026-09-09 08:58:38.801	pid=48340	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-xfeol1id\syntax\settings.json
+2026-09-09 08:58:38.808	pid=48340	VALIDATION	FAIL 1 error
+  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-xfeol1id\syntax\settings.json: the file ends too early (line 1)
 STOP settings file and definitions; subsequent checks were not performed.
 
-2026-09-09 07:11:47.949	pid=49988	ERROR	settings file and definitions: Rdv3LoadError: the file ends too early (line 1)
-   at Rdv3Json.Peek()
-   at Rdv3Json.ReadObject(String path)
-   at Rdv3Json.ReadValueCore(String path)
-   at Rdv3Json.ReadValue(String path)
-   at Rdv3Json.Parse(String text)
-   at Rdv3Config.Parse(String text, Boolean collectErrors)
-   at Rdv3Config.Load(String path, Boolean collectErrors)
-   at Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
-2026-09-09 07:11:47.954	pid=49988	END	exit=3 last phase=ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-6gty338i\syntax\settings.json
+2026-09-09 08:58:38.812	pid=48340	ERROR	settings file and definitions: Rdv3LoadError: the file ends too early (line 1)
+   場所 Rdv3Json.Peek()
+   場所 Rdv3Json.ReadObject(String path)
+   場所 Rdv3Json.ReadValueCore(String path)
+   場所 Rdv3Json.ReadValue(String path)
+   場所 Rdv3Json.Parse(String text)
+   場所 Rdv3Config.Parse(String text, Boolean collectErrors)
+   場所 Rdv3Config.Load(String path, Boolean collectErrors)
+   場所 Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
+2026-09-09 08:58:38.818	pid=48340	END	exit=3 last phase=ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-xfeol1id\syntax\settings.json
