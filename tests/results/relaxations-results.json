@@ -1,0 +1,47 @@
+[
+  {
+    "name": "derived-identity-and-columns",
+    "status": "PASS",
+    "detail": "aggregate output saved as T.total/T.count; identity L.slip from the group key; 2 rows"
+  },
+  {
+    "name": "derived-validate-only",
+    "status": "PASS",
+    "detail": "ValidateOnly accepts derived ledger columns and identity"
+  },
+  {
+    "name": "calculated-column",
+    "status": "PASS",
+    "detail": "joined.remain saved with values 6 and 0"
+  },
+  {
+    "name": "unjoined-source-column",
+    "status": "PASS",
+    "detail": "exit 3 names B.note and the merge step"
+  },
+  {
+    "name": "csv-header-row",
+    "status": "PASS",
+    "detail": "headerRow 3 reads the header on line 3; 2 lines skipped with a notice; nothing counted as short"
+  },
+  {
+    "name": "xlsx-header-row",
+    "status": "PASS",
+    "detail": "headerRow 3 applies to a workbook as well"
+  },
+  {
+    "name": "csv-header-row-omitted",
+    "status": "PASS",
+    "detail": "without headerRow the title line is still taken as the header and refused"
+  },
+  {
+    "name": "xlsx-date-serial",
+    "status": "PASS",
+    "detail": "46246 -> 2026/08/12 in the declared date column; text date kept; undeclared column keeps 46246"
+  },
+  {
+    "name": "pwsh-refused",
+    "status": "PASS",
+    "detail": "exit 3 with the powershell.exe instruction under C:\\Program Files\\PowerShell\\7\\pwsh.EXE"
+  }
+]

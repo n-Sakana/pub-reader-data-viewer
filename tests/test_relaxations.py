@@ -63,6 +63,8 @@ with tempfile.TemporaryDirectory(prefix='rdv-relaxations-') as temporary:
         check(result.returncode == expected, case.name+': unexpected exit '+str(result.returncode)+'\n'+result.stderr.decode('cp932', 'replace'))
         if expected:
             return result.stderr.decode('cp932', 'replace')
+        if mode != '-RunUpdate':
+            return None
         report = json.loads(output.read_text(encoding='utf-8'))
         (evidence/('relax-'+case.name+'.json')).write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
         return report
@@ -160,7 +162,8 @@ with tempfile.TemporaryDirectory(prefix='rdv-relaxations-') as temporary:
     workbook(book, [['id', 'name', 'day', 'amount', 'raw'], ['001', 'one', 46246, 12300, 46246], ['002', 'two', '2026/01/02', 5.5, 46246], ['003', 'three', 60, 1, 1]])
     report = execute('xlsx-date-serial', cfg, {'orders.xlsx': book.read_bytes()}, 0)
     rows = {r[0]: r for r in report['rows']}
-    check(rows['001'][2] == '2026/08/12' and rows['002'][2] == '2026/01/02' and rows['003'][2] == '1900/02/29',
+    # serial 60 is Excel's imaginary 1900-02-29; .NET has no such day, so it lands on 1900-03-01 like serial 61
+    check(rows['001'][2] == '2026/08/12' and rows['002'][2] == '2026/01/02' and rows['003'][2] == '1900/03/01',
           'serial conversion %r' % report['rows'])
     check(rows['001'][4] == '46246' and rows['001'][3] == '12300' and rows['002'][3] == '5.5', 'undeclared or numeric cells changed %r' % report['rows'])
     passed('xlsx-date-serial', '46246 -> 2026/08/12 in the declared date column; text date kept; undeclared column keeps 46246')
