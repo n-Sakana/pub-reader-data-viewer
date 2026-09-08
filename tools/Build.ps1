@@ -136,7 +136,7 @@ function New-Win98Package($Options) {
         $packageName = 'ReaderDataViewer-' + $id
         $package = Join-Path $stage $packageName
         [IO.Directory]::CreateDirectory($package) | Out-Null
-        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'settings.json', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'settings.json', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
             Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
         }
         foreach ($dir in @('src','web','lib')) { Copy-SafeTree (Join-Path $script:Root $dir) (Join-Path $package $dir) }
@@ -146,7 +146,7 @@ function New-Win98Package($Options) {
             # Deliberate allow-list: NEVER copy the active data/ directory.
             # Sample CSVs are a convenience, not a build requirement. A missing
             # fixture warns and produces a package without sample data; it never
-            # fails the build (2026-09-08).
+            # fails the build.
             $missing = @()
             foreach ($csv in @('tableA.csv','tableB.csv','tableC.csv','delete.csv')) {
                 $fixture = Join-Path $script:Root ('tests/fixtures/data/' + $csv)
@@ -173,7 +173,7 @@ function New-Win98Package($Options) {
             "The original business settings are copied unchanged. Sample data is not your live data.`r`n" +
             "No live ledger, log, output or local pending changes were copied.`r`n" +
             "Review paths in settings.json BEFORE running a production copy.`r`n" +
-            "Japanese instructions: docs/design-build.md (source build tools are in the developer ZIP).`r`n"
+            "Japanese configuration guide: README.md (start with the copyable example).`r`n"
         Write-Utf8 (Join-Path $package 'PACKAGE-README.txt') $readme
         $manifest = [ordered]@{
             schema = 1; application = 'ReaderDataViewer'; theme = $id; motion = 'off'
