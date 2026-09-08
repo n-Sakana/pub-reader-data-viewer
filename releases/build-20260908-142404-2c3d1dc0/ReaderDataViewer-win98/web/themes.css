@@ -1,0 +1,306 @@
+/* RDV presentation layer. app.css and app.js remain byte-for-byte unchanged.
+   Locally implemented interpretations, NOT vendor component libraries.
+   Every visual override is opt-in. Classic keeps its original computed styles. */
+html[data-rdv-modern="true"] {
+  color-scheme:light;
+  --ui-bg:#f3f3f3; --ui-surface:#fff; --ui-subtle:#fafafa;
+  --ui-ink:#242424; --ui-muted:#575757; --ui-line:#d1d1d1; --ui-input-line:#8a8a8a;
+  --ui-accent:#005fb8; --ui-accent-text:var(--ui-accent); --ui-accent-hover:#004c94; --ui-on-accent:#fff;
+  --ui-tint:#e8f1fb; --ui-hover:#f0f0f0; --ui-pressed:#e4e4e4;
+  --ui-success:#166534; --ui-error:#b42318; --ui-warning:#854d0e;
+  --ui-radius:6px; --ui-card-radius:8px; --ui-button-radius:4px;
+  --ui-shadow:0 1px 2px rgba(0,0,0,.04);
+  --ui-pop-shadow:0 8px 28px rgba(0,0,0,.16);
+  --ui-fast:100ms; --ui-enter:140ms; --ui-ease:cubic-bezier(.16,1,.3,1);
+  background:var(--ui-bg); color:var(--ui-ink);
+}
+html[data-rdv-theme="apple"] {
+  --ui-bg:#f5f5f7; --ui-surface:#fff; --ui-subtle:#f5f5f7;
+  --ui-ink:#1d1d1f; --ui-muted:#606065; --ui-line:#d2d2d7; --ui-input-line:#929298;
+  --ui-accent:#0066cc; --ui-accent-hover:#0053a6; --ui-tint:#eaf3ff;
+  --ui-hover:#f0f0f4; --ui-pressed:#e4e4eb; --ui-radius:6px; --ui-card-radius:10px;
+  --ui-button-radius:6px; --ui-shadow:0 1px 3px rgba(0,0,0,.05);
+  --ui-ease:cubic-bezier(.2,.8,.2,1);
+}
+html[data-rdv-theme="material"] {
+  --ui-bg:#f7f9fc; --ui-surface:#fff; --ui-subtle:#edf2fa;
+  --ui-ink:#1f1f1f; --ui-muted:#444746; --ui-line:#c4c7c5; --ui-input-line:#747775;
+  --ui-accent:#0b57d0; --ui-accent-hover:#0842a0; --ui-tint:#d3e3fd;
+  --ui-hover:#e9eef6; --ui-pressed:#dce5f5; --ui-radius:8px; --ui-card-radius:16px;
+  --ui-button-radius:20px; --ui-shadow:none; --ui-fast:120ms; --ui-enter:160ms;
+  --ui-ease:cubic-bezier(.2,0,0,1);
+}
+html[data-rdv-theme="carbon"] {
+  --ui-bg:#f4f4f4; --ui-surface:#fff; --ui-subtle:#f4f4f4;
+  --ui-ink:#161616; --ui-muted:#525252; --ui-line:#c6c6c6; --ui-input-line:#8d8d8d;
+  --ui-accent:#0f62fe; --ui-accent-text:#0043ce; --ui-accent-hover:#0043ce; --ui-tint:#e0eaff;
+  --ui-hover:#e8e8e8; --ui-pressed:#d1d1d1; --ui-radius:0px; --ui-card-radius:0px;
+  --ui-button-radius:0px; --ui-shadow:none; --ui-fast:90ms; --ui-enter:120ms;
+  --ui-ease:cubic-bezier(.2,0,.38,.9);
+}
+html[data-rdv-theme="spectrum"] {
+  --ui-bg:#f5f5f5; --ui-surface:#fff; --ui-subtle:#fafafa;
+  --ui-ink:#222; --ui-muted:#595959; --ui-line:#d3d3d3; --ui-input-line:#909090;
+  --ui-accent:#0265dc; --ui-accent-hover:#0054b6; --ui-tint:#e5f0ff;
+  --ui-hover:#ededed; --ui-pressed:#dadada; --ui-radius:4px; --ui-card-radius:6px;
+  --ui-button-radius:18px; --ui-shadow:none; --ui-fast:100ms; --ui-enter:150ms;
+  --ui-ease:cubic-bezier(.25,.1,.25,1);
+}
+/* Density is deliberately compact. Configured larger fonts still increase controls.
+   The original row heights, display order, input widths and content stay intact. */
+html[data-rdv-modern="true"] .runtime {
+  --control-height:max(28px, calc(var(--body-font) + 12px)) !important;
+  --control-button-width:var(--control-height) !important;
+  --calendar-cell:max(28px, calc(var(--body-font) + 12px)) !important;
+}
+html[data-rdv-modern="true"] body,
+html[data-rdv-modern="true"] main,
+html[data-rdv-modern="true"] .page,
+html[data-rdv-modern="true"] .runtime .win,
+html[data-rdv-modern="true"] .runtime .client {background:var(--ui-bg);color:var(--ui-ink);}
+html[data-rdv-modern="true"] .runtime .win,
+html[data-rdv-modern="true"] .runtime .dlg,
+html[data-rdv-modern="true"] .runtime .btn,
+html[data-rdv-modern="true"] .runtime .tog,
+html[data-rdv-modern="true"] .runtime .fld,
+html[data-rdv-modern="true"] .runtime .lab,
+html[data-rdv-modern="true"] .runtime .row label,
+html[data-rdv-modern="true"] .runtime .kv label,
+html[data-rdv-modern="true"] .runtime .lv td,
+html[data-rdv-modern="true"] .runtime .sb .sp,
+html[data-rdv-modern="true"] .runtime .hint,
+html[data-rdv-modern="true"] .runtime .how,
+html[data-rdv-modern="true"] .runtime .esc {font-weight:400;}
+html[data-rdv-modern="true"] .runtime .client {padding:max(8px,var(--card-pad-t)) max(10px,var(--card-pad-r)) max(8px,var(--card-pad-b)) max(10px,var(--card-pad-l));}
+html[data-rdv-modern="true"] .runtime .gb {
+  border:1px solid var(--ui-line);border-radius:var(--ui-card-radius);
+  background:var(--ui-surface);box-shadow:var(--ui-shadow);padding:8px 10px;
+}
+html[data-rdv-modern="true"] .runtime .gb>legend {
+  position:static;float:left;width:100%;padding:0;margin:0 0 5px;
+  background:transparent;color:var(--ui-muted);font-size:.9em;font-weight:600;line-height:1.4;
+}
+html[data-rdv-modern="true"] .runtime .gb>legend+* {clear:both;}
+html[data-rdv-modern="true"] .runtime .lab,
+html[data-rdv-modern="true"] .runtime .row label {color:var(--ui-muted);}
+html[data-rdv-modern="true"] .runtime .fld {
+  background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;
+  border:1px solid transparent;border-radius:var(--ui-radius);padding:0 6px;
+  font-variant-numeric:tabular-nums;min-height:20px;
+}
+html[data-rdv-modern="true"] .runtime .fld.inp,
+html[data-rdv-modern="true"] .runtime .cmbv {
+  border:1px solid var(--ui-input-line);background:var(--ui-surface);box-shadow:none;
+  border-radius:var(--ui-radius);color:var(--ui-ink);height:var(--control-height);
+  line-height:calc(var(--control-height) - 2px);
+}
+html[data-rdv-modern="true"] .runtime .keyline {align-items:center;flex-wrap:wrap;}
+html[data-rdv-modern="true"] .runtime .keyfigure {flex:1 1 120px;}
+html[data-rdv-modern="true"] .runtime .keyactions {flex-wrap:wrap;padding-bottom:0;}
+html[data-rdv-modern="true"] .runtime .keyvalue {
+  color:var(--ui-accent-text);background:var(--ui-tint);font-weight:600;
+  height:var(--key-height);line-height:calc(var(--key-height) - 2px);
+}
+html[data-rdv-modern="true"] .runtime .dynamic-row {min-height:var(--row-height);height:auto;}
+html[data-rdv-modern="true"] .runtime .dynamic-text {padding:3px 6px;line-height:1.5;}
+html[data-rdv-modern="true"] .runtime .btn,
+html[data-rdv-modern="true"] .runtime .tog {
+  display:inline-flex;align-items:center;justify-content:center;gap:0;
+  height:var(--control-height);min-height:var(--control-height);padding:0 11px;
+  line-height:1.2;border:1px solid var(--ui-input-line);border-radius:var(--ui-button-radius);
+  color:var(--ui-ink);background:var(--ui-surface);box-shadow:var(--ui-shadow);text-shadow:none;font-weight:600;
+}
+html[data-rdv-modern="true"] .runtime .btn.sm {min-width:0;padding:0 8px;}
+html[data-rdv-modern="true"] .runtime .btn.def {
+  color:var(--ui-on-accent);background:var(--ui-accent);border-color:var(--ui-accent);
+}
+html[data-rdv-modern="true"] .runtime .btn.def:before {content:none;}
+html[data-rdv-modern="true"] .runtime .btn:not(.dis):hover,
+html[data-rdv-modern="true"] .runtime .tog:not(.dis):hover {background:var(--ui-hover);}
+html[data-rdv-modern="true"] .runtime .btn.def:not(.dis):hover {background:var(--ui-accent-hover);border-color:var(--ui-accent-hover);}
+html[data-rdv-modern="true"] .runtime .btn:not(.dis):active,
+html[data-rdv-modern="true"] .runtime .tog:not(.dis):active {
+  padding-top:0;box-shadow:none;background:var(--ui-pressed);transform:translateY(1px);
+}
+html[data-rdv-modern="true"] .runtime .btn.def:not(.dis):active {background:var(--ui-accent-hover);}
+html[data-rdv-modern="true"] .runtime .tog.on {
+  background:var(--ui-tint);color:var(--ui-accent-text);border-color:var(--ui-accent);padding-top:0;box-shadow:inset 3px 0 var(--ui-accent);
+}
+html[data-rdv-modern="true"] .runtime .tog.on:not(.dis):hover {background:var(--ui-tint);}
+html[data-rdv-modern="true"] .runtime .btn.dis,
+html[data-rdv-modern="true"] .runtime .tog.dis,
+html[data-rdv-modern="true"] .runtime .btn.dis:active,
+html[data-rdv-modern="true"] .runtime .tog.dis:active,
+html[data-rdv-modern="true"] .runtime .fld.dis,
+html[data-rdv-modern="true"] .runtime .fld.off {
+  color:var(--ui-muted);background:var(--ui-subtle);border-color:var(--ui-line);
+  box-shadow:none;text-shadow:none;transform:none;cursor:default;
+}
+html[data-rdv-modern="true"] .runtime [contenteditable=true]:focus,
+html[data-rdv-modern="true"] .runtime .btn:focus,
+html[data-rdv-modern="true"] .runtime .tog:focus,
+html[data-rdv-modern="true"] .runtime .bx:focus,
+html[data-rdv-modern="true"] .runtime .lb div:focus,
+html[data-rdv-modern="true"] .runtime tbody tr:focus,
+html[data-rdv-modern="true"] .runtime .cmb:focus,
+html[data-rdv-modern="true"] .runtime .date-value:focus,
+html[data-rdv-modern="true"] .runtime .calendar-day:focus,
+html[data-rdv-modern="true"] .runtime select:focus {
+  outline:2px solid var(--ui-accent);outline-offset:2px;
+}
+html[data-rdv-modern="true"] .runtime .lv tbody tr:focus {outline-offset:-2px;}
+html[data-rdv-modern="true"] .runtime .band {
+  border:1px solid var(--ui-line);border-left:3px solid var(--ui-accent);
+  background:var(--ui-surface);border-radius:var(--ui-radius);box-shadow:none;
+}
+html[data-rdv-modern="true"] .runtime .band .ok {color:var(--ui-success);letter-spacing:.2px;}
+html[data-rdv-modern="true"] .runtime .band .ok.unsearched,
+html[data-rdv-modern="true"] .runtime .band .ok.undefined,
+html[data-rdv-modern="true"] .runtime .fld.tone-muted,
+html[data-rdv-modern="true"] .runtime .tag.faded {color:var(--ui-muted);}
+html[data-rdv-modern="true"] .runtime .band .ok.ng,
+html[data-rdv-modern="true"] .runtime .band .ok.error,
+html[data-rdv-modern="true"] .runtime .bad,
+html[data-rdv-modern="true"] .runtime .fld.tone-error,
+html[data-rdv-modern="true"] .runtime .setting-error,
+html[data-rdv-modern="true"] .runtime .modal-symbol.warn,
+html[data-rdv-modern="true"] .runtime .mar {color:var(--ui-error);}
+html[data-rdv-modern="true"] .runtime .hint {color:var(--ui-muted);}
+html[data-rdv-modern="true"] .runtime .sendbar {height:auto;min-height:max(var(--send-height),var(--control-height));flex-wrap:wrap;}
+html[data-rdv-modern="true"] .runtime .sendbar .sendn {font-weight:600;}
+html[data-rdv-modern="true"] .runtime .sendbar .sendn.warn,
+html[data-rdv-modern="true"] .runtime .sendbar .sendn.warn b {color:var(--ui-warning);}
+html[data-rdv-modern="true"] .runtime .sep {height:1px;border:0;background:var(--ui-line);margin:0;}
+html[data-rdv-modern="true"] .runtime .sb {
+  border-top:1px solid var(--ui-line);background:var(--ui-surface);padding:3px 6px;
+  height:max(26px,var(--status-height));min-height:max(26px,var(--status-height));gap:4px;
+}
+html[data-rdv-modern="true"] .runtime .sb .sp {background:transparent;box-shadow:none;color:var(--ui-muted);line-height:18px;}
+html[data-rdv-modern="true"] .runtime .sb .sp+.sp {border-left:1px solid var(--ui-line);}
+html[data-rdv-modern="true"] .runtime .sb .sp.notice,
+html[data-rdv-modern="true"] .runtime .okc {color:var(--ui-success);}
+html[data-rdv-modern="true"] .runtime .sb .sp.notice.error,
+html[data-rdv-modern="true"] .runtime .sb .sp.warn {color:var(--ui-error);}
+html[data-rdv-modern="true"] .runtime .sb .grip {background:none;}
+/* Dialogs, lists, export editor, settings controls, date and number pickers. */
+html[data-rdv-modern="true"] .runtime .veil {background:rgba(20,25,35,.16);}
+html[data-rdv-modern="true"] .runtime .dlg {background:var(--ui-surface);border:1px solid var(--ui-line);border-radius:var(--ui-card-radius);box-shadow:var(--ui-pop-shadow);padding:0;overflow:visible;}
+html[data-rdv-modern="true"] .runtime .dlg>.body {padding:12px;}
+html[data-rdv-modern="true"] .runtime .dlg .foot {gap:8px;margin-top:12px;flex-wrap:wrap;}
+html[data-rdv-modern="true"] .runtime .tb {background:var(--ui-subtle);height:30px;padding:0 8px;border-bottom:1px solid var(--ui-line);border-radius:var(--ui-card-radius) var(--ui-card-radius) 0 0;}
+html[data-rdv-modern="true"] .runtime .tb .ttl {color:var(--ui-ink);font-size:12px;}
+html[data-rdv-modern="true"] .runtime .tb .ic {color:var(--ui-accent);background:transparent;box-shadow:none;}
+html[data-rdv-modern="true"] .runtime .tb .bx {background:transparent;box-shadow:none;color:var(--ui-muted);width:24px;height:22px;line-height:22px;border-radius:4px;}
+html[data-rdv-modern="true"] .runtime .tb .bx:hover {background:var(--ui-hover);}
+html[data-rdv-modern="true"] .runtime .tb .bx.cl:hover {background:var(--ui-error);color:#fff;}
+html[data-rdv-modern="true"] .runtime .tb-tag {background:var(--ui-tint);color:var(--ui-accent-text);box-shadow:none;border-radius:3px;}
+html[data-rdv-modern="true"] .runtime .lv,
+html[data-rdv-modern="true"] .runtime .lb {border:1px solid var(--ui-line);border-radius:var(--ui-radius);padding:0;background:var(--ui-surface);box-shadow:none;}
+html[data-rdv-modern="true"] .runtime .lv th {background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;border-bottom:1px solid var(--ui-line);font-weight:600;padding:3px 6px;}
+html[data-rdv-modern="true"] .runtime .lv td {padding:2px 6px;border-right:0;border-bottom:1px solid var(--ui-line);height:24px;font-variant-numeric:tabular-nums;}
+/* The business renderer marks muted cells with an inline legacy grey. */
+html[data-rdv-modern="true"] .runtime .lv td[style*="color"] {color:var(--ui-muted)!important;}
+html[data-rdv-modern="true"] .runtime .lv:not(.ro) tbody tr:not([aria-selected=true]):hover td,
+html[data-rdv-modern="true"] .runtime .lb div:not([aria-selected=true]):hover {background:var(--ui-hover);}
+html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td,
+html[data-rdv-modern="true"] .runtime .lv tr.sel td,
+html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true],
+html[data-rdv-modern="true"] .runtime .lb div.sel,
+html[data-rdv-modern="true"] .runtime .cmbp div.sel {background:var(--ui-tint);color:var(--ui-ink) !important;border-color:var(--ui-line);}
+html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td:first-child,
+html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true] {box-shadow:inset 3px 0 var(--ui-accent);}
+html[data-rdv-modern="true"] .runtime .lb div,
+html[data-rdv-modern="true"] .runtime .cmbp div {height:24px;line-height:24px;padding:0 6px;}
+html[data-rdv-modern="true"] .runtime .tag {background:var(--ui-subtle);border:1px solid var(--ui-line);border-radius:3px;font-size:.92em;}
+html[data-rdv-modern="true"] .runtime .tag.accent {background:var(--ui-tint);color:var(--ui-accent-text);border-color:var(--ui-accent);}
+html[data-rdv-modern="true"] .runtime .tag.outline,
+html[data-rdv-modern="true"] .runtime .tag.error {color:var(--ui-error);border-color:var(--ui-error);}
+html[data-rdv-modern="true"] .runtime .cmbp,
+html[data-rdv-modern="true"] .runtime .calendar-popup {background:var(--ui-surface);color:var(--ui-ink);border:1px solid var(--ui-line);border-radius:var(--ui-radius);box-shadow:var(--ui-pop-shadow);}
+html[data-rdv-modern="true"] .runtime .cmbp {top:100%;}
+html[data-rdv-modern="true"] .runtime .cmb:after,
+html[data-rdv-modern="true"] .runtime .dt:after,
+html[data-rdv-modern="true"] .runtime .number-step {background:var(--ui-subtle);color:var(--ui-ink);box-shadow:none;border:1px solid var(--ui-line);}
+html[data-rdv-modern="true"] .runtime .number-step:hover {background:var(--ui-hover);}
+html[data-rdv-modern="true"] .runtime .filter-value-host.off {background:var(--ui-subtle);border:1px solid var(--ui-line);box-shadow:none;border-radius:var(--ui-radius);}
+html[data-rdv-modern="true"] .runtime select.fld {font-weight:400;padding-right:24px !important;color:var(--ui-ink);background-color:var(--ui-surface);background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 16 16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%23444746' stroke-width='1.5'/%3E%3C/svg%3E");}
+html[data-rdv-modern="true"] .runtime select.fld option {color:var(--ui-ink);background:var(--ui-surface);}
+html[data-rdv-modern="true"] .runtime .calendar-day {background:var(--ui-surface);border:1px solid transparent;border-radius:var(--ui-radius);color:var(--ui-ink);}
+html[data-rdv-modern="true"] .runtime .calendar-week,
+html[data-rdv-modern="true"] .runtime .calendar-day.outside {color:var(--ui-muted);}
+html[data-rdv-modern="true"] .runtime .calendar-day:hover {background:var(--ui-hover);}
+html[data-rdv-modern="true"] .runtime .calendar-day.selected {background:var(--ui-accent);color:var(--ui-on-accent);}
+html[data-rdv-modern="true"] .runtime input[type=checkbox] {accent-color:var(--ui-accent);}
+html[data-rdv-modern="true"] .runtime .tbl td {border-color:var(--ui-line);}
+html[data-rdv-modern="true"] .runtime .modal-symbol {color:var(--ui-accent);}
+html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar {width:12px;height:12px;}
+html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-track {background:var(--ui-subtle);}
+html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-thumb {background:var(--ui-input-line);border:3px solid var(--ui-subtle);border-radius:8px;box-shadow:none;}
+html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-button {display:none;}
+html[data-rdv-modern="true"] .runtime ::-webkit-scrollbar-corner {background:var(--ui-subtle);}
+/* Do not add margins, transforms or frame thickness to the native dialog surface.
+   Its untransformed border box is the WPF auto-size contract. */
+html.dialogmode[data-rdv-modern="true"] .stage {height:auto;}
+html.dialogmode[data-rdv-modern="true"] .runtime .veil {background:transparent;}
+html.dialogmode[data-rdv-modern="true"] .runtime .dlg {border:0;border-radius:0;box-shadow:none;}
+html.dialogmode[data-rdv-modern="true"] .runtime .dlg>.body {padding:12px;}
+html.dialogmode[data-rdv-modern="true"] .runtime .dlg>.tb {display:none;}
+/* Distinct component treatments, not merely different accent colours. */
+html[data-rdv-theme="material"] .runtime .gb {border-color:transparent;background:var(--ui-subtle);}
+html[data-rdv-theme="material"] .runtime .fld:not(.inp):not(.keyvalue) {background:var(--ui-surface);}
+html[data-rdv-theme="material"] .runtime .btn:not(.def):not(.dis) {color:var(--ui-accent);border-color:var(--ui-line);background:transparent;}
+html[data-rdv-theme="material"] .runtime .btn:not(.def):not(.dis):hover {background:var(--ui-tint);}
+html[data-rdv-theme="carbon"] .runtime .gb {border:0;border-top:2px solid var(--ui-ink);}
+html[data-rdv-theme="carbon"] .runtime .gb>legend {color:var(--ui-ink);font-weight:700;}
+html[data-rdv-theme="carbon"] .runtime .fld.inp {border:0;border-bottom:1px solid var(--ui-input-line);background:var(--ui-subtle);}
+html[data-rdv-theme="carbon"] .runtime .btn:not(.def):not(.dis) {border-color:var(--ui-accent);color:var(--ui-accent);}
+html[data-rdv-theme="carbon"] .runtime .lv th {background:#e0e0e0;}
+html[data-rdv-theme="carbon"] .runtime .tb {background:#161616;}
+html[data-rdv-theme="carbon"] .runtime .tb .ttl,
+html[data-rdv-theme="carbon"] .runtime .tb .bx,
+html[data-rdv-theme="carbon"] .runtime .tb .ic {color:#fff;}
+html[data-rdv-theme="spectrum"] .runtime .btn:not(.def):not(.dis) {border-width:2px;box-shadow:none;}
+html[data-rdv-theme="spectrum"] .runtime .gb>legend {color:var(--ui-ink);}
+html[data-rdv-theme="spectrum"] .runtime .fld:not(.inp):not(.keyvalue) {background:transparent;border-bottom-color:var(--ui-line);border-radius:0;}
+html[data-rdv-theme="fluent"] .runtime .fld.inp {border-bottom-width:2px;}
+html[data-rdv-theme="fluent"] .runtime .fld.inp:focus {border-bottom-color:var(--ui-accent);}
+html[data-rdv-theme="apple"] .runtime .btn:not(.def):not(.dis) {border-color:#c6c6cc;box-shadow:0 1px 2px rgba(0,0,0,.08);}
+/* Business motion: no delay, no loops, no page movement, no ripple/blur/spring.
+   All action handlers execute immediately, regardless of transition progress. */
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .btn,
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .tog,
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .fld.inp,
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .calendar-day,
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .number-step {
+  transition:background-color var(--ui-fast) var(--ui-ease),border-color var(--ui-fast) var(--ui-ease),box-shadow var(--ui-fast) var(--ui-ease),transform 80ms var(--ui-ease);
+}
+html[data-rdv-modern="true"][data-rdv-motion="auto"]:not(.dialogmode) .runtime .veil.show>.dlg>.body,
+html[data-rdv-modern="true"][data-rdv-motion="auto"] .runtime .date-editor.open .calendar-popup {animation:rdv-appear var(--ui-enter) var(--ui-ease);}
+@keyframes rdv-appear {from{opacity:.86;}to{opacity:1;}}
+/* Native dialogs use theme-motion.js only after WPF has fitted/shown the surface. */
+html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *,
+html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *::before,
+html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime .btn:active,
+html[data-rdv-modern="true"][data-rdv-motion="off"] .runtime .tog:active {transform:none;}
+@media(prefers-reduced-motion:reduce){
+  html[data-rdv-modern="true"] .runtime *,html[data-rdv-modern="true"] .runtime *::before,html[data-rdv-modern="true"] .runtime *::after {animation:none!important;transition:none!important;scroll-behavior:auto!important;}
+  html[data-rdv-modern="true"] .runtime .btn:active,html[data-rdv-modern="true"] .runtime .tog:active {transform:none;}
+}
+@media(forced-colors:active){
+  html[data-rdv-modern="true"] {--ui-bg:Canvas;--ui-surface:Canvas;--ui-subtle:Canvas;--ui-ink:CanvasText;--ui-muted:CanvasText;--ui-line:CanvasText;--ui-input-line:ButtonText;--ui-accent:Highlight;--ui-accent-text:Highlight;--ui-accent-hover:Highlight;--ui-on-accent:HighlightText;--ui-tint:Canvas;--ui-error:CanvasText;--ui-success:CanvasText;--ui-warning:CanvasText;}
+  html[data-rdv-modern="true"] .runtime .btn.def,html[data-rdv-modern="true"] .runtime .calendar-day.selected {forced-color-adjust:none;background:Highlight;color:HighlightText;}
+  html[data-rdv-modern="true"] .runtime .lv tbody tr[aria-selected=true] td,html[data-rdv-modern="true"] .runtime .lb div[aria-selected=true] {forced-color-adjust:none;background:Highlight;color:HighlightText!important;}
+  html[data-rdv-modern="true"] .runtime .btn,html[data-rdv-modern="true"] .runtime .tog,html[data-rdv-modern="true"] .runtime .fld.inp,html[data-rdv-modern="true"] .runtime .gb {border:1px solid ButtonText;}
+  html[data-rdv-modern="true"] .runtime .tog.on {outline:2px solid Highlight;outline-offset:-3px;}
+  html[data-rdv-modern="true"] .runtime .btn.dis,html[data-rdv-modern="true"] .runtime .tog.dis {color:GrayText;border-color:GrayText;}
+  html[data-rdv-modern="true"] .runtime select.fld {appearance:auto;background-image:none;}
+  html[data-rdv-modern="true"] .runtime * {animation:none!important;transition:none!important;box-shadow:none!important;}
+}
+@media(max-width:620px){
+  html[data-rdv-modern="true"] .runtime .keyfigure {flex-basis:100%;}
+  html[data-rdv-modern="true"] .runtime .keyactions {gap:6px;}
+  html[data-rdv-modern="true"] .runtime .cols {flex-direction:column;}
+  html[data-rdv-modern="true"] .runtime .band {align-items:flex-start;padding-top:5px;padding-bottom:5px;height:auto;}
+  html[data-rdv-modern="true"] .runtime .band .band-label {position:static;margin-right:8px;}
+}
