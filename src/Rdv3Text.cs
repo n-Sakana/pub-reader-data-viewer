@@ -16,6 +16,9 @@
 
 public static class Rdv3Text
 {
+    public const string SettingsLabelExample = "画面に表示する名前";
+    public const string SettingsFixLabel = " settings.json の data.labels に {entry} を設定してください（表示名は用途に合わせ、空にしません）。中間結果と ledger も画面名が必要です。同じ名前の登録は1回で足ります。README.md の「処理に使う名前と画面名」を参照してください。";
+    public const string SettingsFixTableLabel = " settings.json の data.tables[{id}].label に空でない画面名を設定してください。この表IDは予約済みなので、data.labels へ同じIDを追加できません。";
     public const string InputRowsSkipped = "{file}: キー列 {column} が空の {empty} 行と重複の {duplicate} 行を除き、{kept} 行を読みました。";
     public const string InputNoData = "{file}: 見出しだけを読みました。データ行は 0 件です。入力ファイルを確認してください。";
     public const string InputError = "{file} の {row} 行目、列 {column}: 必要なのは「{expected}」、実際は「{actual}」です。{fix}";

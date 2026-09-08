@@ -1079,7 +1079,13 @@ public sealed class Rdv3Data
 
     private static void RequireLabel(Rdv3Data d, string name, Rdv3Json at)
     {
-        if (d.LabelOf(name).Length == 0) { at.Report(at.Fail(name + " has no screen label under data.labels or tables.*.label")); }
+        if (d.LabelOf(name).Length > 0) { return; }
+        // Table IDs are registered before labels, even when their label is empty.
+        // Sending those IDs to data.labels would create a second configuration error.
+        string fix = d.TableOf(name) != null
+            ? Rdv3Text.SettingsFixTableLabel.Replace("{id}", Rdv3Json.Quote(name))
+            : Rdv3Text.SettingsFixLabel.Replace("{entry}", Rdv3Json.Quote(name) + ": " + Rdv3Json.Quote(Rdv3Text.SettingsLabelExample));
+        at.Report(at.Fail(name + " has no screen label under data.labels or tables.*.label" + fix));
     }
 
     private static void RequireExpressionLabels(Rdv3Data d, string expression, Rdv3Json at)

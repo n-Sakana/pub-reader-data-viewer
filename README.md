@@ -15,7 +15,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File C:/app/src/ReaderDa
 
 失敗したら`%LOCALAPPDATA%/ReaderDataViewer/logs/feedback.log`（書けない場合は`%TEMP%/ReaderDataViewer/logs/feedback.log`）を読み、直して再実行します。`FAIL`の件数、`STOP`、`NOT CHECKED`を確認してください。[検査と結果JSONの読み方](#verify)、[ログの詳細](#feedback-log)へ続きます。アプリを実行できない環境なら、その事実と未検証範囲を明記し、「正しく動くことを確認済み」とは書きません。要件を表せないと判明した場合は、できない理由を返し、実運用用の設定ファイルを提出しません。
 
-まず読む順は、[最小設定](#quick-start) → [入力とキー](#inputs) → [結合の単位](#join-grain) → [4表の完成例](#four-tables) → [実行検査](#verify)です。**表名はtablesのlabel、列と中間結果名はdata.labels、台帳は`data.labels.ledger`に名前が必要です。** 最小例の`"ledger":"台帳"`を削らないでください。
+まず読む順は、[最小設定](#quick-start) → [入力とキー](#inputs) → [結合の単位](#join-grain) → [4表の完成例](#four-tables) → [実行検査](#verify)です。**表名はtablesのlabel、列と中間結果名はdata.labels、台帳は`data.labels.ledger`に名前が必要です。** 最小例の`"ledger":"台帳"`を削らないでください。`has no screen label`が出たら、[処理に使う名前と画面名](#process-labels)の記入先を確認します。
 
 <a id="quick-start"></a>
 
@@ -367,6 +367,10 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 
 判断材料を見るには、PowerShellで`Format-Hex -Path C:/input/table.csv | Select-Object -First 4`を実行できます。`FF FE`はUTF-16LE、`FE FF`はUTF-16BE、`EF BB BF`はUTF-8のBOMです。BOMなしでもASCIIの区切り等が`2C 00`・`0D 00 0A 00`ならLE、`00 2C`・`00 0D 00 0A`ならBEの手掛かりになります。単一のバイトだけで確定せず、正しい見出しが読めることも確認します。UTF-8とShift_JISを理由なく交互に指定し続けないでください。
 
+<a id="process-labels"></a>
+
+### 処理に使う名前と画面名
+
 同じ意味の列が`A.id`と`B.number`という異なる名前でも、結合・抽出の`keys`に両方を書けば対応づけられます。CSVを加工して見出しを揃える必要はありません。`data.labels`は人向けの別名であり、元CSVの列名を書き換えるものではありません。
 
 **表そのものの名前は`data.tables.B.label`に書きます。`data.labels.B`は書けません。** `label`を省略しても表IDの`B`が登録されるため、同じ名前を`data.labels`で再定義できません。同じ表示名を両方へ書いた場合もエラーです。列の名前`B.id`、新しい中間結果名`joined_AB`、台帳名`ledger`は`data.labels`に書きます。
@@ -379,6 +383,21 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 ```
 
 これは`data`内の部分例です。`B already has a table label`が出たら`data.labels.B`を削除し、表名の変更は`data.tables.B.label`へ移してください。`B.id`等の列ラベルは残します。
+
+**手順の`output`に名前を書くだけでは、画面名は登録されません。** 結合後の表、抽出した行集合など、ファイルへ保存しない中間結果も「処理内容」の対象・出力として表示するので名前が必要です。
+
+| 処理で使う名前の例 | 画面名の記入先 |
+|---|---|
+| 入力表`B` | `data.tables.B.label`（省略時は`B`。明示するなら空にしない） |
+| 結合の`output: "joined_AB"` | `data.labels`の`"joined_AB": "結合結果"` |
+| 抽出の`output: "selected"` | `data.labels`の`"selected": "選択した行"` |
+| 台帳`ledger` | `data.labels`の`"ledger": "台帳"` |
+| キーや条件に使う列`B.id` | `data.labels`の`"B.id": "識別子"` |
+| `output: "totals"`へ作る集計列`as: "amount"` | `data.labels`の`"totals.amount": "合計値"`。結果名`totals`にも別途画面名が必要 |
+
+`joined_AB has no screen label`が手順の`output`と次の`target1`の2か所に出ても、追加するのは`data.labels`内の`"joined_AB"`1件です。エラーに示した名前をキーとしてそのまま使い、値には用途に合う空でない表示名を書きます。`"B.id"`や`"totals.amount"`は、ドットを含む1個のキーです。`"B": {"id": ...}`のように入れ子にしません。
+
+既存の`labels`オブジェクトへ追記し、他の名前を残してください。別の`labels`オブジェクトを作ったり、中間結果を`data.tables`へ登録したりする必要はありません。エラー位置は「その名前を使った場所」、修正先は上表の場所です。名前の綴りが誤っている場合は参照を正し、修正後はもう一度`-ValidateOnly`と`-RunUpdate`を実行します。
 
 | 入力の揺れ | 実際の扱い |
 |---|---|
