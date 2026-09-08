@@ -14,6 +14,7 @@ param(
 )
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
+Import-Module Microsoft.PowerShell.Utility
 $script:Root = Split-Path -Parent $PSScriptRoot
 $script:Utf8 = New-Object System.Text.UTF8Encoding($false)
 
