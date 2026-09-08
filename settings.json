@@ -10,8 +10,8 @@
 // CSVの列不足行と空行は除外し、warningsに件数を出します。不足セルは補完しません。列超過・不正な引用符は拒否します。
 // CSV/XLSXの重複見出しは、キー・型・全ジョブ・台帳から参照しない同名の全列だけを除外して件数を出します。
 // 参照する重複名は、片方の全セルが空でも拒否します。labelsやselectでは読み分けられません（READMEの入力境界）。
-// 計算結果の保存はREADME「計算結果を台帳へ保存する」へ。未使用入力列をselectで外してから、calculateで同じ名へ作り、sourceに書けます。
-// 元の値も必要な列は使えません。派生名で台帳列を増設する機能はないので、借りられる列が足りなければ理由を返します。
+// 計算結果・集計結果は作った名前のまま台帳へ保存できます（calculateのcolumn、aggregateのas、selectのasを <結果名>.<列名> でsourceへ）。README「計算結果を台帳へ保存する」。
+// 台帳のidentityには集計後のグループ列も使えます。見出しの前に表題行があるCSV/XLSXは tables.<ID>.headerRow に見出しの行番号。XLSXの日付セルは types の date 宣言で書式の文字列へ変換します。
 {
   // [K001] schema — 設定形式の版。必須で3。この数字は調整しません。
   "schema": 3,
@@ -98,7 +98,7 @@
     "encoding": "utf-8",
     // [K038] data.tables — 入力表を短いIDで登録。1表以上必須。IDにドットや空白は使わず、ledgerは予約名。ここに登録した全表を起動時に確認します。
     "tables": {
-      // [K039] data.tables.A — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      // [K039] data.tables.A — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きでき、見出しが1行目でなければheaderRowに見出しの行番号を書きます。
       "A": {
         // [K040] data.tables.A.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表A",
@@ -107,7 +107,7 @@
         // [K042] data.tables.A.key — 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。
         "key": "key1"
       },
-      // [K043] data.tables.B — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      // [K043] data.tables.B — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きでき、見出しが1行目でなければheaderRowに見出しの行番号を書きます。
       "B": {
         // [K044] data.tables.B.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表B",
@@ -121,7 +121,7 @@
           "empty": "skip"
         }
       },
-      // [K049] data.tables.C — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きできます。
+      // [K049] data.tables.C — この入力表の定義。fileは入力元、keyは一意性を確かめる列。encodingを追加するとこの表だけ文字コードを上書きでき、見出しが1行目でなければheaderRowに見出しの行番号を書きます。
       "C": {
         // [K050] data.tables.C.label — 表の画面向け名。省略すると表ID。data.labelsに同じ表IDを重ねて書けません（省略時も不可）。列名や結合条件は変わりません。
         "label": "表C",
@@ -131,57 +131,57 @@
         "key": "key2"
       }
     },
-    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。
+    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。calculate/aggregate/selectで作った列にも宣言できます。XLSXの日付セルはdateの宣言でformatの文字列に変換します。
     "types": {
       // [K054] data.types["A.a_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "A.a_date": {
-        // [K055] data.types["A.a_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K055] data.types["A.a_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "date",
         // [K056] data.types["A.a_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K057] data.types["B.b_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "B.b_date": {
-        // [K058] data.types["B.b_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K058] data.types["B.b_date"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "date",
         // [K059] data.types["B.b_date"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K060] data.types["C.c_exp"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "C.c_exp": {
-        // [K061] data.types["C.c_exp"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K061] data.types["C.c_exp"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "date",
         // [K062] data.types["C.c_exp"].format — 日付入力の正確な書式。例 yyyyMMdd / yyyy-MM-dd / yyyy/MM/dd / yyyy年M月d日（2026年9月9日）。1列に1書式で、自動判別や複数書式混在ではありません。
         "format": "yyyyMMdd"
       },
       // [K063] data.types["A.a_rate"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "A.a_rate": {
-        // [K064] data.types["A.a_rate"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K064] data.types["A.a_rate"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       },
       // [K065] data.types["A.a_amount"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "A.a_amount": {
-        // [K066] data.types["A.a_amount"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K066] data.types["A.a_amount"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       },
       // [K067] data.types["B.b_qty"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "B.b_qty": {
-        // [K068] data.types["B.b_qty"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K068] data.types["B.b_qty"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       },
       // [K069] data.types["B.b_total"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "B.b_total": {
-        // [K070] data.types["B.b_total"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K070] data.types["B.b_total"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       },
       // [K071] data.types["C.c_price"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "C.c_price": {
-        // [K072] data.types["C.c_price"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K072] data.types["C.c_price"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       },
       // [K073] data.types["C.c_stock"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "C.c_stock": {
-        // [K074] data.types["C.c_stock"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。
+        // [K074] data.types["C.c_stock"].type — date / number / text。dateはformat必須。numberは全角数字・¥・桁区切り・括弧マイナスを読めます。空セルは型検証を止めません。XLSXの日付セル（シリアル値）はdate宣言の列だけformatの文字列へ変換します。
         "type": "number"
       }
     },
@@ -271,7 +271,7 @@
         // [K112] data.jobs[0].steps — 操作を上から実行、1段以上必須。行集合はそれを選んだ同じ表へdelete/updateで適用します。
         "steps": [
           {
-            // [K113] data.jobs[0].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K113] data.jobs[0].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "join",
             // [K114] data.jobs[0].steps[0].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "B",
@@ -285,7 +285,7 @@
             "output": "middle1"
           },
           {
-            // [K119] data.jobs[0].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K119] data.jobs[0].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "join",
             // [K120] data.jobs[0].steps[1].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "middle1",
@@ -299,7 +299,7 @@
             "output": "middle2"
           },
           {
-            // [K125] data.jobs[0].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K125] data.jobs[0].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "merge",
             // [K126] data.jobs[0].steps[2].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "middle2",
@@ -357,7 +357,7 @@
         // [K148] data.jobs[1].steps — 操作を上から実行、1段以上必須。行集合はそれを選んだ同じ表へdelete/updateで適用します。
         "steps": [
           {
-            // [K149] data.jobs[1].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K149] data.jobs[1].steps[0].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "extract",
             // [K150] data.jobs[1].steps[0].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "ledger",
@@ -371,7 +371,7 @@
             "output": "target1"
           },
           {
-            // [K155] data.jobs[1].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K155] data.jobs[1].steps[1].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "extract",
             // [K156] data.jobs[1].steps[1].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "ledger",
@@ -385,7 +385,7 @@
             "output": "target2"
           },
           {
-            // [K161] data.jobs[1].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K161] data.jobs[1].steps[2].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "extract",
             // [K162] data.jobs[1].steps[2].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "target1",
@@ -397,7 +397,7 @@
             "output": "target"
           },
           {
-            // [K166] data.jobs[1].steps[3].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。
+            // [K166] data.jobs[1].steps[3].operation — 実行する一般操作。join/extract/delete/append/update/merge/replace/select/calculate/aggregate/sort/distinct。操作ごとに使える項目が異なります。同じ列構成のファイルを縦に足すのはappend、別表の列を横に付けるのはjoinです。
             "operation": "delete",
             // [K167] data.jobs[1].steps[3].target1 — 操作の主対象。inputsのID、前段のoutput、またはledger。未作成の名前は参照できません。
             "target1": "ledger",
@@ -413,7 +413,7 @@
     ],
     // [K171] data.ledger — 共有台帳の契約。識別・検索・保存列を指定。変更する際は全PCを止めて控えを取り、既存台帳との移行を確認します。
     "ledger": {
-      // [K172] data.ledger.identity — 台帳の各行を識別する列参照。1列の文字列または配列。ある表のkey全列と同じ順で指定し、sourceにも全部残します。一意で空欄なし。
+      // [K172] data.ledger.identity — 台帳の各行を識別する列参照。1列の文字列または配列。sourceに含めます。入力表のkeyのほか、aggregateのgroupBy列など更新ジョブが作る列も指定でき、更新のたびに一意で空欄なしを確かめます。
       "identity": "B.key2",
       // [K173] data.ledger.search — 検索する列と一致方法。identityと別の列でも可。複数該当は人が候補を選ぶまで状態を変更しません。
       "search": {
@@ -433,7 +433,7 @@
             "onSourceChange": "reset"
           }
         ],
-        // [K180] data.ledger.columns.source — 台帳に保存する登録表の実在列を順に列挙。identityと検索・表示・出力する列を含めます。計算結果は既存の未使用列へ置いて保存できます（README「計算結果を台帳へ保存する」）。未保存列は画面から参照できません。
+        // [K180] data.ledger.columns.source — 台帳に保存する列を順に列挙。入力表の列に加え、calculateのcolumn・aggregateのas・selectのasで作った列を<結果名>.<列名>で書けます（README「計算結果を台帳へ保存する」）。identityと検索・表示・出力する列を含めます。最後の書込み段の入力に無い列はエラー。未保存列は画面から参照できません。
         "source": ["B.key1", "B.key2", "A.a_code", "A.a_name", "A.a_grade", "A.a_date", "A.a_amount", "A.a_rate", "A.a_flag", "A.a_dept", "A.a_note", "B.b_ref", "B.b_date", "B.b_qty", "B.b_unit", "B.b_total", "B.b_status", "B.b_line", "B.b_memo", "C.c_code", "C.c_name", "C.c_cat", "C.c_price", "C.c_stock", "C.c_loc", "C.c_lot", "C.c_exp", "C.c_remark"]
       }
     }
