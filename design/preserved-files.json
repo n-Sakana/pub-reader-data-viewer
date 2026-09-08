@@ -1,5 +1,5 @@
 {
-  "scope": "Expected sources after bounded lifecycle feedback logging; independent fault and complete README example tests added. Original hashes retained for changed entries.",
+  "scope": "Expected sources after counted short CSV/blank-row and unreferenced duplicate-header exclusions; original baseline hashes retained.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -61,7 +61,7 @@
     },
     {
       "path": "settings.json",
-      "sha256": "c724c1a0d658b051cf27360d9d587d0c357f8f65d79fbd73e310e82b727f8e4b",
+      "sha256": "a87bb3872fb3a4d01e253283bc78a94f3c76b24369988c6ea88b3e0ac2484e4a",
       "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
@@ -81,17 +81,17 @@
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "9a943952a269ade016937d0e8356ee82676ab0ad90a0b5cac06991f3fc5e641a",
+      "sha256": "6dae2944c061adda0488362d04157ac01024f62364a60c0a9872326fb9f7894e",
       "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
     },
     {
       "path": "src/Rdv3Csv.cs",
-      "sha256": "30b056e9b484be6f44b4d9d9f4754876c307a3c1035a0b4562564a3b61392243",
+      "sha256": "7f885d7ce80b398185af4afe137ce6914758df65eea43a6f94f441005053e099",
       "baselineSha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df"
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "cf05a5d8b87e03435c95588f2f199a8e3c062c3e9dfbca1eddbdfc009d8695e0",
+      "sha256": "57474782b8d882190a9d9d24c6f5e18543350d1a93b3959e247266dc880b3618",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
@@ -116,17 +116,17 @@
     },
     {
       "path": "src/Rdv3Ledger.cs",
-      "sha256": "81f838a040305d77d58e6b5b8457a84f410ac386ad3e0238b6a5f5b8b692c5db",
+      "sha256": "5973850e586440a12cce3e7a90b18d1d71112c92676ef3f9ad6d1ef4cc4f769c",
       "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465"
     },
     {
       "path": "src/Rdv3Modals.cs",
-      "sha256": "cf38bbf735a4b61ae282125e7f9f8bd0778b83d2b43a4f2acd7aa9b85aa44095",
+      "sha256": "653d303503c41cfc30fa81e72b8a3014e8f824e6bc5bf7a006d2240d0526f6f1",
       "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184"
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "c0170391ba88a15d57a28f12a5c7b6cf3dd37c6aa385253dc3f6ab40ca26e624",
+      "sha256": "1a13f71856739edb7f6e1701112cc5a9e5707dec91352217053814d1d1de26a7",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
@@ -146,7 +146,7 @@
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "57c2b38fc51cabf9f3477f247c5ec50528e7c51bff49bca6736b92f3c00853d5",
+      "sha256": "b12c6c66d2ae9e22309e23f726f367b96a3f35b110e24482a1c62c5e30faf00d",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -170,7 +170,7 @@
     },
     {
       "path": "src/Rdv3Xlsx.cs",
-      "sha256": "4259ddb455a81373fe3e0ea2d50dba8b4ee8a61a6e836e5f159f320abe5327f9",
+      "sha256": "f300204f0465fb17605ceb8873a2f4a1e299f9414ecfadcb2a137255c1333def",
       "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
     },
     {
@@ -180,7 +180,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "d80614494758018d46c57a7e76d3b91c2e40f4e95de111995e802f813ee8dc3e",
+      "sha256": "2103118a3dab87065e1ede8e43f18b66f8db5135dd4a0251d3e3f52eb4c3822e",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -227,7 +227,7 @@
     },
     {
       "path": "src/Rdv3Program.cs",
-      "sha256": "35abddfa047a22d183cacc520819b9858e0e4592be013d5974ba3d5bcb27714b",
+      "sha256": "651776942a6fe0c32d3321ce9929ce50173a36ef5d23d0035b801498edebfb94",
       "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
     },
     {
@@ -251,12 +251,12 @@
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "19bfd15c7b6b77716e3d89f30f3761d64e5e7b59806bcbbcb655d2a4ca6006ee",
+      "sha256": "950b244a9629c656fdaf29e2b6d5e3e02749483b88bbbbc4feb40be7733770b5",
       "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
     },
     {
       "path": "src/Rdv3Headless.cs",
-      "sha256": "4832d316cd9d6ab0d880acc88bde76ea16d68eb530144c05b0d9d8ad68711f5d",
+      "sha256": "8420e463c4fa3adb1f1a3c75d9377bf8dbf90b2d069a178e1cf19ebff0c8c8db",
       "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
     },
     {
@@ -298,7 +298,8 @@
     },
     {
       "path": "tests/test_readme_example.py",
-      "sha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce"
+      "sha256": "311586d800f943a428952cd9a2166470e836639db0cd0f18386e375387d1d451",
+      "baselineSha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce"
     },
     {
       "path": "tests/test_feedback_hints.py",
@@ -306,7 +307,8 @@
     },
     {
       "path": "tests/test_input_boundaries.py",
-      "sha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9"
+      "sha256": "de69d5d99080df30f473e76949e2f6e9d0a335d1c3f7fc2dbc35970e44ed3879",
+      "baselineSha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9"
     }
   ]
 }
