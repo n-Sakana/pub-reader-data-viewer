@@ -1,4 +1,4 @@
-UTC 2026-09-09T07:28:32.9575321Z
+UTC 2026-09-09T07:29:52.1041015Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -74,11 +74,7 @@ PASS operation-log-keeps-one-file-per-terminal-under-parallel-writers
 PASS apply-records-create-and-update-only-when-the-file-was-replaced
 PASS xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules
 PASS xlsx-1904-date-system-converts-to-the-same-calendar-day
-FAIL reload-asks-when-content-changed-even-if-the-last-marker-is-a-send: System.Reflection.TargetParameterCountException: Parameter count mismatch.
-   at System.Reflection.RuntimeMethodInfo.InvokeArgumentsCheck(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
-   at System.Reflection.RuntimeMethodInfo.Invoke(Object obj, BindingFlags invokeAttr, Binder binder, Object[] parameters, CultureInfo culture)
-   at Rdv3RegressionTests.<Run>b__7d()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS reload-asks-when-content-changed-even-if-the-last-marker-is-a-send
 PASS send-detail-and-notice-name-the-actual-states
 PASS operation-log-never-resends-a-delivered-spool
 PASS derived-typed-column-values-are-checked-before-the-ledger-write
@@ -108,4 +104,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=103 failed=1
+TOTAL passed=104 failed=0
