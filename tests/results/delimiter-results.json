@@ -1,0 +1,27 @@
+[
+  {
+    "name": "utf16-tab",
+    "status": "PASS",
+    "detail": "Excel Unicode text (UTF-16, tab) read with delimiter tab; a comma inside a cell is data"
+  },
+  {
+    "name": "utf16-tab-missing-setting",
+    "status": "PASS",
+    "detail": "without delimiter the error names delimiter and tab instead of duplicate headers"
+  },
+  {
+    "name": "utf8-tab-missing-setting",
+    "status": "PASS",
+    "detail": "the byte-level CSV path gives the same tab hint"
+  },
+  {
+    "name": "semicolon",
+    "status": "PASS",
+    "detail": "one-character delimiter; a quoted cell keeps the delimiter"
+  },
+  {
+    "name": "bad-delimiter",
+    "status": "PASS",
+    "detail": "an unknown delimiter word is refused at settings time"
+  }
+]

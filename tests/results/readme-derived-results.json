@@ -8,5 +8,10 @@
     "name": "readme-append-files",
     "status": "PASS",
     "detail": "union of both months, May wins, 3 cancelled rows removed, 2 rows kept"
+  },
+  {
+    "name": "readme-conditional-replace",
+    "status": "PASS",
+    "detail": "codes 1/2/9 replaced by names, an unlisted code stays visible as the code"
   }
 ]
