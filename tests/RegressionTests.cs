@@ -722,7 +722,7 @@ public static class Rdv3RegressionTests
                     typeof(Rdv3App).GetField("ledLines", flags).SetValue(app, new string[] { "001\tOld", "002\tOther" });
                     typeof(Rdv3App).GetField("ledStates", flags).SetValue(app, new string[] { "TRUE", "FALSE" });
                     typeof(Rdv3App).GetField("sharedStates", flags).SetValue(app, new string[] { "TRUE", "FALSE" });
-                    typeof(Rdv3App).GetMethod("ReloadSharedJob", flags).Invoke(app, new object[] { "test-reload", marker });
+                    typeof(Rdv3App).GetMethod("ReloadSharedJob", flags).Invoke(app, new object[] { "test-reload", marker, "", "" });
                     string[] active = (string[])typeof(Rdv3App).GetField("ledLines", flags).GetValue(app);
                     string log = File.ReadAllText(Path.Combine(dir, "reload.log"), Encoding.UTF8);
                     Check(log.Contains("changed=true") && log.Contains("reset=1"), "content change not detected behind a send notification: " + log);
