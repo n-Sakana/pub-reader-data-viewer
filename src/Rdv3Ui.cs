@@ -659,6 +659,14 @@ public sealed class Rdv3Form
         string field = Text(root, "field");
         string kind = Text(root, "kind");
         string initial = Text(root, "value");
+        // A relative value in the settings is relative to the application
+        // folder, not to wherever the process happened to be started from.
+        try
+        {
+            if (initial.Length > 0 && !Path.IsPathRooted(initial))
+            { initial = Path.Combine(ReaderDataViewer.App.BaseDirectory, initial); }
+        }
+        catch (Exception) { }
         // Both pickers are modal to the surface that asked for them, so the
         // surface cannot be clicked out from under them and they stay in front.
         Window owner = host.DialogSurfaceWindow;
