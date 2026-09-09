@@ -578,6 +578,91 @@ public static class Rdv3RegressionTests
                 Check(outcome.Error == null && outcome.CanAdopt && !outcome.Committed && outcome.Marker == null, "unchanged apply tried to notify");
                 Check(Convert.ToBase64String(File.ReadAllBytes(f.Path)) == bytes, "unchanged apply rewrote ledger");
             });
+            Test("operation-log-path-name-and-protection", delegate {
+                string ledger = Path.Combine(temp, "Ledger.xlsx");
+                string expected = Path.Combine(temp, "Ledger" + Rdv3Text.OpLogInfix + "PC-01.csv");
+                Check(Rdv3OperationLog.PathFor(ledger, "PC-01") == expected, "log path");
+                Check(Rdv3OperationLog.FileNameFor(ledger, "a/b:c") == "Ledger" + Rdv3Text.OpLogInfix + "a_b_c.csv", "invalid characters not replaced");
+                Check(Rdv3OperationLog.IsOperationLog(expected, ledger) && Rdv3OperationLog.IsOperationLog(expected.ToUpperInvariant(), ledger), "own file not recognised");
+                Check(!Rdv3OperationLog.IsOperationLog(Path.Combine(temp, "Ledger.csv"), ledger)
+                    && !Rdv3OperationLog.IsOperationLog(Path.Combine(temp, "x", Path.GetFileName(expected)), ledger), "unrelated file recognised");
+                Check(Rdv3OperationLog.SpoolPathFor(ledger).EndsWith(".spool.csv", StringComparison.Ordinal), "spool path");
+                Throws<IOException>(delegate { Rdv3Files.ExportPath(expected, temp, temp, ledger, Path.Combine(temp, "x.log"), Path.Combine(temp, "settings.json"), new Rdv3Data()); });
+            });
+            Test("operation-log-header-once-quoting-and-spool-flush", delegate {
+                string ledger = NewPath(".xlsx");
+                Rdv3OperationLog log = new Rdv3OperationLog(ledger, "PC-01", "taro", NewPath(".spool.csv"));
+                Check(log.Record(Rdv3Text.OpCreate, 2, "a,b \"q\"\r\nc") == null, "first append failed");
+                Check(log.Record(Rdv3Text.OpSend, 2, "plain") == null, "second append failed");
+                byte[] bytes = File.ReadAllBytes(log.Path);
+                Check(bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF, "no BOM");
+                string[] lines = File.ReadAllText(log.Path, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                Check(lines.Length == 3 && lines[0] == Rdv3Text.OpLogHeader, "header not written exactly once");
+                Check(lines[1].EndsWith(",PC-01,taro," + Rdv3Text.OpCreate + ",2,\"a,b \"\"q\"\"  c\"", StringComparison.Ordinal), "line not quoted: " + lines[1]);
+                Check(lines[2].EndsWith("," + Rdv3Text.OpSend + ",2,plain", StringComparison.Ordinal), "second line: " + lines[2]);
+                using (FileStream held = new FileStream(log.Path, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
+                {
+                    Check(log.Record(Rdv3Text.OpUpdate, 3, "while locked") != null, "locked file reported as written");
+                    Check(log.HasSpool(), "spool missing");
+                }
+                Check(File.ReadAllText(log.Path, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Length == 3, "locked append changed the file");
+                Check(log.Flush() == null && !log.HasSpool(), "flush failed");
+                lines = File.ReadAllText(log.Path, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                Check(lines.Length == 4 && lines[3].EndsWith(",while locked", StringComparison.Ordinal), "spooled line not delivered in order");
+                Check(log.Flush() == null, "empty flush");
+            });
+            Test("operation-log-keeps-one-file-per-terminal-under-parallel-writers", delegate {
+                string ledger = NewPath(".xlsx");
+                List<Exception> errors = new List<Exception>(); List<Thread> threads = new List<Thread>();
+                for (int i = 0; i < 8; i++)
+                {
+                    int n = i;
+                    Thread thread = new Thread(delegate() {
+                        try
+                        {
+                            Rdv3OperationLog log = new Rdv3OperationLog(ledger, n % 2 == 0 ? "PC-A" : "PC-B", "u" + n, NewPath(".spool.csv"));
+                            for (int k = 0; k < 25; k++)
+                            {
+                                string failure = log.Record(Rdv3Text.OpSend, k, "t" + n + "-" + k);
+                                if (failure != null) { throw new Exception(failure); }
+                            }
+                        }
+                        catch (Exception ex) { lock (errors) { errors.Add(ex); } }
+                    });
+                    threads.Add(thread); thread.Start();
+                }
+                for (int i = 0; i < threads.Count; i++) { threads[i].Join(); }
+                if (errors.Count > 0) { throw new Exception("parallel operation log failed", errors[0]); }
+                string[] files = Directory.GetFiles(temp, Path.GetFileNameWithoutExtension(ledger) + Rdv3Text.OpLogInfix + "*.csv");
+                Check(files.Length == 2, "expected one file per terminal, found " + files.Length);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string[] lines = File.ReadAllText(files[i], Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                    Check(lines.Length == 1 + 4 * 25 && lines[0] == Rdv3Text.OpLogHeader, "lost or duplicated lines in " + files[i] + ": " + lines.Length);
+                    for (int k = 1; k < lines.Length; k++) { Check(lines[k].Split(',').Length == 6, "interleaved line: " + lines[k]); }
+                }
+            });
+            Test("apply-records-create-and-update-only-when-the-file-was-replaced", delegate {
+                ApplyFixture f = new ApplyFixture();
+                Rdv3ApplyOutcome created = f.Apply(f.Source(Lines()), null);
+                Check(created.Error == null && created.Committed, "creation failed");
+                string logPath = f.Shared.Operations.Path;
+                Check(Rdv3OperationLog.IsOperationLog(logPath, f.Path), "store log path");
+                string[] lines = File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                Check(lines.Length == 2 && lines[1].Contains(",test,user," + Rdv3Text.OpCreate + ",2,"), "creation not recorded: " + string.Join("|", lines));
+                Check(!f.Apply(f.Source(Lines()), Lines()).Committed, "unchanged apply committed");
+                Check(File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Length == 2, "unchanged apply recorded");
+                File.WriteAllText(f.Shared.MarkerPath, "unreadable marker");
+                Rdv3ApplyOutcome updated = f.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines());
+                Check(updated.Committed && updated.Error != null, "marker failure setup");
+                lines = File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries);
+                Check(lines.Length == 3 && lines[2].Contains("," + Rdv3Text.OpUpdate + ",2,"), "update before marker failure not recorded: " + string.Join("|", lines));
+                Check(lines[2].Contains(" 1 ") && lines[2].Contains(" 0 "), "counts missing from detail: " + lines[2]);
+                File.Delete(f.Shared.MarkerPath);
+                using (FileStream held = new FileStream(f.Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                { Check(!f.Apply(f.Source(new string[] { "001\tX", "002\tB" }), new string[] { "001\tNEW", "002\tB" }).Committed, "write failure committed"); }
+                Check(File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Length == 3, "failed write recorded");
+            });
             Test("ledger-read-keeps-state-identity-and-contract-checks", delegate {
                 ApplyFixture f = new ApplyFixture();
                 f.Save(Lines(), new string[] { "unknown", "0" });
