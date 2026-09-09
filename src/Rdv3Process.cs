@@ -33,6 +33,7 @@ public sealed class Rdv3ProcessResult
     public string[] Lines = new string[0];
     public string[] States = new string[0];
     public int Deleted;
+    public int SkippedInvalid;
     public Rdv3UpdateResult Update;
     public readonly Dictionary<string, Rdv3ProcessValueResult> Values
         = new Dictionary<string, Rdv3ProcessValueResult>(StringComparer.Ordinal);
@@ -53,7 +54,7 @@ public sealed class Rdv3JoinResult
 internal sealed class Rdv3InputResult
 {
     public string Id, File;
-    public int Rows, SkippedEmpty, SkippedDuplicate, SkippedShort, SkippedBlank, SkippedColumns;
+    public int Rows, SkippedEmpty, SkippedDuplicate, SkippedShort, SkippedBlank, SkippedColumns, SkippedInvalid;
 
     public Rdv3InputResult(string id, Rdv3Table table)
     {
@@ -61,6 +62,7 @@ internal sealed class Rdv3InputResult
         SkippedEmpty = table.SkippedEmptyRows; SkippedDuplicate = table.SkippedDuplicateRows;
         SkippedShort = table.InputCounts.ShortRows; SkippedBlank = table.InputCounts.BlankRows;
         SkippedColumns = table.InputCounts.HeaderColumns;
+        SkippedInvalid = table.InputCounts.InvalidRows;
     }
 }
 
@@ -69,7 +71,11 @@ internal sealed class Rdv3Relation
     public string Kind = "table";
     public string[] Columns = new string[0];
     public List<string[]> Rows = new List<string[]>();
+    public List<string> Origins = new List<string>();
     public List<string> States;
+
+    public string Origin(int row)
+    { return Origins.Count > row ? Origins[row] : Rdv3Text.Format(Rdv3Text.SourceRow, "", row + 1); }
 
     public int ColumnOf(string name)
     {
@@ -257,7 +263,7 @@ public static class Rdv3Process
             }
             else if (step.Operation == "extract")
             {
-                output = Extract(left, right, step);
+                output = Extract(left, right, step, result);
             }
             else if (step.Operation == "delete")
             {
@@ -269,7 +275,7 @@ public static class Rdv3Process
             {
                 int changed;
                 output = Update((Rdv3Relation)left, (Rdv3RowSelection)right, step,
-                                job.OnSourceChange, initialStored, directReset, out changed);
+                                job.OnSourceChange, initialStored, directReset, out changed, result);
                 directUpdated += changed;
             }
             else if (step.Operation == "select")
@@ -278,15 +284,15 @@ public static class Rdv3Process
             }
             else if (step.Operation == "calculate")
             {
-                output = Calculate((Rdv3Relation)left, step);
+                output = Calculate((Rdv3Relation)left, step, result);
             }
             else if (step.Operation == "aggregate")
             {
-                output = Aggregate((Rdv3Relation)left, step);
+                output = Aggregate((Rdv3Relation)left, step, result);
             }
             else if (step.Operation == "sort")
             {
-                output = Sort((Rdv3Relation)left, step);
+                output = Sort((Rdv3Relation)left, step, result);
             }
             else if (step.Operation == "distinct")
             {
@@ -296,7 +302,7 @@ public static class Rdv3Process
             {
                 Rdv3UpdateResult update;
                 output = WriteLedger(data, job, (Rdv3Relation)left, (Rdv3Relation)right,
-                                     step, initialStored, out update);
+                                     step, initialStored, out update, result);
                 result.Update = update;
                 result.Deleted += update.Deleted;
             }
@@ -334,6 +340,7 @@ public static class Rdv3Process
             string[] row = new string[table.Head.Length];
             for (int c = 0; c < row.Length; c++) { row[c] = table.Field(r, c); }
             relation.Rows.Add(row);
+            relation.Origins.Add(Rdv3Text.Format(Rdv3Text.SourceRow, Path.GetFileName(table.Path), table.SourceRow(r)));
         }
         return relation;
     }
@@ -345,6 +352,7 @@ public static class Rdv3Process
         for (int r = 0; r < table.Rows; r++)
         {
             relation.Rows.Add(new string[] { table.Field(r, table.KeyCol) });
+            relation.Origins.Add(Rdv3Text.Format(Rdv3Text.SourceRow, Path.GetFileName(table.Path), table.SourceRow(r)));
         }
         return relation;
     }
@@ -375,6 +383,7 @@ public static class Rdv3Process
                 throw new InvalidDataException("ledger row has a different column count");
             }
             relation.Rows.Add(row);
+            relation.Origins.Add(Rdv3Text.Format(Rdv3Text.SourceRow, "ledger", i + 2));
         }
         return relation;
     }
@@ -455,13 +464,14 @@ public static class Rdv3Process
                 {
                     used[found[f]] = true;
                     output.Rows.Add(Combine(left.Rows[i], right.Rows[found[f]]));
+                    output.Origins.Add(left.Origin(i) + " / " + right.Origin(found[f]));
                 }
             }
             else
             {
                 stats.UnmatchedLeft++;
                 if (step.Condition == "left" || step.Condition == "full")
-                { output.Rows.Add(Combine(left.Rows[i], blankRight)); }
+                { output.Rows.Add(Combine(left.Rows[i], blankRight)); output.Origins.Add(left.Origin(i)); }
             }
         }
         for (int i = 0; i < used.Length; i++) { if (!used[i]) { stats.UnmatchedRight++; } }
@@ -469,7 +479,7 @@ public static class Rdv3Process
         {
             for (int i = 0; i < right.Rows.Count; i++)
             {
-                if (!used[i]) { output.Rows.Add(Combine(blankLeft, right.Rows[i])); }
+                if (!used[i]) { output.Rows.Add(Combine(blankLeft, right.Rows[i])); output.Origins.Add(right.Origin(i)); }
             }
         }
         stats.OutputRows = output.Rows.Count;
@@ -499,12 +509,12 @@ public static class Rdv3Process
         }
         Rdv3Relation output = new Rdv3Relation();
         output.Columns = (string[])left.Columns.Clone();
-        for (int i = 0; i < left.Rows.Count; i++) { output.Rows.Add((string[])left.Rows[i].Clone()); }
-        for (int i = 0; i < right.Rows.Count; i++) { output.Rows.Add((string[])right.Rows[i].Clone()); }
+        for (int i = 0; i < left.Rows.Count; i++) { output.Rows.Add((string[])left.Rows[i].Clone()); output.Origins.Add(left.Origin(i)); }
+        for (int i = 0; i < right.Rows.Count; i++) { output.Rows.Add((string[])right.Rows[i].Clone()); output.Origins.Add(right.Origin(i)); }
         return output;
     }
 
-    private static object Extract(object leftValue, object rightValue, Rdv3ProcessStepDef step)
+    private static object Extract(object leftValue, object rightValue, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
     {
         Rdv3Relation left = leftValue as Rdv3Relation;
         Rdv3Relation right = rightValue as Rdv3Relation;
@@ -515,7 +525,8 @@ public static class Rdv3Process
             selected.Table = left;
             for (int i = 0; i < left.Rows.Count; i++)
             {
-                if (Matches(left.Rows[i][column], step.Where)) { selected.Rows.Add(i); }
+                try { if (Matches(left.Rows[i][column], step.Where)) { selected.Rows.Add(i); } }
+                catch (Rdv3RecordError error) { Exclude(result, left, i, step, error.Message); }
             }
             return selected;
         }
@@ -569,7 +580,7 @@ public static class Rdv3Process
         if (!Rdv3Input.TryNumber(value, out left)
             || !Rdv3Input.TryNumber(where.Value, out right))
         {
-            throw new InvalidDataException("numeric row condition received non-numeric text");
+            throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(value)));
         }
         if (where.Operator == "greater") { return left > right; }
         if (where.Operator == "atLeast") { return left >= right; }
@@ -588,6 +599,7 @@ public static class Rdv3Process
         {
             if (selected.Rows.Contains(i)) { continue; }
             output.Rows.Add((string[])source.Rows[i].Clone());
+            output.Origins.Add(source.Origin(i));
             if (output.States != null) { output.States.Add(source.States[i]); }
         }
         deleted = selected.Rows.Count;
@@ -597,7 +609,7 @@ public static class Rdv3Process
     private static Rdv3Relation Update(Rdv3Relation source, Rdv3RowSelection selected,
                                        Rdv3ProcessStepDef step, string onSourceChange,
                                        string initialStored, List<string> resetLines,
-                                       out int changed)
+                                       out int changed, Rdv3ProcessResult result)
     {
         if (!object.ReferenceEquals(source, selected.Table))
         {
@@ -622,16 +634,22 @@ public static class Rdv3Process
         for (int r = 0; r < source.Rows.Count; r++)
         {
             string[] row = (string[])source.Rows[r].Clone();
+            bool failed = false;
             if (selected.Rows.Contains(r))
             {
                 for (int i = 0; i < columns.Length; i++)
                 {
-                    row[columns[i]] = expressions[i].Evaluate(source.Rows[r]);
+                    try { row[columns[i]] = Evaluate(expressions[i], source.Rows[r]); }
+                    catch (Rdv3RecordError error) { Exclude(result, source, r, step, error.Message); failed = true; break; }
                 }
             }
+            // A failed update never deletes an existing ledger record or
+            // leaves half of a multi-column assignment in that record.
+            if (failed) { if (source.Kind != "ledger") { continue; } row = (string[])source.Rows[r].Clone(); }
             bool rowChanged = !SameRow(source.Rows[r], row);
             if (rowChanged) { changed++; }
             output.Rows.Add(row);
+            output.Origins.Add(source.Origin(r));
             if (output.States != null)
             {
                 string state = source.States[r];
@@ -681,11 +699,12 @@ public static class Rdv3Process
             string[] row = new string[fields.Length];
             for (int i = 0; i < fields.Length; i++) { row[i] = source.Rows[r][fields[i]]; }
             output.Rows.Add(row);
+            output.Origins.Add(source.Origin(r));
         }
         return output;
     }
 
-    private static Rdv3Relation Calculate(Rdv3Relation source, Rdv3ProcessStepDef step)
+    private static Rdv3Relation Calculate(Rdv3Relation source, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
     {
         string added = step.Output + "." + step.Column;
         if (source.ColumnOf(added) >= 0) { throw new InvalidDataException("calculate would duplicate column " + added); }
@@ -698,8 +717,10 @@ public static class Rdv3Process
         {
             string[] row = new string[output.Columns.Length];
             Array.Copy(source.Rows[r], row, source.Columns.Length);
-            row[source.Columns.Length] = expression.Evaluate(source.Rows[r]);
+            try { row[source.Columns.Length] = Evaluate(expression, source.Rows[r]); }
+            catch (Rdv3RecordError error) { Exclude(result, source, r, step, error.Message); continue; }
             output.Rows.Add(row);
+            output.Origins.Add(source.Origin(r));
         }
         return output;
     }
@@ -711,7 +732,7 @@ public static class Rdv3Process
         public int Count;
     }
 
-    private static Rdv3Relation Aggregate(Rdv3Relation source, Rdv3ProcessStepDef step)
+    private static Rdv3Relation Aggregate(Rdv3Relation source, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
     {
         int[] groups = new int[step.GroupBy.Count];
         for (int i = 0; i < groups.Length; i++) { groups[i] = source.NeedColumn(step.GroupBy[i]); }
@@ -736,23 +757,31 @@ public static class Rdv3Process
             for (int g = 0; g < groups.Length; g++) { keys[g] = source.Rows[r][groups[g]]; }
             string key = Composite(keys);
             GroupValue value;
-            if (!byKey.TryGetValue(key, out value))
+            bool exists = byKey.TryGetValue(key, out value);
+            if (!exists)
             {
                 value = NewGroup(keys, step.Aggregates.Count);
-                byKey.Add(key, value);
-                ordered.Add(value);
             }
-            value.Count++;
+            decimal[] sums = (decimal[])value.Sums.Clone();
+            bool invalid = false;
             for (int a = 0; a < step.Aggregates.Count; a++)
             {
                 if (fields[a] < 0) { continue; }
                 decimal number;
                 if (!Rdv3Input.TryNumber(source.Rows[r][fields[a]], out number))
                 {
-                    throw new InvalidDataException("sum received non-numeric text in " + step.Aggregates[a].Column);
+                    Exclude(result, source, r, step, Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(source.Rows[r][fields[a]])));
+                    invalid = true; break;
                 }
-                value.Sums[a] += number;
+                try { sums[a] += number; }
+                catch (OverflowException) { Exclude(result, source, r, step, Rdv3Text.RecordOverflow); invalid = true; break; }
             }
+            // Commit every aggregate together: one invalid cell must not
+            // increment count or any earlier sum for this same record.
+            if (invalid) { continue; }
+            value.Sums = sums;
+            value.Count++;
+            if (!exists) { byKey.Add(key, value); ordered.Add(value); }
         }
 
         Rdv3Relation output = new Rdv3Relation();
@@ -784,6 +813,7 @@ public static class Rdv3Process
                     : value.Sums[a].ToString("G29", CultureInfo.InvariantCulture);
             }
             output.Rows.Add(row);
+            output.Origins.Add("groupBy " + Rdv3Input.Display(string.Join(" / ", value.Keys)));
         }
         return output;
     }
@@ -802,13 +832,22 @@ public static class Rdv3Process
         public int Ord;
     }
 
-    private static Rdv3Relation Sort(Rdv3Relation source, Rdv3ProcessStepDef step)
+    private static Rdv3Relation Sort(Rdv3Relation source, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
     {
         int[] fields = new int[step.Orders.Count];
         for (int i = 0; i < fields.Length; i++) { fields[i] = source.NeedColumn(step.Orders[i].Column); }
         List<SortValue> rows = new List<SortValue>();
         for (int i = 0; i < source.Rows.Count; i++)
         {
+            bool invalid = false;
+            for (int c = 0; c < fields.Length; c++)
+            {
+                string cell = source.Rows[i][fields[c]];
+                decimal number;
+                if (step.Orders[c].Type == "number" && cell.Length > 0 && !Rdv3Input.TryNumber(cell, out number))
+                { Exclude(result, source, i, step, Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(cell))); invalid = true; break; }
+            }
+            if (invalid) { continue; }
             SortValue value = new SortValue();
             value.Row = source.Rows[i];
             value.Ord = i;
@@ -828,6 +867,7 @@ public static class Rdv3Process
         for (int i = 0; i < rows.Count; i++)
         {
             output.Rows.Add((string[])rows[i].Row.Clone());
+            output.Origins.Add(source.Origin(rows[i].Ord));
             if (output.States != null) { output.States.Add(source.States[rows[i].Ord]); }
         }
         return output;
@@ -852,7 +892,7 @@ public static class Rdv3Process
         if (!Rdv3Input.TryNumber(left, out a)
             || !Rdv3Input.TryNumber(right, out b))
         {
-            throw new InvalidDataException("numeric sort received non-numeric text");
+            throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(left + " / " + right)));
         }
         int number = a.CompareTo(b);
         return (direction == "descending") ? -number : number;
@@ -871,6 +911,7 @@ public static class Rdv3Process
             if (seen.Add(Composite(key)))
             {
                 output.Rows.Add((string[])source.Rows[r].Clone());
+                output.Origins.Add(source.Origin(r));
                 if (output.States != null) { output.States.Add(source.States[r]); }
             }
         }
@@ -880,7 +921,7 @@ public static class Rdv3Process
     private static Rdv3Relation WriteLedger(Rdv3Data data, Rdv3ProcessJobDef job,
                                             Rdv3Relation source, Rdv3Relation target,
                                             Rdv3ProcessStepDef step, string initialStored,
-                                            out Rdv3UpdateResult update)
+                                            out Rdv3UpdateResult update, Rdv3ProcessResult result)
     {
         int[] targetKey = target.NeedColumns(step.KeySide(1));
         if (!SameColumns(targetKey, data.IdentityCols))
@@ -888,7 +929,7 @@ public static class Rdv3Process
             throw new InvalidDataException("ledger write target key is not data.ledger.identity");
         }
         int[] sourceKey = source.NeedColumns(step.KeySide(0));
-        ValidateIdentity(data, job, source, sourceKey, step.KeySide(0));
+        source = ValidSourceIdentity(data, job, source, sourceKey, step, result);
         // The column map does not change within the step: resolved once here,
         // not by a name search for every cell of every row.
         int[] from = new int[data.Columns.Count];
@@ -910,25 +951,29 @@ public static class Rdv3Process
             Rdv3ColumnTypeDef type = data.TypeOf(data.Columns[c].Ref);
             typed[c] = (type != null && type.TableOrd < 0) ? type : null;
         }
-        string[] sourceLines = new string[source.Rows.Count];
+        List<string> sourceLines = new List<string>();
         for (int r = 0; r < source.Rows.Count; r++)
         {
             string[] row = new string[data.Columns.Count];
+            bool invalid = false;
             for (int c = 0; c < data.Columns.Count; c++)
             {
                 string value = source.Rows[r][from[c]] ?? "";
                 if (typed[c] != null && value.Length > 0)
-                { CheckTypedResult(typed[c], value, Rdv3Key.FromCells(source.Rows[r], sourceKey)); }
+                {
+                    try { CheckTypedResult(typed[c], value, Rdv3Key.FromCells(source.Rows[r], sourceKey)); }
+                    catch (Rdv3RecordError error) { Exclude(result, source, r, step, error.Message); invalid = true; break; }
+                }
                 row[c] = value;
             }
-            sourceLines[r] = string.Join("\t", row);
+            if (!invalid) { sourceLines.Add(string.Join("\t", row)); }
         }
         Rdv3ProcessJobDef apply = new Rdv3ProcessJobDef();
         apply.ApplyStep = step;
         apply.OnSourceChange = job.OnSourceChange;
         string[] targetStates = (target.States == null) ? new string[target.Rows.Count] : target.States.ToArray();
         update = Rdv3Ledger.ApplyUpdate(apply, target.ToLines(), targetStates,
-                                       sourceLines, data.IdentityCols, initialStored);
+                                       sourceLines.ToArray(), data.IdentityCols, initialStored);
         Rdv3Relation output = RelationOfLedger(data, update.Lines, update.States, initialStored);
         return output;
     }
@@ -941,7 +986,7 @@ public static class Rdv3Process
         if (valid) { return; }
         string displayType = (type.Type == "date")
             ? Rdv3Text.TypeDateFormat.Replace("{format}", type.Format) : Rdv3Text.TypeNumber;
-        throw new Rdv3DataError(Rdv3Text.DataTypedResult.Replace("{name}", type.Ref).Replace("{identity}", identity)
+        throw new Rdv3RecordError(Rdv3Text.DataTypedResult.Replace("{name}", type.Ref).Replace("{identity}", identity)
             .Replace("{value}", value).Replace("{type}", displayType) + Rdv3Text.InputFixType.Replace("{ref}", type.Ref));
     }
 
@@ -1005,6 +1050,7 @@ public static class Rdv3Process
         foreach (int row in indices)
         {
             table.Rows.Add(selection.Table.Rows[row]);
+            table.Origins.Add(selection.Table.Origin(row));
             if (table.States != null) { table.States.Add(selection.Table.States[row]); }
         }
         return table;

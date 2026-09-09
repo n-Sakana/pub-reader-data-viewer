@@ -72,14 +72,14 @@ internal abstract class Rdv3Expression
             bool aNumber = Rdv3Input.TryNumber(a, out an);
             bool bNumber = Rdv3Input.TryNumber(b, out bn);
             if (operation == '+' && (!aNumber || !bNumber)) { return a + b; }
-            if (!aNumber || !bNumber) { throw new InvalidDataException("arithmetic expression received non-numeric text"); }
+            if (!aNumber || !bNumber) { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(!aNumber ? a : b))); }
             decimal value;
             if (operation == '+') { value = an + bn; }
             else if (operation == '-') { value = an - bn; }
             else if (operation == '*') { value = an * bn; }
             else
             {
-                if (bn == 0) { throw new InvalidDataException("division by zero in expression"); }
+                if (bn == 0) { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordDivisionZero, a, b)); }
                 value = an / bn;
             }
             return value.ToString("G29", CultureInfo.InvariantCulture);
@@ -108,12 +108,12 @@ internal abstract class Rdv3Expression
         public override string Evaluate(string[] row)
         {
             string value = source.Evaluate(row);
-            if (value.Length == 0) { throw new InvalidDataException(name + " received empty text"); }
+            if (value.Length == 0) { throw Failure(value); }
             string result;
             if (name == "regexExtract")
             {
                 Match match = pattern.Match(value);
-                if (!match.Success) { throw new InvalidDataException("regexExtract found no match"); }
+                if (!match.Success) { throw Failure(value); }
                 result = match.Value;
             }
             else if (name == "splitPart")
@@ -121,7 +121,7 @@ internal abstract class Rdv3Expression
                 string[] parts = value.Split(new string[] { separator }, StringSplitOptions.None);
                 if (position >= parts.Length)
                 {
-                    throw new InvalidDataException("splitPart position is outside the split result");
+                    throw Failure(value);
                 }
                 result = parts[position];
             }
@@ -129,12 +129,21 @@ internal abstract class Rdv3Expression
             {
                 if (position > value.Length || count > value.Length - position)
                 {
-                    throw new InvalidDataException("substring range is outside the source text");
+                    throw Failure(value);
                 }
                 result = value.Substring(position, count);
             }
-            if (result.Length == 0) { throw new InvalidDataException(name + " produced empty text"); }
+            if (result.Length == 0) { throw Failure(value); }
             return result;
+        }
+
+        private Rdv3RecordError Failure(string value)
+        {
+            string condition = name == "regexExtract" ? pattern.ToString()
+                : name == "splitPart" ? separator + ", " + position.ToString(CultureInfo.InvariantCulture)
+                : position.ToString(CultureInfo.InvariantCulture) + ", " + count.ToString(CultureInfo.InvariantCulture);
+            return new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordFunction, name,
+                Rdv3Input.Display(value), Rdv3Input.Display(condition)));
         }
     }
 
@@ -143,7 +152,7 @@ internal abstract class Rdv3Expression
         decimal value;
         if (!Rdv3Input.TryNumber(text, out value))
         {
-            throw new InvalidDataException("arithmetic expression received non-numeric text");
+            throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(text)));
         }
         return value;
     }
