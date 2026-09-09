@@ -24,9 +24,10 @@ public static class Rdv3Csv
     // headerRow: the physical line that holds the header (1 = the first line).
     // Report exports often put a title and a print date above the header;
     // those lines are skipped without being counted as short or blank rows.
+    // delimiter: the field separator; a tab for an Excel "Unicode text" export.
     public static void Read(string path, Encoding encoding, bool headOnly,
                             out string[] head, out string[][] rows, out int[] rowNumbers, string encodingSetting = "data.encoding",
-                            HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1)
+                            HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1, char delimiter = ',')
     {
         head = null;
         if (counts == null) { counts = new Rdv3InputCounts(); }
@@ -58,14 +59,14 @@ public static class Rdv3Csv
                     int first = physical;
                     bool blank;
                     string[] cells;
-                    try { cells = Record(reader, path, ref physical, out blank); }
+                    try { cells = Record(reader, path, ref physical, out blank, delimiter); }
                     catch (DecoderFallbackException)
                     {
                         // Use the same open file to locate the invalid byte; a
                         // decoder's buffered read may run ahead of this record.
                         stream.Position = 0;
                         using (MemoryStream copy = new MemoryStream())
-                        { stream.CopyTo(copy); Rdv3Input.ValidateEncoding(copy.ToArray(), encoding, path, encodingSetting); }
+                        { stream.CopyTo(copy); Rdv3Input.ValidateEncoding(copy.ToArray(), encoding, path, encodingSetting, delimiter); }
                         throw;
                     }
                     if (cells == null) { break; }

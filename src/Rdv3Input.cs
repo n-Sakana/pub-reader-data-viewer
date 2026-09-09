@@ -78,7 +78,8 @@ public sealed class Rdv3InputColumns
 // snapshots: changing those would invalidate their conflict baselines.
 public static class Rdv3Input
 {
-    public static void ValidateEncoding(byte[] bytes, Encoding encoding, string path, string encodingSetting = "data.encoding")
+    public static void ValidateEncoding(byte[] bytes, Encoding encoding, string path, string encodingSetting = "data.encoding",
+                                        char delimiter = ',')
     {
         Encoding strict = (Encoding)encoding.Clone();
         strict.DecoderFallback = DecoderFallback.ExceptionFallback;
@@ -93,7 +94,7 @@ public static class Rdv3Input
             {
                 char c = prefix[i];
                 if (c == '"') { quoted = !quoted; }
-                else if (c == ',' && !quoted) { column++; }
+                else if (c == delimiter && !quoted) { column++; }
                 else if (c == '\r' || c == '\n')
                 {
                     if (c == '\r' && i + 1 < prefix.Length && prefix[i + 1] == '\n') { i++; }

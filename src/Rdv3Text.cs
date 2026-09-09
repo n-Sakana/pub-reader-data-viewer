@@ -41,7 +41,8 @@ public static class Rdv3Text
     public const string InputExpectQuote = "セル全体を囲む二重引用符と閉じ引用符";
     public const string InputExpectDelimiter = "閉じ引用符の後のカンマまたは改行";
     public const string InputColumnCount = "{n} 列";
-    public const string InputFixCsv = "CSV の各行を見出しと同じ列数にしてください。セル内のカンマ・改行はセル全体を二重引用符で囲み、セル内の二重引用符は2個重ねます。区切り文字はカンマです。";
+    public const string InputFixCsv = "CSV の各行を見出しと同じ列数にしてください。セル内の区切り文字・改行はセル全体を二重引用符で囲み、セル内の二重引用符は2個重ねます。区切り文字は既定でカンマです（settings.json の delimiter で tab 等に変更できます）。";
+    public const string InputFixTab = " 見出しにタブ文字があり、指定した区切り文字がありません。タブ区切りのファイル（Excel の「Unicode テキスト」等）なら、settings.json の data.tables.<ID>.delimiter（外部入力なら inputs[].delimiter）を \"tab\" にしてください。";
     public const string StorageContractMismatch = "\u3053\u306e\u53f0\u5e33\u3068\u8a2d\u5b9a\u306e\u5217\u30fb\u8b58\u5225\u30ad\u30fc\u30fb\u4f5c\u696d\u72b6\u614b\u306e\u5b9a\u7fa9\u304c\u4e00\u81f4\u3057\u307e\u305b\u3093\u3002\u540c\u3058\u53f0\u5e33\u3092\u4f7f\u3046\u5168PC\u306e\u5b9a\u7fa9\u3092\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
 
     public const string UpdateChangedDuringCheck = "\u78ba\u8a8d\u4e2d\u306b\u5171\u6709\u53f0\u5e33\u306e\u5185\u5bb9\u304c\u5909\u308f\u308a\u307e\u3057\u305f\u3002\u4e0a\u66f8\u304d\u305b\u305a\u4e2d\u6b62\u3057\u307e\u3057\u305f\u3002\u3082\u3046\u4e00\u5ea6\u300c\u66f4\u65b0\u300d\u3067\u78ba\u8a8d\u3057\u3066\u304f\u3060\u3055\u3044\u3002";
