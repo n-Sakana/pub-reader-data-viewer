@@ -442,6 +442,7 @@ public static class Rdv3Xlsx
         if (xr.IsEmptyElement) { return ""; }
         StringBuilder v = new StringBuilder();
         bool formula = false, cached = false;
+        string formulaText = "";
         using (XmlReader sub = xr.ReadSubtree())
         {
             bool moved = sub.Read();
@@ -449,7 +450,13 @@ public static class Rdv3Xlsx
             {
                 if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "rPh")
                 { sub.Skip(); moved = !sub.EOF; continue; }
-                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "f") { formula = true; }
+                if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "f")
+                {
+                    formula = true;
+                    formulaText = sub.ReadElementContentAsString();
+                    moved = !sub.EOF;
+                    continue;
+                }
                 if (sub.NodeType == XmlNodeType.Element && sub.LocalName == "v") { cached = true; }
                 if (sub.NodeType == XmlNodeType.Element &&
                     (sub.LocalName == "v" || sub.LocalName == "t") && !sub.IsEmptyElement)
@@ -462,7 +469,7 @@ public static class Rdv3Xlsx
                 moved = sub.Read();
             }
         }
-        if (formula && !cached) { throw new Rdv3RecordError(Rdv3Text.RecordXlsxFormula); }
+        if (formula && !cached) { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordXlsxFormula, Rdv3Input.Display(formulaText))); }
         return Resolve(t, v.ToString(), shared);
     }
 

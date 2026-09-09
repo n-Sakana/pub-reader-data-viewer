@@ -37,7 +37,7 @@ public static class Rdv3Text
     public const string RecordRegexTimeout = "正規表現の照合が制限時間を超えました。";
     public const string RecordXlsxCell = "{0}、セル {1}: {2}";
     public const string RecordXlsxError = "エラー値「{0}」が入っています。元のブックの値を訂正してください。";
-    public const string RecordXlsxFormula = "数式の保存済み計算結果がありません。元のブックを再計算して保存してください。";
+    public const string RecordXlsxFormula = "数式「{0}」の保存済み計算結果がありません。元のブックを再計算して保存してください。";
     public const string RecordXlsxLong = "セルの値が上限の 32767 文字を超えています（{0} 文字）。";
     public const string InputWarningLog = "入力の除外があります。対象の行と理由は実行ログを確認してください。";
     public const string SettingsLabelExample = "画面に表示する名前";

@@ -944,7 +944,8 @@ public static class Rdv3RegressionTests
             Rdv3Config c = Rdv3Config.Load(f.Config.SourcePath, true);
             Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(c, f.Dir, f.Dir, false, ""));
             Check(report.Member("summary").Member("skippedInvalid").Num == 5, "invalid rows were hidden");
-            string warnings = report.Member("warnings").ToJson();
+            string warnings = "";
+            foreach (Rdv3Json warning in report.Member("warnings").Items) { warnings += warning.Str + "\n"; }
             Check(warnings.Contains("bad1") && warnings.Contains("bad2") && warnings.Contains("first")
                 && warnings.Contains("second") && warnings.Contains("extra"), "lost actual values");
         });

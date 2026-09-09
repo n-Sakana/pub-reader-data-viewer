@@ -1,4 +1,4 @@
-UTC 2026-09-09T03:30:40.6579967Z
+UTC 2026-09-09T03:45:00.8357799Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -27,13 +27,8 @@ PASS csv-header-only
 PASS csv-cr-only
 PASS csv-declared-utf16
 PASS csv-invalid-encoding
-FAIL csv-malformed-and-control-key: System.Exception: Expected Rdv3DataError
-   at Rdv3RegressionTests.Throws[T](Action action)
-   at Rdv3RegressionTests.<Run>b__35()
-   at Rdv3RegressionTests.Test(String name, Action action)
-FAIL short-csv-counts-values-and-physical-rows: System.Exception: shape warning missing or duplicated
-   at Rdv3RegressionTests.<Run>b__39()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS csv-malformed-and-control-key
+PASS short-csv-counts-values-and-physical-rows
 PASS unused-header-projection-and-key-ambiguity
 PASS structural-exclusions-match-ledger-and-process-preview
 PASS csv-unicode-variable-keys
@@ -46,10 +41,7 @@ PASS xlsx-header-only-source
 PASS xlsx-ledger-additional-sheets-refused
 PASS xlsx-phonetic-text-not-concatenated
 PASS xlsx-invalid-shared-index
-FAIL xlsx-no-formula-cache-and-error: System.Exception: Expected InvalidDataException
-   at Rdv3RegressionTests.Throws[T](Action action)
-   at Rdv3RegressionTests.<Run>b__4c()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS xlsx-no-formula-cache-and-error
 PASS xlsx-oversized-column
 PASS xlsx-extra-ledger-column
 PASS xlsx-storage-contract
@@ -62,12 +54,8 @@ PASS config-protected-paths
 PASS config-file-only-job-input-protected
 PASS supplied-data-pipeline-readonly
 PASS input-padding-wide-digits-and-quoted-newlines
-FAIL input-identical-retransmission-counts-and-source-rows: System.Exception: Expected Rdv3DataError
-   at Rdv3RegressionTests.Throws[T](Action action)
-   at Rdv3RegressionTests.Test(String name, Action action)
-FAIL input-key-errors-identify-source-and-fix: System.Exception: bad key accepted
-   at Rdv3RegressionTests.<Run>b__65()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS input-identical-retransmission-counts-and-source-rows
+PASS input-key-errors-identify-source-and-fix
 PASS input-invalid-bytes-and-shape-explain-repair
 PASS input-search-normalization-without-changing-stored-snapshot
 PASS input-numeric-values-reach-expression-aggregate-and-export
@@ -84,17 +72,12 @@ PASS operation-log-path-name-and-protection
 PASS operation-log-header-once-quoting-and-spool-flush
 PASS operation-log-keeps-one-file-per-terminal-under-parallel-writers
 PASS apply-records-create-and-update-only-when-the-file-was-replaced
-FAIL xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules: System.Exception: Expected Rdv3DataError
-   at Rdv3RegressionTests.Throws[T](Action action)
-   at Rdv3RegressionTests.<Run>b__7d()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules
 PASS xlsx-1904-date-system-converts-to-the-same-calendar-day
 PASS reload-asks-when-content-changed-even-if-the-last-marker-is-a-send
 PASS send-detail-and-notice-name-the-actual-states
 PASS operation-log-never-resends-a-delivered-spool
-FAIL derived-typed-column-values-are-checked-before-the-ledger-write: System.Exception: typed result violation accepted
-   at Rdv3RegressionTests.<Run>b__84()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS derived-typed-column-values-are-checked-before-the-ledger-write
 PASS ledger-read-keeps-state-identity-and-contract-checks
 PASS apply-prepared-pipeline-keeps-general-path
 PASS reset-notice-unites-shared-and-local-without-dropping-rows
@@ -105,12 +88,8 @@ PASS eight-thread-shared-ledger-simulation
 PASS encoding-per-input-fast-and-general-join
 PASS encoding-errors-point-to-the-effective-setting
 PASS date-three-explicit-column-formats
-FAIL composite-table-identities-discard-only-identical-rows: System.Exception: conflicting tuple accepted
-   at Rdv3RegressionTests.<ConfigurationInputs>b__15e()
-   at Rdv3RegressionTests.Test(String name, Action action)
-FAIL composite-key-rules-apply-to-each-component: System.Exception: part width accepted
-   at Rdv3RegressionTests.<ConfigurationInputs>b__15f()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS composite-table-identities-discard-only-identical-rows
+PASS composite-key-rules-apply-to-each-component
 PASS composite-join-and-headless-result-show-unmatched-sides
 PASS composite-extract-tests-the-whole-pair
 PASS composite-pending-keeps-digest-baseline-and-idempotence
@@ -122,10 +101,7 @@ PASS validation-independent-settings-fields
 PASS validation-independent-table-definitions
 PASS validation-independent-type-definitions
 PASS validation-independent-input-files
-FAIL validation-reports-each-invalid-typed-cell: System.Exception: Expected collected validation errors
-   at Rdv3RegressionTests.ValidationFailure(Action action)
-   at Rdv3RegressionTests.<ValidationFeedback>b__141()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=94 failed=10
+TOTAL passed=104 failed=0
