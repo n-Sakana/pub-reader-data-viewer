@@ -82,9 +82,10 @@ with tempfile.TemporaryDirectory(prefix='rdv-input-boundaries-') as temporary:
     report=execute('padding-expression',cfg,{'rows.csv':'id,name\n1,one\n23,two\n00000000,zero\n99999999,max\n'},0)
     check([r[-1] for r in report['values']['A']['rows']]==['00000001','00000023','00000000','99999999'],'padding results')
     passed('padding-expression','README expression: 1/23/zero/max padded to 8 digits')
-    msg=execute('padding-overflow',cfg,{'rows.csv':'id,name\n123456789,too-long\n'},3)
-    check('regexExtract found no match' in msg,'9 digits were silently truncated')
-    passed('padding-overflow','exit 3; 9 digits rejected before truncation')
+    report=execute('padding-overflow',cfg,{'rows.csv':'id,name\n123456789,too-long\n'},0)
+    check(report['rows']==[] and report['summary']['skippedInvalid']==1,'9 digits were silently truncated or adopted')
+    check(any('regexExtract' in message and '123456789' in message and '2 行目' in message for message in report['warnings']),'excluded source not named')
+    passed('padding-overflow','exit 0; 9-digit source row excluded and named before truncation')
 
 (evidence/'input-boundaries-results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
 print(f'TOTAL {len(results)}/{len(results)}')

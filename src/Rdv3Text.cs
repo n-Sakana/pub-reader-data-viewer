@@ -26,7 +26,7 @@ public static class Rdv3Text
     public const string RecordControlKey = "キー列 {0} の値「{1}」に制御文字があります。";
     public const string RecordEmptyKey = "キー列 {0} の値が空です。";
     public const string RecordDuplicate = "{0}: キー列 {1}、値「{2}」の {3} 行を除外しました（元の行番号: {4}）。{5}";
-    public const string RecordConflict = "同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。";
+    public const string RecordConflict = "同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。複数の明細を集計する場合は、一意な明細key（複合keyも可）で全件を読んでから、aggregateのgroupByで集めます。入力キーの検査はaggregateより先です。duplicates:distinctは後続行を捨て、合計しません。";
     public const string RecordIdentical = "同じキーの重複行です。";
     public const string RecordStep = "手順 {0}（{1} → {2}）、{3}";
     public const string RecordValues = "列と値: {0}";
@@ -50,7 +50,7 @@ public static class Rdv3Text
     public const string InputExpectKey = "空でないキー";
     public const string InputExpectWidth = "最初の有効行と同じ {n} 文字のキー";
     public const string InputFixKey = "入力値を直してください。この形を許す定義なら、settings.json の {path} を \"{choice}\" にします。";
-    public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。 If multiple detail rows are intentional, first use a unique detail key (for example, an ID plus a sequence/date column), then use aggregate with groupBy at the required matching level. Input keys are checked before aggregate runs. duplicates:distinct keeps the first row; it does not sum values. If no suitable detail key exists, report that this input cannot be represented without changing the source; do not discard required rows.";
+    public const string InputFixConflict = " 同じキーで他の列の内容が違うため、どちらを採るか決められません。両方の行を照合して内容を直すか、{path} の key（外部入力では column）を各行を識別できる列名に直してください。複数の明細を残す場合は、一意な明細keyで読み、aggregateのgroupByで集めます。入力キーの検査はaggregateより先です。duplicates:distinctは最初の行を残すだけで、合計しません。明細を識別できなければ、入力の変更が必要な理由を返してください。必要な行を捨てた設定を完成品にしないでください。";
     public const string InputFixType = " 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"{ref}\"].type を \"text\" にします。";
     public const string InputFixEncoding = "settings.json の {setting} を \"{encoding}\" に合わせるか、入力ファイルを指定した文字コードで保存してください。";
     public const string InputFixUnknownEncoding = "このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の {setting} に指定するか、ファイルをその文字コードで保存し直してください。";

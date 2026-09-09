@@ -53,10 +53,10 @@ with tempfile.TemporaryDirectory(prefix='rdv-feedback-hints-') as scratch:
     text=run('binary-is-not-guessed-as-text',b'\xff\x00\x01\x00\x02\x00\x03\x00'*3,'utf-8',3)
     check('Possible UTF-16' not in text,'false CSV guess for control bytes')
     passed('binary-is-not-guessed-as-text','exit 3; alternating zeros alone are insufficient')
-    text=run('duplicate-key-guidance',b'id,name\r\n001,left\r\n001,right\r\n','utf-8',3)
-    for word in ('aggregate','groupBy','Input keys are checked before aggregate','distinct keeps the first row'):
+    text=run('duplicate-key-guidance',b'id,name\r\n001,left\r\n001,right\r\n','utf-8',0)
+    for word in ('aggregate','groupBy','入力キーの検査はaggregateより先','distinct','合計しません','001','2, 3','どの行も採用しません'):
         check(word in text,'missing guidance: '+word)
-    passed('duplicate-key-guidance','exit 3; detail key -> aggregate/groupBy; distinct is not summing')
+    passed('duplicate-key-guidance','exit 0; both conflicting rows excluded and named; detail key -> aggregate/groupBy; distinct is not summing')
 
 (evidence/'feedback-hints-results.json').write_text(json.dumps(results,ensure_ascii=False,indent=2),encoding='utf-8')
 print(f'TOTAL {len(results)}/{len(results)}')
