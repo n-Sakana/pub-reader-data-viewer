@@ -196,7 +196,7 @@
     },
     {
       "path": "src/Rdv3Shared.cs",
-      "sha256": "0c226cb287d4b17ae708216939c0c635c27f25af4abc472b97725dd5b8a29996",
+      "sha256": "19910462d02413248a2e1ba65f199658564c51afd4b732adae84a7e458ffa017",
       "baselineSha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99"
     },
     {
@@ -243,7 +243,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "ad001648fe8b624962579d0e2295cc5e1b763d21882b2f5350dd4fa75c9da00f",
+      "sha256": "98c0919a9301477d6533212efd230ad7110f47db870de6e135bdf74b1f19d525",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
