@@ -81,6 +81,7 @@ public static class Rdv3Xlsx
                 bool inRow = false;
                 int col = 0;
                 int rowNumber = 0;
+                List<string> rowErrors = new List<string>();
                 HashSet<int> seenColumns = new HashSet<int>();
                 while (xr.Read())
                 {
@@ -88,6 +89,7 @@ public static class Rdv3Xlsx
                     {
                         inRow = true;
                         cells = new List<string>();
+                        rowErrors.Clear();
                         seenColumns.Clear();
                         col = 0;
                         rowNumber++;
@@ -95,7 +97,8 @@ public static class Rdv3Xlsx
                         string rowRef = xr.GetAttribute("r");
                         if (rowRef != null && int.TryParse(rowRef, NumberStyles.Integer,
                             CultureInfo.InvariantCulture, out stated) && stated > 0) { rowNumber = stated; }
-                        if (xr.IsEmptyElement) { inRow = false; }
+                        if (xr.IsEmptyElement)
+                        { inRow = false; if (rowNumber >= headerRow && head != null) { counts.Shape(path, rowNumber, 0, columns.SourceCount, true); } }
                         continue;
                     }
                     if (xr.NodeType == XmlNodeType.Element && xr.LocalName == "c" && inRow)
@@ -108,7 +111,12 @@ public static class Rdv3Xlsx
                         }
                         if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
                         while (cells.Count <= col) { cells.Add(""); }
-                        cells[col] = ReadCellValue(xr, xr.GetAttribute("t"), shared);
+                        try { cells[col] = ReadLocatedCell(xr, xr.GetAttribute("t"), shared, file, CellAddress(col, rowNumber)); }
+                        catch (Rdv3RecordError error)
+                        {
+                            if (rowNumber >= headerRow && head == null) { throw new InvalidDataException(error.Message); }
+                            rowErrors.Add(error.Message);
+                        }
                         col++;
                         continue;
                     }
@@ -116,14 +124,14 @@ public static class Rdv3Xlsx
                     {
                         inRow = false;
                         if (rowNumber < headerRow) { continue; }
-                        if (cells.Count == 0) { continue; }
+                        if (rowErrors.Count > 0)
+                        { counts.Exclude(path, rowNumber, string.Join(" / ", rowErrors.ToArray())); continue; }
+                        if (cells.Count == 0) { counts.Shape(path, rowNumber, 0, columns == null ? 0 : columns.SourceCount, true); continue; }
                         string[] values = cells.ToArray();
-                        for (int c = 0; c < values.Length; c++)
-                        {
-                            values[c] = SafeSourceCell(values[c], file, rowNumber, ref warning);
-                        }
                         if (head == null)
                         {
+                            for (int c = 0; c < values.Length; c++)
+                            { values[c] = SafeSourceCell(values[c], file, rowNumber, ref warning); }
                             columns = Rdv3InputColumns.Read(values, file, rowNumber, references, counts);
                             head = columns.Head;
                             if (headOnly) { break; }
@@ -131,16 +139,16 @@ public static class Rdv3Xlsx
                         }
                         if (values.Length > columns.SourceCount)
                         {
-                            throw new Rdv3DataError(Rdv3Text.DataColumnCount.Replace("{file}", file)
-                                .Replace("{row}", rowNumber.ToString(CultureInfo.InvariantCulture))
-                                .Replace("{n}", values.Length.ToString(CultureInfo.InvariantCulture))
-                                .Replace("{cols}", columns.SourceCount.ToString(CultureInfo.InvariantCulture)));
+                            counts.Exclude(path, rowNumber, Rdv3Text.Format(Rdv3Text.RecordColumns, columns.SourceCount, values.Length)
+                                + Rdv3Text.Format(Rdv3Text.RecordXlsxCell, file, CellAddress(columns.SourceCount, rowNumber), Rdv3Input.Display(values[columns.SourceCount])));
+                            continue;
                         }
                         // XLSX uses explicit cell addresses; an omitted cell is
                         // empty, unlike a short CSV record with unknown boundaries.
                         Array.Resize(ref values, columns.SourceCount);
                         for (int c = 0; c < values.Length; c++) { if (values[c] == null) { values[c] = ""; } }
                         result.Add(columns.Project(values));
+                        counts.SourceRows.Add(rowNumber);
                     }
                 }
             }
@@ -340,6 +348,7 @@ public static class Rdv3Xlsx
             using (XmlReader xr = Xml(sheet.Open()))
             {
                 int col = 0;
+                int rowNumber = 0;
                 bool inRow = false;
                 HashSet<int> seenColumns = new HashSet<int>();
                 while (xr.Read())
@@ -348,6 +357,9 @@ public static class Rdv3Xlsx
                     {
                         inRow = true;
                         col = 0;
+                        int stated;
+                        rowNumber++;
+                        if (int.TryParse(xr.GetAttribute("r"), out stated) && stated > 0) { rowNumber = stated; }
                         seenColumns.Clear();
                         for (int i = 0; i < cells.Length; i++) { cells[i] = ""; }
                         if (xr.IsEmptyElement) { inRow = false; }
@@ -363,7 +375,7 @@ public static class Rdv3Xlsx
                         }
                         if (col >= 16384 || !seenColumns.Add(col)) { throw new InvalidDataException("duplicate/out-of-range XLSX cell"); }
                         string t = xr.GetAttribute("t");
-                        string v = ReadCellValue(xr, t, shared);
+                        string v = ReadLocatedCell(xr, t, shared, Path.GetFileName(path), CellAddress(col, rowNumber));
                         if (col < cells.Length) { cells[col] = v; }
                         else if (v.Length > 0) { throw new InvalidDataException("ledger has unexpected non-empty columns: " + path); }
                         col++;
@@ -450,7 +462,7 @@ public static class Rdv3Xlsx
                 moved = sub.Read();
             }
         }
-        if (formula && !cached) { throw new InvalidDataException("XLSX formula has no cached result; recalculate and save the source workbook"); }
+        if (formula && !cached) { throw new Rdv3RecordError(Rdv3Text.RecordXlsxFormula); }
         return Resolve(t, v.ToString(), shared);
     }
 
@@ -462,14 +474,31 @@ public static class Rdv3Xlsx
             if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out idx) &&
                 shared != null && idx >= 0 && idx < shared.Length)
             {
-                if (shared[idx].Length > 32767) { throw new InvalidDataException("XLSX shared string exceeds 32767 characters"); }
+                if (shared[idx].Length > 32767) { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordXlsxLong, shared[idx].Length)); }
                 return shared[idx];
             }
             throw new InvalidDataException("invalid shared-string index in XLSX");
         }
-        if (t == "e") { throw new InvalidDataException("XLSX contains a formula/error cell: " + s); }
-        if (s.Length > 32767) { throw new InvalidDataException("XLSX cell exceeds 32767 characters"); }
+        if (t == "e") { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordXlsxError, Rdv3Input.Display(s))); }
+        if (s.Length > 32767) { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordXlsxLong, s.Length)); }
         return s;
+    }
+
+    private static string ReadLocatedCell(XmlReader reader, string type, string[] shared, string file, string address)
+    {
+        try { return ReadCellValue(reader, type, shared); }
+        catch (Rdv3RecordError error)
+        { throw new Rdv3RecordError(Rdv3Text.Format(Rdv3Text.RecordXlsxCell, file, address, error.Message)); }
+        catch (InvalidDataException error)
+        { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.RecordXlsxCell, file, address, error.Message)); }
+    }
+
+    private static string CellAddress(int column, int row)
+    {
+        string letters = "";
+        for (int number = column + 1; number > 0; number = (number - 1) / 26)
+        { letters = (char)('A' + (number - 1) % 26) + letters; }
+        return letters + row.ToString(CultureInfo.InvariantCulture);
     }
 
     private static string[] ReadSharedStrings(ZipArchive z)
