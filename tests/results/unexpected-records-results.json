@@ -374,6 +374,94 @@
       ]
     },
     {
+      "name": "update-atomic",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "CHANGED",
+          "20"
+        ],
+        [
+          "3",
+          "CHANGED",
+          "60"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 update（A → U）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=b / A.v=bad"
+      ]
+    },
+    {
+      "name": "update-ledger-atomic",
+      "status": "FAIL",
+      "detail": "{'name': 'update-ledger-atomic', 'validateExit': 0, 'runExit': 3}"
+    },
+    {
+      "name": "sort-ledger-keeps-invalid-record",
+      "status": "PASS"
+    },
+    {
+      "name": "derived-empty",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "one",
+          "a"
+        ],
+        [
+          "three",
+          "c"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 merge（D → ledger）、rows.csv の 3 行目。ジョブ「update」の出力で、識別列「D.key」が空です 列と値: A.id=2 / A.name=b / A.v= / D.key="
+      ]
+    },
+    {
+      "name": "derived-conflict",
+      "status": "PASS",
+      "summary": {
+        "rows": 0,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 3,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [],
+      "warnings": [
+        "1 行を除外しました: 手順 merge（D → ledger）、rows.csv の 2 行目。ジョブ「update」の出力で、識別列「D.key」の値「same」が重複しています 同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。 列と値: A.id=1 / A.name=a / A.v=one / D.key=same",
+        "1 行を除外しました: 手順 merge（D → ledger）、rows.csv の 3 行目。ジョブ「update」の出力で、識別列「D.key」の値「same」が重複しています 同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。 列と値: A.id=2 / A.name=b / A.v= / D.key=same",
+        "1 行を除外しました: 手順 merge（D → ledger）、rows.csv の 4 行目。ジョブ「update」の出力で、識別列「D.key」の値「same」が重複しています 同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。 列と値: A.id=3 / A.name=c / A.v=three / D.key=same"
+      ]
+    },
+    {
       "name": "typed-cells-one-row",
       "status": "PASS",
       "summary": {
@@ -748,16 +836,14 @@
     },
     {
       "name": "ledger-state",
-      "status": "FAIL",
-      "detail": "{'name': 'ledger-state', 'validateExit': 0, 'runExit': 3}"
+      "status": "PASS"
     },
     {
       "name": "ledger-duplicate",
-      "status": "FAIL",
-      "detail": "{'name': 'ledger-duplicate', 'validateExit': 0, 'runExit': 3}"
+      "status": "PASS"
     }
   ],
-  "passed": 28,
-  "failed": 2,
-  "inputFilesUnchanged": 62
+  "passed": 34,
+  "failed": 1,
+  "inputFilesUnchanged": 74
 }

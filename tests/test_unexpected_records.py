@@ -81,6 +81,18 @@ with tempfile.TemporaryDirectory(prefix='rdv-unexpected-') as tmp:
     case(root,'numeric-sort',['1,a,10','2,b,bad','3,c,5'],[sort,merge('S')],expected=[['3','c','5'],['1','a','10']],invalid=1,words=('A.v','bad','3 行目'))
     extract=dict(operation='extract',target1='A',where=dict(column='A.v',operator='greater',value='5'),output='S')
     case(root,'numeric-condition',['1,a,10','2,b,bad','3,c,30'],[extract,merge('A')],expected=[['1','a','10'],['2','b','bad'],['3','c','30']],invalid=1,words=('A.v','bad','3 行目'))
+    select_all=dict(operation='extract',target1='A',where=dict(column='A.id',operator='notEmpty'),output='S')
+    update=dict(operation='update',target1='A',target2='S',set=[dict(column='A.name',expression="'CHANGED'"),dict(column='A.v',expression='A.v * 2')],output='U')
+    case(root,'update-atomic',['1,a,10','2,b,bad','3,c,30'],[select_all,update,merge('U')],expected=[['1','CHANGED','20'],['3','CHANGED','60']],invalid=1,words=('3 行目','A.v','bad'))
+    ledger_select=copy.deepcopy(select_all); ledger_select['target1']='ledger'
+    ledger_update=copy.deepcopy(update); ledger_update.update(target1='ledger',output='ledger')
+    baseline=[['state','id','name','v'],['TRUE','1','a','10'],['TRUE','2','b','bad'],['TRUE','3','c','30']]
+    case(root,'update-ledger-atomic',['1,a,10'],[ledger_select,ledger_update],baseline=baseline,expected=[['1','CHANGED','20'],['2','b','bad'],['3','CHANGED','60']],invalid=1,words=('3 行目','A.v','bad'))
+    ledger_sort=copy.deepcopy(sort); ledger_sort.update(target1='ledger',output='ledger')
+    case(root,'sort-ledger-keeps-invalid-record',['1,a,10'],[ledger_sort],baseline=baseline,stop=True)
+    for name,expression,expected,invalid in [('derived-empty','A.v',[['one','a'],['three','c']],1),('derived-conflict',"'same'",[],3)]:
+        calc=dict(operation='calculate',target1='A',column='key',expression=expression,output='D')
+        case(root,name,['1,a,one','2,b,','3,c,three'],[calc,merge('D','D.key')],['D.key','A.name'],identity='D.key',expected=expected,invalid=invalid,words=('D.key','3 行目'))
     case(root,'typed-cells-one-row',['1,20260909,10','2,wrong,bad','3,20260910,30'],types={'A.name':{'type':'date','format':'yyyyMMdd'},'A.v':{'type':'number'}},expected=[['1','20260909','10'],['3','20260910','30']],invalid=1,words=('wrong','bad','A.name','A.v','3 行目'))
     for name,middle in [('ascii','00あ2,b,20'),('width','02,b,20'),('control','00\x0102,b,20')]:
         case(root,'key-'+name,['0001,a,10',middle,'0003,c,30'],rule={},expected=[['0001','a','10'],['0003','c','30']],invalid=1,words=('id','3 行目'))
@@ -111,7 +123,9 @@ with tempfile.TemporaryDirectory(prefix='rdv-unexpected-') as tmp:
         name=entry['name']; actual=observations[name]; result=dict(name=name,status='PASS')
         try:
             code=3 if expected['stop'] else 0
-            assert actual['runExit']==code and actual['validateExit']==code, actual
+            # ValidateOnly explicitly does not read the baseline ledger.
+            validate_code=0 if entry['baseline'] else code
+            assert actual['runExit']==code and actual['validateExit']==validate_code, actual
             reportpath=Path(entry['report'])
             if expected['stop']:
                 assert not reportpath.exists(), 'a stopped run wrote a result'
@@ -122,11 +136,13 @@ with tempfile.TemporaryDirectory(prefix='rdv-unexpected-') as tmp:
                     assert report['summary']['skipped'+key.capitalize()]==expected[key], report['summary']
                 warnings='\n'.join(report['warnings'])
                 for word in expected['words']: assert word in warnings, (word,warnings)
-                assert actual['windowLines']==['\t'.join(row) for row in report['rows']], actual['windowLines']
+                if not entry['baseline']:
+                    assert actual['windowLines']==['\t'.join(row) for row in report['rows']], actual['windowLines']
                 assert actual['previewValid'], actual['preview']
                 log=(Path(entry['directory'])/'events.log').read_text(encoding='utf-8-sig') if report['warnings'] else ''
                 for warning in report['warnings']: assert warning in log, ('log',warning)
                 if name=='numeric-condition': assert report['values']['S']['count']==2, report['values']['S']
+                if name=='update-ledger-atomic': assert report['states']==['FALSE','TRUE','FALSE'], report['states']
                 result.update(summary=report['summary'],rows=report['rows'],warnings=report['warnings'])
             assert not (Path(entry['directory'])/'shared.xlsx').exists(), 'headless or preview wrote the ledger'
         except AssertionError as error: result.update(status='FAIL',detail=str(error))
