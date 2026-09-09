@@ -1,4 +1,4 @@
-// Reader Data Viewer 設定（JSONC）。使い始めはREADME.mdの最小例から。
+﻿// Reader Data Viewer 設定（JSONC）。使い始めはREADME.mdの最小例から。
 // // と /* ... */ のコメント、末尾カンマを使用可。UTF-8で保存。
 // K番号はREADMEの全項目索引と対応します。コメントのための追加キーは書きません。
 // paths/search/watchを画面から保存すると、その領域内のコメントは再生成で消えます。
@@ -8,6 +8,8 @@
 // 提出前に設定作者が -ValidateOnly と -RunUpdate を実行し、結果まで照合します（README冒頭）。
 // 表IDはtablesのlabel、列と中間結果名はdata.labels、台帳名はdata.labels.ledgerへ。表IDをlabelsに重ねません。
 // CSVの列不足行と空行は除外し、warningsに件数を出します。不足セルは補完しません。列超過・不正な引用符は拒否します。
+// 想定外の値・キー・計算結果の行は除外して続け、件数と元の行番号または識別値を警告します。
+// ファイル・設定の構造不一致、壊れた保存済み台帳は停止します。watch.targetsは出荷時[]で監視しません。
 // CSV/XLSXの重複見出しは、キー・型・全ジョブ・台帳から参照しない同名の全列だけを除外して件数を出します。
 // 参照する重複名は、片方の全セルが空でも拒否します。labelsやselectでは読み分けられません（READMEの入力境界）。
 // 計算結果・集計結果は作った名前のまま台帳へ保存できます（calculateのcolumn、aggregateのas、selectのasを <結果名>.<列名> でsourceへ）。README「計算結果を台帳へ保存する」。
@@ -87,9 +89,9 @@
         "file": "tableB.csv",
         // [K046] data.tables.B.key — 一意な行を識別する列名、必須。複数列なら ["id","part"] の配列。組合せ全体で重複判定し、各列へkeyValidationが適用されます。
         "key": "key2",
-        // [K047] data.tables.B.keyValidation — キーの検証規則。省略はASCII・列ごとの固定長・内容が違う重複をエラー・空キーは除外。文字列を整形して別のキーを作る指定ではありません。
+        // [K047] data.tables.B.keyValidation — キーの検証規則。省略はASCII・列ごとの固定長。規則違反・空キーの行は除外し、内容が違う同一キーは全行を除外して警告します。文字列を整形して別のキーを作る指定ではありません。
         "keyValidation": {
-          // [K048] data.tables.B.keyValidation.empty — skip（省略時）は空キーを含む行を除外して件数を通知、errorはそのファイルと行・列を示して停止。複合キーではどれか1列が空なら対象。
+          // [K048] data.tables.B.keyValidation.empty — skip（省略時）と旧指定errorは、いずれも空キーの行を除外し、件数とファイル・行・列を警告します。複合キーではどれか1列が空なら対象。
           "empty": "skip"
         }
       },
@@ -103,7 +105,7 @@
         "key": "key2"
       }
     },
-    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。calculate/aggregate/selectで作った列にも宣言でき、その値は更新の実行時に検査して違反があれば止まります。XLSXの日付セルはdateの宣言でformatの文字列に変換します。
+    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。calculate/aggregate/selectで作った列にも宣言でき、その値は生成した段階で検査し、違反のある行を除外して値・列・元の行を警告します。XLSXの日付セルはdateの宣言でformatの文字列に変換します。
     "types": {
       // [K054] data.types["A.a_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "A.a_date": {
