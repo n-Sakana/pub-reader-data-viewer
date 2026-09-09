@@ -1,4 +1,4 @@
-UTC 2026-09-09T00:26:05.5016830Z
+UTC 2026-09-09T01:22:41.2500695Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -68,6 +68,10 @@ PASS apply-read-failure-never-overwrites-ledger
 PASS apply-write-failure-keeps-old-file
 PASS apply-marker-failure-retains-committed-result
 PASS apply-unchanged-does-not-write-or-notify
+PASS operation-log-path-name-and-protection
+PASS operation-log-header-once-quoting-and-spool-flush
+PASS operation-log-keeps-one-file-per-terminal-under-parallel-writers
+PASS apply-records-create-and-update-only-when-the-file-was-replaced
 PASS ledger-read-keeps-state-identity-and-contract-checks
 PASS apply-prepared-pipeline-keeps-general-path
 PASS reset-notice-unites-shared-and-local-without-dropping-rows
@@ -94,4 +98,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=94 failed=0
+TOTAL passed=98 failed=0

@@ -20,7 +20,7 @@
   "paths": {
     // [K003] paths.dataDir — 入力フォルダー。相対パスはアプリ一式のフォルダーが基準。入力のfileはこの中を探します。省略data。
     "dataDir": "data",
-    // [K004] paths.ledger — 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。
+    // [K004] paths.ledger — 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。同じフォルダーへ端末別の操作ログ <台帳名>-操作ログ-<端末名>.csv を追記します。
     "ledger": "data/ReaderDataViewer-Ledger.xlsx",
     // [K005] paths.log — このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略data/ReaderDataViewer.log。
     "log": "data/ReaderDataViewer.log"
