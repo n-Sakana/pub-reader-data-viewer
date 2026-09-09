@@ -85,7 +85,7 @@ public static class Rdv3Text
     public const string ExcelSafe = "Excel\u5411\u3051\u306b\u6570\u5f0f\u3068\u3057\u3066\u89e3\u91c8\u3055\u308c\u308b\u6587\u5b57\u5217\u3092\u7121\u52b9\u5316\uff08\u5148\u982d\u306b\u30a2\u30dd\u30b9\u30c8\u30ed\u30d5\u30a3\u3092\u8ffd\u52a0\uff09";
     public const string PendingBackup = "\u7834\u68c4\u524d\u306e\u672a\u9001\u4fe1\u5909\u66f4\u3092\u30d0\u30c3\u30af\u30a2\u30c3\u30d7\u3057\u307e\u3057\u305f: ";
 
-    public const string AppTitle = "Reader Data Viewer";
+    public const string AppTitle = "Reader Data Viewer\uFF08\u4EEE\uFF09";
 
     // ---- the state word in the status bar -----------------------------------
     public const string StateBoot = "\u8D77\u52D5\u4E2D";

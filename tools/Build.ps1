@@ -189,6 +189,7 @@ function New-Win98Package($Options) {
         if ($Options.Format -eq 'zip') { Remove-Item -LiteralPath $package -Recurse -Force }
         $summary = @([ordered]@{theme=$id; name='Windows 98 Classic'; motion='off'; package=$packageName; format=$Options.Format})
         Write-Host '  Prepared: Windows 98 Classic' -ForegroundColor Green
+        Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
         [IO.Directory]::Move($stage, $published)
         Write-Host ''
