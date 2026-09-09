@@ -344,7 +344,11 @@ public sealed class Rdv3App
         savedStates = oldStates;
         lastMergeMs = mr.MergeMs();
         form.SetTimes(lastMergeMs, -1);
-        if (mr.Warnings.Count > 0) { form.Error(string.Join(Environment.NewLine, mr.Warnings.ToArray())); }
+        if (mr.Warnings.Count > 0)
+        {
+            if (!startupLogged) { form.Notice(Rdv3Text.InputWarningLog); }
+            else { form.Error(string.Join(Environment.NewLine, mr.Warnings.ToArray())); }
+        }
 
         if (oldLines == null)
         {
@@ -1003,6 +1007,13 @@ public sealed class Rdv3App
 
     private void SendJob(string tag)
     {
+        string displayedIdentity = "", displayedKey = "";
+        form.RunOnUi(delegate
+        {
+            displayedKey = shownKey;
+            if (shownRow >= 0 && shownRow < ledLines.Length)
+            { displayedIdentity = Rdv3Key.FromLine(ledLines[shownRow], dataDef.IdentityCols); }
+        });
         Rdv3LedgerLock ledgerLock = null;
         bool ledgerWritten = false;
         Rdv3SharedMarker marker = null;
@@ -1045,7 +1056,7 @@ public sealed class Rdv3App
             {
                 if (keepMarker != null) { RememberMarker(keepMarker); }
                 EndWriteGuard(tag, true);
-                ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
+                ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)), displayedIdentity, displayedKey);
                 if (keepApply.Resolved.Count > 0)
                 {
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
@@ -1064,7 +1075,7 @@ public sealed class Rdv3App
             {
                 if (keepMarker != null) { RememberMarker(keepMarker); }
                 EndWriteGuard(tag, false);
-                ReadyAfterShared(tag, "send-failed");
+                ReadyAfterShared(tag, "send-failed", displayedIdentity, displayedKey);
                 form.Error(Rdv3Text.ErrSend + ex.Message);
                 if (keepApply != null && keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
             });
@@ -1155,16 +1166,42 @@ public sealed class Rdv3App
         throw new OperationCanceledException("application is closing");
     }
 
-    private void ReadyAfterShared(string tag, string note)
+    private void ReadyAfterShared(string tag, string note, string identity = "", string key = "")
     {
         ResumeReady();
-        if (shownCands != null) { ClearShown(); }
+        if (shownCands != null)
+        {
+            if (identity.Length > 0 && shownKey == key) { RestoreShown(identity, key); }
+            else { ClearShown(); }
+        }
         string rowsText = ledLines.Length.ToString("N0", CultureInfo.InvariantCulture);
         form.SetLedger(Rdv3Text.LedgerSegFmt.Replace("{file}", System.IO.Path.GetFileName(ledgerPath)).Replace("{n}", rowsText),
             rowsText, LedgerStamp());
         form.SetPendingCount(pending.Count);
         log.Write(tag, "shared", "ready rows=" + ledLines.Length.ToString(CultureInfo.InvariantCulture)
             + " pending=" + pending.Count.ToString(CultureInfo.InvariantCulture) + " note=" + note);
+    }
+
+    // Row ordinals belong to a snapshot. After a send, find the selected
+    // identity in the freshly read ledger; never reuse the old row number.
+    private void RestoreShown(string identity, string key)
+    {
+        int selected = -1;
+        for (int i = 0; i < ledLines.Length; i++)
+        { if (Rdv3Key.FromLine(ledLines[i], dataDef.IdentityCols) == identity) { selected = i; break; } }
+        if (selected < 0) { ClearShown(); return; }
+        List<int> hits = ledIndex.Find(key);
+        List<int> candidates = hits == null ? new List<int>() : new List<int>(hits);
+        if (!candidates.Contains(selected)) { candidates.Add(selected); }
+        int count = candidates.Count;
+        if (candidates.Count > cfg.CandidateRowsShown) { candidates.RemoveRange(cfg.CandidateRowsShown, candidates.Count - cfg.CandidateRowsShown); }
+        if (!candidates.Contains(selected)) { candidates[candidates.Count - 1] = selected; }
+        List<Rdv3CandRow> rows = new List<Rdv3CandRow>();
+        foreach (int row in candidates) { rows.Add(new Rdv3CandRow { Line = ledLines[row], Stored = ledStates[row] }); }
+        activeSearchId = "";
+        shownCands = candidates;
+        form.ShowCandidates(key, rows, count);
+        PickCandidate(candidates.IndexOf(selected));
     }
 
     private void OpenUpdateJob(string jobId)

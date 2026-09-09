@@ -38,6 +38,7 @@ public static class Rdv3Text
     public const string RecordXlsxError = "エラー値「{0}」が入っています。元のブックの値を訂正してください。";
     public const string RecordXlsxFormula = "数式の保存済み計算結果がありません。元のブックを再計算して保存してください。";
     public const string RecordXlsxLong = "セルの値が上限の 32767 文字を超えています（{0} 文字）。";
+    public const string InputWarningLog = "入力の除外があります。対象の行と理由は実行ログを確認してください。";
     public const string SettingsLabelExample = "画面に表示する名前";
     public const string SettingsFixLabel = " settings.json の data.labels に {entry} を設定してください（表示名は用途に合わせ、空にしません）。中間結果と ledger も画面名が必要です。同じ名前の登録は1回で足ります。README.md の「処理に使う名前と画面名」を参照してください。";
     public const string SettingsFixTableLabel = " settings.json の data.tables[{id}].label に空でない画面名を設定してください。この表IDは予約済みなので、data.labels へ同じIDを追加できません。";
