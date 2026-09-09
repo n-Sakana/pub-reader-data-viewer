@@ -1,6 +1,6 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-09T00:26:03.461495+00:00",
+  "utc": "2026-09-09T01:24:22.151292+00:00",
   "details": {
     "excludedFingerprints": [
       "data/ReaderDataViewer.log",
@@ -56,6 +56,10 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:src/02_MainWindow.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3App.cs",
       "status": "PASS"
     },
@@ -76,11 +80,23 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:src/Rdv3Expression.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3Files.cs",
       "status": "PASS"
     },
     {
+      "name": "preserved:src/Rdv3Headless.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3Index.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Input.cs",
       "status": "PASS"
     },
     {
@@ -92,7 +108,19 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:src/Rdv3Key.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3Ledger.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3LedgerStore.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Log.cs",
       "status": "PASS"
     },
     {
@@ -100,7 +128,19 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:src/Rdv3OperationLog.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3Process.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3Program.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3ResetNotice.cs",
       "status": "PASS"
     },
     {
@@ -128,11 +168,19 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:src/Rdv3Validation.cs",
+      "status": "PASS"
+    },
+    {
       "name": "preserved:src/Rdv3Values.cs",
       "status": "PASS"
     },
     {
       "name": "preserved:src/Rdv3Watch.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3WriteGuard.cs",
       "status": "PASS"
     },
     {
@@ -181,50 +229,6 @@
     },
     {
       "name": "preserved:web/app.js",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Log.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Program.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Expression.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3LedgerStore.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3ResetNotice.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3WriteGuard.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Input.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Headless.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Key.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/02_MainWindow.cs",
-      "status": "PASS"
-    },
-    {
-      "name": "preserved:src/Rdv3Validation.cs",
       "status": "PASS"
     },
     {
@@ -292,6 +296,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 70,
+  "passed": 71,
   "failed": 0
 }

@@ -62,7 +62,7 @@
     },
     {
       "path": "settings.json",
-      "sha256": "c385cc73f8c2653148a821d1e4412da06c5dcf7ae098c512276bd279d144620f",
+      "sha256": "e0a952df50447b55369c376b6e290c3ed4143cc515bd59838e91a84a62326ae4",
       "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
@@ -71,8 +71,13 @@
       "baselineSha256": "6988620e9a9a1f7d6284d173eb81d53bfbb14bbcc2b312648ca31d9f82914a3e"
     },
     {
+      "path": "src/02_MainWindow.cs",
+      "sha256": "180b002f80cc61a3846018456d540e362d985c46be5147f13d35413af047dbcd",
+      "baselineSha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0"
+    },
+    {
       "path": "src/Rdv3App.cs",
-      "sha256": "8283d8ddd05cd8f324eb5a5adb9db8ffe5c412c708f06a7406db2930c67f24f4",
+      "sha256": "4113a8b4e71540a7a7d08e841200f324bdb91fdd72e9c7f2d871589ad53292e4",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -96,14 +101,29 @@
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
+      "path": "src/Rdv3Expression.cs",
+      "sha256": "3aa7e69640f4624b3243f4c21df89aa7fecf7124f1d777657b3715e2292ed09d",
+      "baselineSha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
+    },
+    {
       "path": "src/Rdv3Files.cs",
-      "sha256": "53cd344a53b583f1b30d36217ae766c6431e8d3ea61604ca088591e530864a04",
+      "sha256": "d506cdb6ddd2666ed7a95d819c7600bde090d7c9ebde5649201f4d4b62967c94",
       "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+    },
+    {
+      "path": "src/Rdv3Headless.cs",
+      "sha256": "97bec8f5ea008bb4d625ba5bf55762764efca5dca5c7c49c409db3e3d32b51a8",
+      "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
     },
     {
       "path": "src/Rdv3Index.cs",
       "sha256": "e49d4e6e888046cee2104f40c539a9f94ce7824804996c703c7039a604a5a033",
       "baselineSha256": "98a9a9c174ce1c4f6935c42b9be65c72397fe9a7f339527137225d917c8b9e3f"
+    },
+    {
+      "path": "src/Rdv3Input.cs",
+      "sha256": "4d155394a652ddc79e24febbc8bf45876331310231d0623b388113367eafdfeb",
+      "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
     },
     {
       "path": "src/Rdv3Jobs.cs",
@@ -116,9 +136,23 @@
       "baselineSha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8"
     },
     {
+      "path": "src/Rdv3Key.cs",
+      "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
+    },
+    {
       "path": "src/Rdv3Ledger.cs",
       "sha256": "de0f559a7db461a2a0374fdbcfd72df37c2fa00c495efc0385aed5ce3a42ba4c",
       "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465"
+    },
+    {
+      "path": "src/Rdv3LedgerStore.cs",
+      "sha256": "ee1c951766efe413e90e35d71d4b231e711e7b7f95d47e8820e52bd874099926",
+      "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
+    },
+    {
+      "path": "src/Rdv3Log.cs",
+      "sha256": "e255779cb9c272484c1895338016d43aa778e1d483e1c7964dfd1a2a3e5616b0",
+      "baselineSha256": "6f2d8e96cc359fad00f498a1519f2905f38f6dece47395d1abb7ae9491784e04"
     },
     {
       "path": "src/Rdv3Modals.cs",
@@ -126,9 +160,24 @@
       "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184"
     },
     {
+      "path": "src/Rdv3OperationLog.cs",
+      "sha256": "53ab9c1f000a8896050a84f38428803806fe71782a0e46db6655f857cdcf356b",
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+    },
+    {
       "path": "src/Rdv3Process.cs",
       "sha256": "404a54783584e6f0a9746a3fa7bf168aea718e70e10509a0f438c26e3dd6c3b2",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
+    },
+    {
+      "path": "src/Rdv3Program.cs",
+      "sha256": "9b9ed94827b953d217afb5a5caa4aba94f9781bfac5160e9ec96a88403bb1e02",
+      "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
+    },
+    {
+      "path": "src/Rdv3ResetNotice.cs",
+      "sha256": "9558c3d1197048e7353a65f84e352101f9789897a6aa6c8998aeb980515ddb6a",
+      "baselineSha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
     },
     {
       "path": "src/Rdv3Screen.cs",
@@ -142,12 +191,12 @@
     },
     {
       "path": "src/Rdv3Shared.cs",
-      "sha256": "f56951a63e5ceb0bed6be668eb9616d3b35c59f2702550929a2ad562e97cf300",
+      "sha256": "0c226cb287d4b17ae708216939c0c635c27f25af4abc472b97725dd5b8a29996",
       "baselineSha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99"
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "c11fd6de32ef09cd8471968104bd7e6c9ad698dbf6eb090cc0b2a6282fd79c21",
+      "sha256": "6c9866b794d4de2d96fd0a17ac64d5e568d84cbc1310b61703408fd69c600037",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -160,6 +209,10 @@
       "sha256": "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e"
     },
     {
+      "path": "src/Rdv3Validation.cs",
+      "sha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901"
+    },
+    {
       "path": "src/Rdv3Values.cs",
       "sha256": "153dda5de3377e09a0721b5f570b79497ce213a64b1eb218fabe8a22e2325177",
       "baselineSha256": "77de912564e5527f23fb9fc4689f8b7bcf8c06131ef6ce0d07d552ab9a971774"
@@ -168,6 +221,10 @@
       "path": "src/Rdv3Watch.cs",
       "sha256": "7ac394ca6b0f5996cccbdc119c10bfc05cebd0086441d350e1a235c6b7ed45c0",
       "baselineSha256": "f87fdd10c93faf0677216c820410f2194ef95a3f7292e0935982de9f8a9977b6"
+    },
+    {
+      "path": "src/Rdv3WriteGuard.cs",
+      "sha256": "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96"
     },
     {
       "path": "src/Rdv3Xlsx.cs",
@@ -181,7 +238,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "2103118a3dab87065e1ede8e43f18b66f8db5135dd4a0251d3e3f52eb4c3822e",
+      "sha256": "4bfa52a543826e1ee73a8385592ed657c64e4a2ae9e07e2eefb0d992247098da",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -220,58 +277,6 @@
       "path": "web/app.js",
       "sha256": "6d490b42200435eda53d5d97282da44b4f09a2e05eafd3948ffc9506823fdcfa",
       "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
-    },
-    {
-      "path": "src/Rdv3Log.cs",
-      "sha256": "e255779cb9c272484c1895338016d43aa778e1d483e1c7964dfd1a2a3e5616b0",
-      "baselineSha256": "6f2d8e96cc359fad00f498a1519f2905f38f6dece47395d1abb7ae9491784e04"
-    },
-    {
-      "path": "src/Rdv3Program.cs",
-      "sha256": "740e6fcf10eb94d39a2ed9659b6332686d4e155425c7671d49a357cc9b2440d8",
-      "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
-    },
-    {
-      "path": "src/Rdv3Expression.cs",
-      "sha256": "3aa7e69640f4624b3243f4c21df89aa7fecf7124f1d777657b3715e2292ed09d",
-      "baselineSha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
-    },
-    {
-      "path": "src/Rdv3LedgerStore.cs",
-      "sha256": "1ffd8f5aad6b6b90cf4595d03cb9d34e656facbe6e59411c33fce836d0c4eea4",
-      "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
-    },
-    {
-      "path": "src/Rdv3ResetNotice.cs",
-      "sha256": "9558c3d1197048e7353a65f84e352101f9789897a6aa6c8998aeb980515ddb6a",
-      "baselineSha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
-    },
-    {
-      "path": "src/Rdv3WriteGuard.cs",
-      "sha256": "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96"
-    },
-    {
-      "path": "src/Rdv3Input.cs",
-      "sha256": "4d155394a652ddc79e24febbc8bf45876331310231d0623b388113367eafdfeb",
-      "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
-    },
-    {
-      "path": "src/Rdv3Headless.cs",
-      "sha256": "97bec8f5ea008bb4d625ba5bf55762764efca5dca5c7c49c409db3e3d32b51a8",
-      "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
-    },
-    {
-      "path": "src/Rdv3Key.cs",
-      "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
-    },
-    {
-      "path": "src/02_MainWindow.cs",
-      "sha256": "180b002f80cc61a3846018456d540e362d985c46be5147f13d35413af047dbcd",
-      "baselineSha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0"
-    },
-    {
-      "path": "src/Rdv3Validation.cs",
-      "sha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901"
     },
     {
       "path": "tests/Test-ModalPicker.ps1",

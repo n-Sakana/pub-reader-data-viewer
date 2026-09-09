@@ -1,13 +1,13 @@
 {
   "scope": "Lexical/static/sample-file checks only; NOT native compilation or C# execution",
-  "utc": "2026-09-09T00:25:01.945242+00:00",
+  "utc": "2026-09-09T01:24:21.783210+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
-  "passed": 40,
+  "passed": 41,
   "failed": 0,
   "details": {
-    "text_reference_count": 191,
+    "text_reference_count": 200,
     "node_version": "v24.12.0",
-    "native_test_cases_provided_not_executed": 94,
+    "native_test_cases_provided_not_executed": 98,
     "sample_data": {
       "A": {
         "source_rows": 1000,
@@ -112,6 +112,10 @@
     },
     {
       "name": "csharp-lexical-delimiters:src\\Rdv3Modals.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "csharp-lexical-delimiters:src\\Rdv3OperationLog.cs",
       "status": "PASS"
     },
     {
