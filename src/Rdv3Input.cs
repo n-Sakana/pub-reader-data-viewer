@@ -19,6 +19,8 @@ public sealed class Rdv3InputCounts
     // the workbook's date system: serial dates count from 1904-01-01 when set
     public bool Date1904;
     public readonly List<string> DuplicateHeaders = new List<string>();
+    // ヘッダー行の空セル。使わない列なら落として続ける (件数だけ警告に出す)。
+    public int BlankHeaders;
 
     public void Exclude(string path, int row, string reason)
     {
@@ -69,9 +71,11 @@ public sealed class Rdv3InputColumns
         for (int i = 0; i < head.Length; i++)
         {
             head[i] = head[i].Trim();
+            // 名前の無い列は設定から参照できないので、落として続ける。
+            // Excel の表は区切りに空列を挟むことがあり、そこで止めると
+            // 使っていない列のせいでファイル全体が読めなくなる。
             if (head[i].Length == 0)
-            { throw Rdv3Input.Error(path, row, (i + 1).ToString(CultureInfo.InvariantCulture),
-                Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); }
+            { counts.BlankHeaders++; continue; }
             if (!seen.Add(head[i]))
             {
                 if (references == null || references.Contains(head[i]))
@@ -84,6 +88,7 @@ public sealed class Rdv3InputColumns
         List<string> names = new List<string>();
         for (int i = 0; i < head.Length; i++)
         {
+            if (head[i].Length == 0) { counts.HeaderColumns++; continue; }
             if (duplicates.Contains(head[i])) { counts.HeaderColumns++; continue; }
             positions.Add(i); names.Add(head[i]);
         }
