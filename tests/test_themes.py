@@ -57,6 +57,12 @@ def main():
             data=page.evaluate('''()=>{const c=document.querySelector('.client');return {client:c.clientWidth,scroll:c.scrollWidth,clipped:[...document.querySelectorAll('.win .btn,.win .tog')].filter(e=>e.getBoundingClientRect().width>0 && (e.scrollWidth>e.clientWidth+2 || e.scrollHeight>e.clientHeight+2)).map(e=>e.textContent)};}''')
             check(data['scroll']<=data['client']+1,'Horizontal content overflow: '+str(data))
             check(not data['clipped'],'Clipped button text: '+str(data))
+            boxes=page.evaluate('''()=>[...document.querySelectorAll('.win .dynamic-text')].map(e=>{
+                const r=e.getBoundingClientRect(),p=e.parentElement.getBoundingClientRect(),s=getComputedStyle(e.parentElement);
+                return {top:r.top-p.top-parseFloat(s.paddingTop),bottom:p.bottom-r.bottom-parseFloat(s.paddingBottom)};
+            })''')
+            check(all(abs(b['top'])<=1 and abs(b['bottom'])<=1 for b in boxes),
+                  'Text area did not fill its resized frame: '+str(boxes))
             page.locator('[data-action="sendChanges"]').scroll_into_view_if_needed()
             page.locator('[data-action="sendChanges"]').click()
             check(old.messages(page,'action')[-1]['name']=='sendChanges','send is inaccessible')
