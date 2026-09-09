@@ -72,6 +72,7 @@ public static class Rdv3Xlsx
         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
         {
             string[] shared = ReadSharedStrings(z);
+            counts.Date1904 = ReadDate1904(z);
             ZipArchiveEntry sheet = FindSheet(z, false);
             if (sheet == null) { throw new InvalidDataException("no worksheet part in " + path); }
             using (XmlReader xr = Xml(sheet.Open()))
@@ -523,6 +524,24 @@ public static class Rdv3Xlsx
         doc.XmlResolver = null;
         using (XmlReader reader = Xml(entry.Open())) { doc.Load(reader); }
         return doc;
+    }
+
+    // <workbookPr date1904="1"/> marks a workbook whose serial dates count from
+    // 1904-01-01; without it the 1900 system applies. The flag is read from the
+    // file, never guessed from the values.
+    private static bool ReadDate1904(ZipArchive z)
+    {
+        ZipArchiveEntry entry = z.GetEntry("xl/workbook.xml");
+        if (entry == null) { return false; }
+        XmlDocument workbook = Document(entry);
+        foreach (XmlNode node in workbook.GetElementsByTagName("*"))
+        {
+            XmlElement element = node as XmlElement;
+            if (element == null || element.LocalName != "workbookPr") { continue; }
+            string flag = element.GetAttribute("date1904").Trim().ToLowerInvariant();
+            return flag == "1" || flag == "true";
+        }
+        return false;
     }
 
     private static ZipArchiveEntry FindSheet(ZipArchive z, bool ledger)

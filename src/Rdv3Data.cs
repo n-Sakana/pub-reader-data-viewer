@@ -1300,6 +1300,7 @@ public sealed class Rdv3Data
     public void ConvertWorkbookDates(Rdv3Table[] tables)
     {
         if (tables == null) { return; }
+        List<Rdv3Table> keyChanged = new List<Rdv3Table>();
         for (int i = 0; i < TypeOrder.Count; i++)
         {
             Rdv3ColumnTypeDef type = TypeOrder[i];
@@ -1307,28 +1308,45 @@ public sealed class Rdv3Data
             Rdv3Table table = tables[type.TableOrd];
             if (table == null || table.Cells == null
                 || !string.Equals(System.IO.Path.GetExtension(table.Path), ".xlsx", StringComparison.OrdinalIgnoreCase)) { continue; }
+            bool isKey = table.KeyCols != null && Array.IndexOf(table.KeyCols, type.Field) >= 0;
             for (int row = 0; row < table.Rows; row++)
             {
                 string value = table.Cells[row][type.Field];
                 if (value.Length == 0) { continue; }
                 DateTime parsed;
                 if (type.TryDate(value, out parsed)) { continue; }
-                string converted = SerialDate(value, type.Format);
-                if (converted != null) { table.Cells[row][type.Field] = converted; }
+                string converted = SerialDate(value, type.Format, table.InputCounts.Date1904);
+                if (converted == null) { continue; }
+                table.Cells[row][type.Field] = converted;
+                if (isKey && !keyChanged.Contains(table)) { keyChanged.Add(table); }
             }
         }
+        // The key strings of a converted key column are new: the width the
+        // index will trust and the key rules are settled on those values.
+        for (int i = 0; i < keyChanged.Count; i++) { keyChanged[i].RevalidateKeys(); }
     }
 
-    // Excel's serial day: 1 = 1900-01-01, and day 60 is the 1900-02-29 that
-    // never existed, so days from 61 on sit one day later than a plain count.
-    // A time fraction is dropped; a value outside Excel's range is not a date.
-    private static string SerialDate(string value, string format)
+    // Excel's serial day. In the 1900 system 1 = 1900-01-01, and day 60 is the
+    // 1900-02-29 that never existed, so days from 61 on sit one day later than
+    // a plain count. A workbook saved in the 1904 system counts from 1904-01-01
+    // as day 0 and has no such gap; the same calendar day is 1462 lower there.
+    // A time fraction is dropped; a value outside the system's range is not a date.
+    private static string SerialDate(string value, string format, bool date1904)
     {
         decimal serial;
         if (!decimal.TryParse(value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out serial)) { return null; }
-        if (serial < 1 || serial > 2958465) { return null; }
         int days = (int)decimal.Truncate(serial);
-        DateTime date = (days >= 61) ? new DateTime(1899, 12, 30).AddDays(days) : new DateTime(1899, 12, 31).AddDays(days);
+        DateTime date;
+        if (date1904)
+        {
+            if (serial < 0 || serial > 2957003) { return null; }
+            date = new DateTime(1904, 1, 1).AddDays(days);
+        }
+        else
+        {
+            if (serial < 1 || serial > 2958465) { return null; }
+            date = (days >= 61) ? new DateTime(1899, 12, 30).AddDays(days) : new DateTime(1899, 12, 31).AddDays(days);
+        }
         return date.ToString(format, CultureInfo.InvariantCulture);
     }
 

@@ -200,6 +200,7 @@ public static class Rdv3Text
     public const string CandidateHitsFmt = "\u8A72\u5F53 {n} \u4EF6";
 
     // ---- shared-ledger notices ------------------------------------------------
+    public const string SharedSendBodyMulti = "{user} が {changed} 件を{initialState}以外の状態に、{initial} 件を{initialState}にしました";
     public const string SharedSendBody = "{user} \u304C {changed} \u4EF6\u3092{changedState}\u3001{initial} \u4EF6\u3092{initialState}\u306B\u3057\u307E\u3057\u305F";
     public const string SharedUpdateTitle = "\u53F0\u5E33\u306E\u66F4\u65B0";
     public const string SharedUpdateBody = "\u53F0\u5E33\u304C\u66F4\u65B0\u3055\u308C\u307E\u3057\u305F\u3002\u5207\u308A\u66FF\u3048\u307E\u3059\u304B";

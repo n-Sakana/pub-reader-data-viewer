@@ -6,6 +6,8 @@ using System.Text;
 public sealed class Rdv3InputCounts
 {
     public int ShortRows, BlankRows, HeaderColumns, HeaderOffset;
+    // the workbook's date system: serial dates count from 1904-01-01 when set
+    public bool Date1904;
     public readonly List<string> DuplicateHeaders = new List<string>();
 
     public void AddWarnings(string path, List<string> warnings)

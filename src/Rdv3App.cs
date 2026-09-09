@@ -1028,8 +1028,8 @@ public sealed class Rdv3App
                     + " changes=" + apply.Resolved.Count.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
                 string spooled = shared.RecordOperation(Rdv3Text.OpSend, latestLines.Length,
-                    Rdv3OperationLog.SendDetail(work.InitialTargetState, apply.FromInitial, work.InitialState, apply.ToInitial));
-                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
+                    Rdv3OperationLog.SendDetail(work, latestStates, apply.States));
+                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
                 marker = shared.WriteMarker("send", latestLines.Length, apply.FromInitial, apply.ToInitial);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=send");
             }
@@ -1244,7 +1244,7 @@ public sealed class Rdv3App
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
                 string spooled = shared.RecordOperation(Rdv3Text.OpDelete, result.Lines.Length,
                     Rdv3OperationLog.DeleteDetail(process, result.Deleted));
-                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
+                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
                 marker = shared.WriteMarker("update", result.Lines.Length, 0, 0);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }
@@ -1476,18 +1476,27 @@ public sealed class Rdv3App
 
         if (marker.Kind == "send")
         {
-            string actor = MarkerActor(marker);
-            Rdv3StateDef initial = work.InitialState;
-            Rdv3StateDef changed = work.InitialTargetState;
-            string body = Rdv3Text.SharedSendBody.Replace("{user}", actor)
-                .Replace("{changed}", marker.FromInitial.ToString("N0", CultureInfo.InvariantCulture))
-                .Replace("{changedState}", (changed == null) ? "" : changed.Text)
-                .Replace("{initial}", marker.ToInitial.ToString("N0", CultureInfo.InvariantCulture))
-                .Replace("{initialState}", (initial == null) ? "" : initial.Text);
+            string body = SendNoticeText(work, MarkerActor(marker), marker.FromInitial, marker.ToInitial);
             form.SharedNotice(body);
             log.Write("-", "notice", "target=status text=" + body);
         }
         deferredMarker = marker;
+    }
+
+    // The shared notification carries two counts: rows moved away from the
+    // initial state and rows moved back to it. With two states the first count
+    // has one possible destination and its name is used; with more states it
+    // does not, and naming one of them would be a guess, so the wording stays generic.
+    internal static string SendNoticeText(Rdv3WorkState work, string actor, int fromInitial, int toInitial)
+    {
+        Rdv3StateDef initial = work.InitialState;
+        Rdv3StateDef changed = work.InitialTargetState;
+        string template = (work.States.Count == 2) ? Rdv3Text.SharedSendBody : Rdv3Text.SharedSendBodyMulti;
+        return template.Replace("{user}", actor)
+            .Replace("{changed}", fromInitial.ToString("N0", CultureInfo.InvariantCulture))
+            .Replace("{changedState}", (changed == null) ? "" : changed.Text)
+            .Replace("{initial}", toInitial.ToString("N0", CultureInfo.InvariantCulture))
+            .Replace("{initialState}", (initial == null) ? "" : initial.Text);
     }
 
     private static string MarkerActor(Rdv3SharedMarker marker)
@@ -1537,16 +1546,23 @@ public sealed class Rdv3App
             ReadLedger(expectedHead, out lines, out states);
             Rdv3Index index = BuildSearchIndex(lines);
             string[] effective = pending.Overlay(lines, states, dataDef.IdentityCols);
-            List<Rdv3CandRow> resets = (marker.Kind == "update")
-                ? ResetCandidates(resetNotice.ChangedRows(ledLines, ledStates, lines, states)) : new List<Rdv3CandRow>();
+            // The notification names only the last writer: an update that a
+            // later send overwrote still changed the content. Whether to ask
+            // before switching is decided from the ledger itself, the rows on
+            // screen against the rows just read, never from the marker kind.
+            int firstChanged;
+            bool contentChanged = ledLines != null && !Rdv3Ledger.SameContent(ledLines, lines, out firstChanged);
+            List<Rdv3CandRow> resets = ResetCandidates(resetNotice.ChangedRows(ledLines, ledStates, lines, states));
             log.Write(tag, "reload", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture)
+                + " kind=" + marker.Kind
                 + " rows=" + lines.Length.ToString(CultureInfo.InvariantCulture)
+                + " changed=" + (contentChanged ? "true" : "false")
                 + " reset=" + resets.Count.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
             form.RunOnUi(delegate
             {
                 sharedReloading = false;
-                bool adopt = marker.Kind != "update" || form.AskLedgerSwitch(resets);
+                bool adopt = !contentChanged || form.AskLedgerSwitch(resets);
                 if (adopt)
                 {
                     ledLines = lines;

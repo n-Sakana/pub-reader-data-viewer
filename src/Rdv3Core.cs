@@ -442,6 +442,42 @@ public sealed class Rdv3Table
         return t;
     }
 
+    // A workbook key column converted to its declared date format has new key
+    // strings. The character and width rules are checked again on the converted
+    // values, and the fixed width the byte index relies on is taken from them:
+    // a width left over from the serial numbers makes every fast-path lookup miss.
+    public void RevalidateKeys()
+    {
+        if (Cells == null || KeyCols == null) { return; }
+        int[] fixedLengths = new int[KeyCols.Length];
+        for (int k = 0; k < fixedLengths.Length; k++) { fixedLengths[k] = -1; }
+        for (int i = 0; i < Rows; i++)
+        {
+            int row = SourceRow(i);
+            for (int part = 0; part < KeyCols.Length; part++)
+            {
+                int col = KeyCols[part];
+                string value = Cells[i][col];
+                if (value.Length == 0) { throw KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip", col); }
+                if (KeyValidation.Ascii)
+                {
+                    for (int k = 0; k < value.Length; k++)
+                    { if (value[k] > 127) { throw KeyError(row, value, "ASCII", "characters", "unicode", col); } }
+                }
+                if (KeyValidation.FixedLength)
+                {
+                    if (fixedLengths[part] < 0) { fixedLengths[part] = value.Length; }
+                    else if (value.Length != fixedLengths[part])
+                    {
+                        throw KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}",
+                            fixedLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col);
+                    }
+                }
+            }
+        }
+        KeyLen = KeyCols.Length == 1 && KeyValidation.UsesFixedAsciiPath && fixedLengths[0] > 0 ? fixedLengths[0] : 0;
+    }
+
     private void RemoveIdenticalRows()
     {
         if (!KeyValidation.Unique) { return; }

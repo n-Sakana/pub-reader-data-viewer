@@ -124,7 +124,7 @@ internal sealed class Rdv3LedgerStore
                 // either way and the record must say so.
                 string spooled = shared.RecordOperation(latestLines == null ? Rdv3Text.OpCreate : Rdv3Text.OpUpdate,
                     update.Lines.Length, Rdv3OperationLog.UpdateDetail(source.Job, update, work));
-                trace("oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
+                trace("oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
                 marker = shared.WriteMarker("update", update.Lines.Length, 0, 0);
                 trace("marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }

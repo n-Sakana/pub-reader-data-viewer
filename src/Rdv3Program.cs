@@ -159,7 +159,7 @@ public static class Rdv3Program
                 {
                     string undelivered = shared.Operations.Flush();
                     if (undelivered != null)
-                    { new Rdv3Log(logPath).Write("-", "oplog", "spool kept: " + undelivered); }
+                    { new Rdv3Log(logPath).Write("-", "oplog", "startup flush: " + undelivered); }
                 }
                 catch (Exception flushError)
                 { new Rdv3Log(logPath).Write("-", "oplog", "spool flush failed: " + flushError.Message); }
