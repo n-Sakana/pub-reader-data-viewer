@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 
@@ -22,13 +23,15 @@ internal sealed class Rdv3ApplyOutcome
     public readonly Rdv3SharedMarker Marker;
     public readonly bool Committed;
     public readonly Exception Error;
+    public readonly string[] Warnings;
 
-    public Rdv3ApplyOutcome(Rdv3UpdateResult update, Rdv3SharedMarker marker, bool committed, Exception error)
+    public Rdv3ApplyOutcome(Rdv3UpdateResult update, Rdv3SharedMarker marker, bool committed, Exception error, string[] warnings = null)
     {
         Update = update;
         Marker = marker;
         Committed = committed;
         Error = error;
+        Warnings = warnings ?? new string[0];
     }
 
     // A notification or lease-release failure cannot undo the committed XLSX.
@@ -74,6 +77,7 @@ internal sealed class Rdv3LedgerStore
         Rdv3LedgerLock lease = null;
         Rdv3UpdateResult update = null;
         Rdv3SharedMarker marker = null;
+        List<string> warnings = new List<string>();
         bool committed = false;
         try
         {
@@ -104,7 +108,14 @@ internal sealed class Rdv3LedgerStore
             {
                 Rdv3ProcessResult executed = Rdv3Process.Execute(source.Prepared, latestLines, latestStates, work.InitialStored, false);
                 update = executed.Update;
-                foreach (string warning in executed.Warnings) { warn(warning); }
+                foreach (string warning in executed.Warnings)
+                {
+                    trace("warning", warning);
+                    if (!source.Warnings.Contains(warning)) { warnings.Add(warning); }
+                }
+                // Record warnings are shown together after releasing the
+                // lease. Holding shared I/O open for one OK per row would
+                // block every other operator until all warnings were read.
             }
             string operation = source.Job.ApplyStep == null ? "pipeline" : source.Job.ApplyStep.Operation;
             trace("apply", "operation=" + operation
@@ -135,11 +146,11 @@ internal sealed class Rdv3LedgerStore
             }
             else { trace("persist", "skipped (latest ledger already has this result)"); }
             lease.Release();
-            return new Rdv3ApplyOutcome(update, marker, committed, null);
+            return new Rdv3ApplyOutcome(update, marker, committed, null, warnings.ToArray());
         }
         catch (Exception error)
         {
-            return new Rdv3ApplyOutcome(update, marker, committed, error);
+            return new Rdv3ApplyOutcome(update, marker, committed, error, warnings.ToArray());
         }
         finally
         {

@@ -573,7 +573,7 @@ public sealed class Rdv3Table
     public string InputNotice()
     {
         if (Rows == 0 && SkippedEmptyRows == 0 && SkippedDuplicateRows == 0)
-        { return (InputCounts.ShortRows == 0 ? Rdv3Text.InputNoData : Rdv3Text.InputNoKeptData)
+        { return (InputCounts.ShortRows + InputCounts.BlankRows + InputCounts.InvalidRows == 0 ? Rdv3Text.InputNoData : Rdv3Text.InputNoKeptData)
             .Replace("{file}", System.IO.Path.GetFileName(Path)); }
         if (SkippedEmptyRows == 0 && SkippedDuplicateRows == 0) { return ""; }
         return Rdv3Text.InputRowsSkipped.Replace("{file}", System.IO.Path.GetFileName(Path))

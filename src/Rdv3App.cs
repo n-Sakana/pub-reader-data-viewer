@@ -535,6 +535,7 @@ public sealed class Rdv3App
         RememberMarker(outcome.Marker);
         EndWriteGuard(rid, outcome.Error == null);
         EnterReady(rid, Rdv3Text.NoteUpdated);
+        if (outcome.Warnings.Length > 0) { form.Error(string.Join(Environment.NewLine, outcome.Warnings)); }
         if (outcome.Error != null) { form.Error(Rdv3Text.ErrSharedMarker + outcome.Error.Message); return; }
         form.Notice(Rdv3Text.NoteUpdated);
         if (resets.Count > 0) { form.TellResetRows(resets); }

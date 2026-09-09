@@ -1,0 +1,121 @@
+{
+  "scope": "Chromium with synthetic WebView bridge, not native C#/WPF/SMB",
+  "browser": "145.0.7632.6",
+  "utc": "2026-09-09T04:11:50.098731+00:00",
+  "tests": [
+    {
+      "name": "win98:input-normalization",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:IME-main",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:enter-once",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:max-length",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:duplicate-job-routing",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:disabled-actions",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:IME-confirm",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:conflicts-keep-escape-html",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:conflicts-discard",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:esc-keeps-pending",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:export-safe-default",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:export-raw",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:export-reject-non-csv",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:rerender-ids",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:layout-818",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:layout-480",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:layout-1100",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-confirm",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-candidates",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-shared",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-sharedTell",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-unmatched",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-update",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-delete",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-settings",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:native-dialog-export",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:candidate-keyboard",
+      "status": "PASS"
+    },
+    {
+      "name": "win98:no-motion",
+      "status": "PASS"
+    }
+  ],
+  "passed": 28,
+  "failed": 0
+}
