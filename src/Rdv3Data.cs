@@ -21,6 +21,7 @@ public sealed class Rdv3TableDef
     public string Label = "";
     public string File = "";
     public int HeaderRow = 1;                 // the line/row that holds the header
+    public string Sheet = "";                 // xlsx: which worksheet (empty = the first)
     public char Delimiter = ',';              // the CSV field separator
     public string[] KeyColumns = new string[] { "" };
     public string Key { get { return KeyColumns[0]; } set { KeyColumns = new string[] { value }; } }
@@ -122,6 +123,7 @@ public sealed class Rdv3ProcessInputDef
     public string Column = "";
     public string Key = "";
     public int HeaderRow = 1;
+    public string Sheet = "";
     public char Delimiter = ',';
     public string[] Columns;
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
@@ -323,13 +325,14 @@ public sealed class Rdv3Data
             }
             if (id == "ledger") { throw to.Fail("ledger is a reserved value name"); }
             if (to.Kind != Rdv3Json.TObject) { throw to.Fail("must be an object { label, file, key }"); }
-            to.Only("label", "file", "key", "keyValidation", "encoding", "headerRow", "delimiter");
+            to.Only("label", "file", "key", "keyValidation", "encoding", "headerRow", "delimiter", "sheet");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
             int before = to.ErrorCount;
             to.Check(delegate { t.Label = to.StrOr("label", id); });
             to.Check(delegate { t.File = to.Need("file"); });
             to.Check(delegate { t.HeaderRow = to.IntOr("headerRow", 1, 1, 1000000); });
+            t.Sheet = to.StrOr("sheet", "");
             to.Check(delegate { t.Delimiter = ReadDelimiter(to); });
             to.Check(delegate { t.KeyColumns = ReadColumnNames(to.Member("key")); });
             to.Check(delegate { t.KeyValidation = ReadKeyValidation(to); });
@@ -562,6 +565,7 @@ public sealed class Rdv3Data
                 input.Table = table.Id;
                 input.File = table.File;
                 input.HeaderRow = table.HeaderRow;
+                input.Sheet = table.Sheet;
                 input.Delimiter = table.Delimiter;
                 input.Column = table.Key;
                 input.Columns = table.KeyColumns;
@@ -573,11 +577,12 @@ public sealed class Rdv3Data
             }
             else
             {
-                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding", "headerRow", "delimiter");
+                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding", "headerRow", "delimiter", "sheet");
                 input.Id = io.Need("id");
                 input.Label = io.StrOr("label", input.Id);
                 input.File = io.Need("file");
                 input.HeaderRow = io.IntOr("headerRow", 1, 1, 1000000);
+                input.Sheet = io.StrOr("sheet", "");
                 input.Delimiter = ReadDelimiter(io);
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");

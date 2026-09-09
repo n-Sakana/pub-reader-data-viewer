@@ -113,11 +113,12 @@ public sealed class Rdv3Table
     // the header row only (for the start-up check of the definition against
     // the data, before the full read in the worker)
     public static string[] ReadHead(string path, Encoding enc, string encodingSetting = "data.encoding",
-                                    HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
+                                    HashSet<string> references = null, int headerRow = 1, char delimiter = ',',
+                                    string sheet = "")
     {
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return Rdv3Xlsx.ReadTableHead(path, references, headerRow);
+            return Rdv3Xlsx.ReadTableHead(path, references, headerRow, sheet);
         }
         string[] head;
         string[][] rows;
@@ -165,13 +166,14 @@ public sealed class Rdv3Table
     // it are a report title or similar and are skipped, not counted.
     public static Rdv3Table Read(string path, string name, Encoding enc, string keyName,
                                  Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
-                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
+                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',',
+                                 string sheet = "")
     {
         if (validation == null) { validation = new Rdv3KeyValidation(); }
         if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.Add(keyName); }
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting, references, headerRow, delimiter);
+            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting, references, headerRow, delimiter, sheet);
         }
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -352,18 +354,20 @@ public sealed class Rdv3Table
 
     public static Rdv3Table Read(string path, string name, Encoding enc, string[] keyNames,
                                  Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
-                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
+                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',',
+                                 string sheet = "")
     {
         if (keyNames == null || keyNames.Length == 0) { throw new ArgumentException("key names are empty"); }
-        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting, references, headerRow, delimiter); }
+        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting, references, headerRow, delimiter, sheet); }
         if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.UnionWith(keyNames); }
         return ReadDecoded(path, name, enc, keyNames, validation ?? new Rdv3KeyValidation(),
-            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting, references, headerRow, delimiter);
+            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting, references, headerRow, delimiter, sheet);
     }
 
     private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string[] keyNames,
                                           Rdv3KeyValidation validation, bool workbook, string encodingSetting,
-                                          HashSet<string> references, int headerRow, char delimiter)
+                                          HashSet<string> references, int headerRow, char delimiter,
+                                          string sheet = "")
     {
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
@@ -375,7 +379,7 @@ public sealed class Rdv3Table
         int[] originalRows = null;
         if (workbook)
         {
-            Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts, headerRow);
+            Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts, headerRow, sheet);
             originalRows = t.InputCounts.SourceRows.ToArray();
         }
         else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting, references, t.InputCounts, headerRow, delimiter); }

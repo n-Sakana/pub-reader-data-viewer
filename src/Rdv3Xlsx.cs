@@ -39,26 +39,28 @@ public static class Rdv3Xlsx
     // non-empty row is the header and the remaining rows are source records.
     // The saved ledger reader below deliberately remains separate because it
     // has the additional application-owned state column contract.
-    public static string[] ReadTableHead(string path, HashSet<string> references = null, int headerRow = 1)
+    public static string[] ReadTableHead(string path, HashSet<string> references = null, int headerRow = 1, string sheet = "")
     {
         string[] head;
         string[][] rows;
         string warning;
-        ReadTableCore(path, true, out head, out rows, out warning, references, null, headerRow);
+        ReadTableCore(path, true, out head, out rows, out warning, references, null, headerRow, sheet);
         return head;
     }
 
     public static void ReadTable(string path, out string[] head, out string[][] rows, out string warning,
-                                  HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1)
+                                  HashSet<string> references = null, Rdv3InputCounts counts = null, int headerRow = 1,
+                                  string sheet = "")
     {
-        ReadTableCore(path, false, out head, out rows, out warning, references, counts, headerRow);
+        ReadTableCore(path, false, out head, out rows, out warning, references, counts, headerRow, sheet);
     }
 
     // headerRow: the sheet row number that holds the header; rows above it
     // (a report title, a print date) are skipped without being read.
     private static void ReadTableCore(string path, bool headOnly, out string[] head,
                                       out string[][] rows, out string warning,
-                                      HashSet<string> references, Rdv3InputCounts counts, int headerRow)
+                                      HashSet<string> references, Rdv3InputCounts counts, int headerRow,
+                                      string sheet = "")
     {
         warning = "";
         head = null;
@@ -73,9 +75,9 @@ public static class Rdv3Xlsx
         {
             string[] shared = ReadSharedStrings(z);
             counts.Date1904 = ReadDate1904(z);
-            ZipArchiveEntry sheet = FindSheet(z, false);
-            if (sheet == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNoSheetPart, path)); }
-            using (XmlReader xr = Xml(sheet.Open()))
+            ZipArchiveEntry part = FindSheet(z, false, sheet);
+            if (part == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNoSheetPart, path)); }
+            using (XmlReader xr = Xml(part.Open()))
             {
                 List<string> cells = null;
                 bool inRow = false;
@@ -580,7 +582,9 @@ public static class Rdv3Xlsx
         return false;
     }
 
-    private static ZipArchiveEntry FindSheet(ZipArchive z, bool ledger)
+    // wanted: the worksheet name from the settings. Empty selects the first
+    // sheet, which is what every workbook without a cover or summary page has.
+    private static ZipArchiveEntry FindSheet(ZipArchive z, bool ledger, string wanted = "")
     {
         XmlDocument workbook = Document(z.GetEntry("xl/workbook.xml"));
         XmlDocument relations = Document(z.GetEntry("xl/_rels/workbook.xml.rels"));
@@ -591,7 +595,10 @@ public static class Rdv3Xlsx
             XmlElement sheet = node as XmlElement;
             if (sheet == null || sheet.LocalName != "sheet") { continue; }
             sheetCount++;
-            if ((!ledger && selected == null) || (ledger && sheet.GetAttribute("name") == SheetName)) { selected = sheet; }
+            string name = sheet.GetAttribute("name");
+            if (ledger) { if (name == SheetName) { selected = sheet; } }
+            else if (wanted.Length > 0) { if (name == wanted) { selected = sheet; } }
+            else if (selected == null) { selected = sheet; }
         }
         // The writer creates a single managed sheet. Do not silently discard
         // additional sheets someone added to the shared ledger.
