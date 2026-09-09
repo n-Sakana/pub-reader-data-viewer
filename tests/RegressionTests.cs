@@ -222,7 +222,9 @@ public static class Rdv3RegressionTests
             });
             Test("csv-malformed-and-control-key", delegate {
                 Throws<Rdv3DataError>(delegate { Table("id,note\n001,\"unterminated"); });
-                Throws<Rdv3DataError>(delegate { Table("id,note\n001\t,A\n"); });
+                Rdv3Table invalid = Table("id,note\n001\t,A\n");
+                Check(invalid.Rows == 0 && invalid.InputCounts.InvalidRows == 1
+                    && string.Join(" / ", invalid.InputCounts.RowWarnings.ToArray()).Contains("001\\u0009"), "control key was adopted or not identified");
                 Throws<Rdv3DataError>(delegate { Table("id,note\n001,A,B\n"); });
             });
             Test("short-csv-counts-values-and-physical-rows", delegate {
@@ -232,7 +234,7 @@ public static class Rdv3RegressionTests
                     Check(t.Rows == 3 && t.SourceRow(1) == 5 && t.Field(2, 1) == "", "record values or positions shifted");
                     Check(t.InputCounts.ShortRows == 1 && t.InputCounts.BlankRows == 1, "exclusion counts");
                     List<string> warnings = new List<string>(); t.AddWarnings(warnings);
-                    Check(warnings.Count == 1, "shape warning missing or duplicated");
+                    Check(warnings.Count == 3 && warnings[1].Contains("3") && warnings[2].Contains("4"), "shape summary or excluded physical rows missing");
                 }
             });
             Test("unused-header-projection-and-key-ambiguity", delegate {
@@ -304,8 +306,12 @@ public static class Rdv3RegressionTests
             });
             Test("xlsx-invalid-shared-index", delegate { Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c t=\"s\"><v>999</v></c>", false)); }); });
             Test("xlsx-no-formula-cache-and-error", delegate {
-                Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c><f>1+1</f></c>", false)); });
-                Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c t=\"e\"><v>#DIV/0!</v></c>", false)); });
+                foreach (string cell in new string[] { "<c><f>1+1</f></c>", "<c t=\"e\"><v>#DIV/0!</v></c>" })
+                {
+                    Rdv3Table t = Rdv3Table.Read(Fixture(cell, false), "T", Encoding.UTF8, "id");
+                    Check(t.Rows == 0 && t.InputCounts.InvalidRows == 1 && t.InputCounts.RowWarnings[0].Contains("A2"), "bad XLSX cell was adopted or not located");
+                    Check(t.InputCounts.RowWarnings[0].Contains(cell.Contains("#DIV/0!") ? "#DIV/0!" : "1+1"), "bad XLSX value missing");
+                }
             });
             Test("xlsx-oversized-column", delegate { Throws<InvalidDataException>(delegate { ReadSource(Fixture("<c r=\"ZZZZZZ999\"><v>1</v></c>", false)); }); });
             Test("xlsx-extra-ledger-column", delegate {
@@ -385,7 +391,9 @@ public static class Rdv3RegressionTests
                     Check(t.SourceRow(1) == 5 && t.Key(1) == "002" && new Rdv3Index(t).Keys == 2, "compacted source rows/index");
                 }
                 Rdv3Table conflict = Table("id,note\n001,A\n001,A\n001,B\n");
-                Throws<Rdv3DataError>(delegate { new Rdv3Index(conflict); });
+                Check(conflict.Rows == 0 && conflict.SkippedDuplicateRows == 3 && new Rdv3Index(conflict).Keys == 0, "a conflicting copy was retained");
+                string conflictWarning = string.Join(" / ", conflict.InputCounts.RowWarnings.ToArray());
+                Check(conflictWarning.Contains("001") && conflictWarning.Contains("2, 3, 4"), "conflicting source group missing");
             });
             Test("input-key-errors-identify-source-and-fix", delegate {
                 Rdv3KeyValidation v = new Rdv3KeyValidation(); v.SkipEmpty = false;
@@ -393,12 +401,11 @@ public static class Rdv3RegressionTests
                 foreach (string row in new string[] { ",B", "0002,B", "\u65e5,B" })
                 {
                     string path = Csv("id,note\n001,A\n" + row + "\n", Encoding.UTF8);
-                    try { Rdv3Table.Read(path, "T", Encoding.UTF8, "id", v); throw new Exception("bad key accepted"); }
-                    catch (Rdv3DataError ex)
-                    {
-                        Check(ex.Message.Contains(Path.GetFileName(path)) && ex.Message.Contains("3")
-                            && ex.Message.Contains("id") && ex.Message.Contains(v.SettingsPath), "missing source or setting");
-                    }
+                    Rdv3Table t = Rdv3Table.Read(path, "T", Encoding.UTF8, "id", v);
+                    string warning = string.Join(" / ", t.InputCounts.RowWarnings.ToArray());
+                    Check(t.Rows == 1 && t.Key(0) == "001" && t.SkippedEmptyRows + t.InputCounts.InvalidRows == 1, "invalid key was retained");
+                    Check(warning.Contains(Path.GetFileName(path)) && warning.Contains("3") && warning.Contains("id"), "missing source or column");
+                    if (!row.StartsWith(",")) { Check(warning.Contains(v.SettingsPath), "missing key repair setting"); }
                 }
             });
             Test("input-invalid-bytes-and-shape-explain-repair", delegate {
@@ -674,8 +681,10 @@ public static class Rdv3RegressionTests
                 Check(Rdv3Headless.Evaluate(cfg, dir, dir, true, "").Contains("MATCHED"), "general path lost the join");
                 // the converted keys must still obey the table's key rules
                 File.Copy(WorkbookFile(new string[] { "day", "label" }, new object[][] { new object[] { 46246, "A" }, new object[] { 46027, "B" } }, false), Path.Combine(dir, "dates.xlsx"), true);
-                Throws<Rdv3DataError>(delegate { Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy年M月d日", "").Data, dir); });
-                Throws<Rdv3DataError>(delegate { Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy/M/d", "").Data, dir); });
+                Rdv3MergeResult ascii = Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy年M月d日", "").Data, dir);
+                Check(ascii.Keys[1] == 0 && ascii.Rows == 1 && string.Join(" / ", ascii.Warnings.ToArray()).Contains("2026年8月12日"), "converted non-ASCII key was retained");
+                Rdv3MergeResult fixedWidth = Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy/M/d", "").Data, dir);
+                Check(fixedWidth.Keys[1] == 1 && fixedWidth.Rows == 1 && string.Join(" / ", fixedWidth.Warnings.ToArray()).Contains("2026/1/5"), "converted variable width was retained");
                 Rdv3MergeResult variable = Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy/M/d", ",\"keyValidation\":{\"length\":\"variable\"}").Data, dir);
                 Check(variable.Rows == 1 && variable.Matched[0] == 0, "variable-width date keys rejected");
             });
@@ -768,8 +777,9 @@ public static class Rdv3RegressionTests
                     Rdv3Config cfg = ConfigOf(dir, SingleTableData("rows.csv", "\"D.amount\":{\"type\":\"number\"}", "\"D\":\"Calc\",\"D.amount\":\"Amount\",", steps, "\"A.id\",\"A.name\",\"D.amount\""));
                     if (expression == "'oops'")
                     {
-                        try { Rdv3Ledger.BuildFromCsv(cfg.Data, dir); throw new Exception("typed result violation accepted"); }
-                        catch (Rdv3DataError ex) { Check(ex.Message.Contains("D.amount") && ex.Message.Contains("oops") && ex.Message.Contains("001"), "message: " + ex.Message); }
+                        Rdv3MergeResult excluded = Rdv3Ledger.BuildFromCsv(cfg.Data, dir);
+                        string warning = string.Join(" / ", excluded.Warnings.ToArray());
+                        Check(excluded.Rows == 0 && warning.Contains("D.amount") && warning.Contains("oops") && warning.Contains("001"), "typed result was retained or unidentified: " + warning);
                     }
                     else { Check(Rdv3Ledger.BuildFromCsv(cfg.Data, dir).Lines[0] == "001\tExample\t12", "valid number rejected"); }
                 }
@@ -932,9 +942,11 @@ public static class Rdv3RegressionTests
             File.WriteAllText(Path.Combine(f.Dir, "T.csv"), "id,part,amount\nAB,C,bad1\nA,BC,bad2\n", Encoding.GetEncoding(932));
             File.WriteAllText(f.Config.SourcePath, text, new UTF8Encoding(false));
             Rdv3Config c = Rdv3Config.Load(f.Config.SourcePath, true);
-            Rdv3ValidationError e = ValidationFailure(delegate { Rdv3Headless.Evaluate(c, f.Dir, f.Dir, false, ""); });
-            Check(e.Errors.Length == 5 && e.Stage == "input types", "invalid cells were hidden");
-            Check(string.Join("\n", e.Errors).Contains("bad2") && string.Join("\n", e.Errors).Contains("extra"), "lost actual values");
+            Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(c, f.Dir, f.Dir, false, ""));
+            Check(report.Member("summary").Member("skippedInvalid").Num == 5, "invalid rows were hidden");
+            string warnings = report.Member("warnings").ToJson();
+            Check(warnings.Contains("bad1") && warnings.Contains("bad2") && warnings.Contains("first")
+                && warnings.Contains("second") && warnings.Contains("extra"), "lost actual values");
         });
         Test("validation-syntax-failure-count-and-exit", delegate {
             string path = NewPath(".json"); File.WriteAllText(path, "{\"schema\":", Encoding.UTF8);
@@ -1026,17 +1038,21 @@ public static class Rdv3RegressionTests
             Check(t.Rows == 3 && t.SkippedEmptyRows == 1 && t.SkippedDuplicateRows == 1 && new Rdv3Index(t).Keys == 3, "tuple counts");
             Check(t.Key(0) != t.Key(1) && t.Key(0) != t.Key(2), "tuple concatenation collided");
             string conflict = Csv("id,part,value\nA,B,one\nA,B,two\n", Encoding.UTF8);
-            try { new Rdv3Index(Rdv3Table.Read(conflict, "T", Encoding.UTF8, new string[] { "id", "part" }, null)); throw new Exception("conflicting tuple accepted"); }
-            catch (Rdv3DataError ex) { Check(ex.Message.Contains("id / part") && ex.Message.Contains("2") && ex.Message.Contains("3"), "tuple conflict location"); }
+            Rdv3Table excluded = Rdv3Table.Read(conflict, "T", Encoding.UTF8, new string[] { "id", "part" }, null);
+            string warning = string.Join(" / ", excluded.InputCounts.RowWarnings.ToArray());
+            Check(excluded.Rows == 0 && excluded.SkippedDuplicateRows == 2 && new Rdv3Index(excluded).Keys == 0, "conflicting tuple retained");
+            Check(warning.Contains("id / part") && warning.Contains("2, 3"), "tuple conflict location");
         });
         Test("composite-key-rules-apply-to-each-component", delegate {
             Rdv3KeyValidation rule = new Rdv3KeyValidation();
             string skipped = Csv("id,part\nTOO-LONG,\nA,01\nB,02\n", Encoding.UTF8);
             Check(Rdv3Table.Read(skipped, "T", Encoding.UTF8, new string[] { "id", "part" }, rule).Rows == 2, "skipped row set fixed width");
             string bad = Csv("id,part\nA,01\nB,002\n", Encoding.UTF8);
-            try { Rdv3Table.Read(bad, "T", Encoding.UTF8, new string[] { "id", "part" }, rule); throw new Exception("part width accepted"); }
-            catch (Rdv3DataError ex) { Check(ex.Message.Contains("part") && ex.Message.Contains("variable"), "component width repair"); }
-            Throws<Rdv3DataError>(delegate { Rdv3Table.Read(Csv("id,part\nA,\u3042\n", Encoding.UTF8), "T", Encoding.UTF8, new string[] { "id", "part" }, rule); });
+            Rdv3Table width = Rdv3Table.Read(bad, "T", Encoding.UTF8, new string[] { "id", "part" }, rule);
+            Check(width.Rows == 1 && width.InputCounts.InvalidRows == 1 && width.InputCounts.RowWarnings[0].Contains("part")
+                && width.InputCounts.RowWarnings[0].Contains("variable"), "component width repair");
+            Rdv3Table unicode = Rdv3Table.Read(Csv("id,part\nA,\u3042\n", Encoding.UTF8), "T", Encoding.UTF8, new string[] { "id", "part" }, rule);
+            Check(unicode.Rows == 0 && unicode.InputCounts.InvalidRows == 1 && unicode.InputCounts.RowWarnings[0].Contains("part"), "non-ASCII component retained");
         });
         Test("composite-join-and-headless-result-show-unmatched-sides", delegate {
             CompositeFixture f = new CompositeFixture();
