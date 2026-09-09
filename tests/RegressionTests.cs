@@ -663,6 +663,117 @@ public static class Rdv3RegressionTests
                 { Check(!f.Apply(f.Source(new string[] { "001\tX", "002\tB" }), new string[] { "001\tNEW", "002\tB" }).Committed, "write failure committed"); }
                 Check(File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Length == 3, "failed write recorded");
             });
+            Test("xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules", delegate {
+                string dir = NewPath("-datekey"); Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "rows.csv"), "id,name,day\n001,Plain,20260812\n", new UTF8Encoding(false));
+                File.Copy(WorkbookFile(new string[] { "day", "label" }, new object[][] { new object[] { 46246, "MATCHED" } }, false), Path.Combine(dir, "dates.xlsx"));
+                Rdv3Config cfg = DateJoinConfig(dir, "yyyyMMdd", "");
+                Check(cfg.Data.UpdateJob.FastJoinPlan, "fast plan expected for a plain table join");
+                Rdv3MergeResult fast = Rdv3Ledger.BuildFromCsv(cfg.Data, dir);
+                Check(fast.Matched[0] == 1 && fast.Lines[0] == "001\tPlain\t20260812\t20260812\tMATCHED", "fast path lost the converted date key: " + fast.Lines[0]);
+                Check(Rdv3Headless.Evaluate(cfg, dir, dir, true, "").Contains("MATCHED"), "general path lost the join");
+                // the converted keys must still obey the table's key rules
+                File.Copy(WorkbookFile(new string[] { "day", "label" }, new object[][] { new object[] { 46246, "A" }, new object[] { 46027, "B" } }, false), Path.Combine(dir, "dates.xlsx"), true);
+                Throws<Rdv3DataError>(delegate { Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy年M月d日", "").Data, dir); });
+                Throws<Rdv3DataError>(delegate { Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy/M/d", "").Data, dir); });
+                Rdv3MergeResult variable = Rdv3Ledger.BuildFromCsv(DateJoinConfig(dir, "yyyy/M/d", ",\"keyValidation\":{\"length\":\"variable\"}").Data, dir);
+                Check(variable.Rows == 1 && variable.Matched[0] == 0, "variable-width date keys rejected");
+            });
+            Test("xlsx-1904-date-system-converts-to-the-same-calendar-day", delegate {
+                foreach (bool old in new bool[] { false, true })
+                {
+                    string dir = NewPath(old ? "-d1904" : "-d1900"); Directory.CreateDirectory(dir);
+                    File.Copy(WorkbookFile(new string[] { "id", "name", "day" }, new object[][] { new object[] { "001", "Same day", old ? 44784 : 46246 } }, old), Path.Combine(dir, "rows.xlsx"));
+                    Rdv3Config cfg = ConfigOf(dir, SingleTableData("rows.xlsx", "\"A.day\":{\"type\":\"date\",\"format\":\"yyyyMMdd\"}", "\"A.day\":\"Day\",", MergeStep("A"), "\"A.id\",\"A.name\",\"A.day\""));
+                    Rdv3MergeResult merge = Rdv3Ledger.BuildFromCsv(cfg.Data, dir);
+                    Check(merge.Lines[0] == "001\tSame day\t20260812", (old ? "1904" : "1900") + " system: " + merge.Lines[0]);
+                }
+            });
+            Test("reload-asks-when-content-changed-even-if-the-last-marker-is-a-send", delegate {
+                string dir = NewPath("-reload"); Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "rows.csv"), "id,name\n001,Old\n002,Other\n", new UTF8Encoding(false));
+                Rdv3Config cfg = ConfigOf(dir, SingleTableData("rows.csv", "", "", MergeStep("A"), "\"A.id\",\"A.name\""));
+                string ledger = Path.Combine(dir, "ledger.xlsx");
+                Rdv3Xlsx.Write(ledger, cfg.Data.Head, cfg.Screen.Work.Column, new string[] { "001\tNew", "002\tOther" }, new string[] { "FALSE", "TRUE" }, "test", Rdv3Files.StorageContract(cfg.Data, cfg.Screen.Work));
+                new Rdv3SharedFiles(ledger, "A", "a", "A", Path.Combine(dir, "sa.csv")).WriteMarker("update", 2, 0, 0);
+                new Rdv3SharedFiles(ledger, "B", "b", "B", Path.Combine(dir, "sb.csv")).WriteMarker("send", 2, 1, 0);
+                Rdv3SharedFiles reader = new Rdv3SharedFiles(ledger, "C", "c", "C", Path.Combine(dir, "sc.csv"));
+                Rdv3SharedMarker marker = reader.ReadMarker();
+                Check(marker.Kind == "send", "setup: the last notification must be a send");
+                ReaderDataViewer.MainWindow window = new ReaderDataViewer.MainWindow(cfg.Screen);
+                try
+                {
+                    Rdv3Form form = new Rdv3Form(window, cfg.Screen);
+                    Rdv3App app = new Rdv3App(form, root, dir, ledger, Path.Combine(dir, "reload.log"), cfg, new Rdv3PendingStore(Path.Combine(dir, "pending.dat")), reader, null);
+                    System.Reflection.BindingFlags flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+                    typeof(Rdv3App).GetField("ledHead", flags).SetValue(app, cfg.Data.Head);
+                    typeof(Rdv3App).GetField("ledLines", flags).SetValue(app, new string[] { "001\tOld", "002\tOther" });
+                    typeof(Rdv3App).GetField("ledStates", flags).SetValue(app, new string[] { "TRUE", "FALSE" });
+                    typeof(Rdv3App).GetField("sharedStates", flags).SetValue(app, new string[] { "TRUE", "FALSE" });
+                    typeof(Rdv3App).GetMethod("ReloadSharedJob", flags).Invoke(app, new object[] { "test-reload", marker });
+                    string[] active = (string[])typeof(Rdv3App).GetField("ledLines", flags).GetValue(app);
+                    string log = File.ReadAllText(Path.Combine(dir, "reload.log"), Encoding.UTF8);
+                    Check(log.Contains("changed=true") && log.Contains("reset=1"), "content change not detected behind a send notification: " + log);
+                    Check(active[0] == "001\tOld" && log.Contains("switch declined"), "content change adopted without confirmation: " + log);
+                }
+                finally { window.Close(); }
+            });
+            Test("send-detail-and-notice-name-the-actual-states", delegate {
+                string ken = "件", sep = "、";
+                Rdv3WorkState two = new Rdv3WorkState();
+                two.Column = "state"; two.Initial = "todo";
+                two.States.Add(new Rdv3StateDef { Id = "todo", Stored = "FALSE", Text = "Todo" });
+                two.States.Add(new Rdv3StateDef { Id = "done", Stored = "TRUE", Text = "Checked" });
+                two.Transitions.Add(new Rdv3Transition { From = "todo", To = "done" });
+                two.Transitions.Add(new Rdv3Transition { From = "done", To = "todo" });
+                Check(Rdv3OperationLog.SendDetail(two, new string[] { "FALSE", "TRUE", "FALSE" }, new string[] { "TRUE", "FALSE", "FALSE" }) == "Checked 1 " + ken + sep + "Todo 1 " + ken, "two-state detail");
+                Rdv3WorkState three = new Rdv3WorkState();
+                three.Column = "state"; three.Initial = "todo";
+                three.States.Add(new Rdv3StateDef { Id = "todo", Stored = "FALSE", Text = "Todo" });
+                three.States.Add(new Rdv3StateDef { Id = "done", Stored = "TRUE", Text = "Checked" });
+                three.States.Add(new Rdv3StateDef { Id = "approved", Stored = "APPROVED", Text = "Approved" });
+                three.Transitions.Add(new Rdv3Transition { From = "todo", To = "done" });
+                three.Transitions.Add(new Rdv3Transition { From = "done", To = "approved" });
+                three.Transitions.Add(new Rdv3Transition { From = "approved", To = "todo" });
+                Check(Rdv3OperationLog.SendDetail(three, new string[] { "TRUE" }, new string[] { "APPROVED" }) == "Checked 0 " + ken + sep + "Approved 1 " + ken + sep + "Todo 0 " + ken, "three-state detail");
+                Check(Rdv3App.SendNoticeText(two, "taro", 1, 0).Contains("Checked"), "two-state notice names the only destination");
+                string notice = Rdv3App.SendNoticeText(three, "taro", 1, 0);
+                Check(!notice.Contains("Checked") && !notice.Contains("Approved") && notice.Contains("Todo") && notice.Contains("taro"), "three-state notice guessed a state: " + notice);
+            });
+            Test("operation-log-never-resends-a-delivered-spool", delegate {
+                string ledger = NewPath(".xlsx");
+                Rdv3OperationLog log = new Rdv3OperationLog(ledger, "PC-01", "taro", NewPath(".spool.csv"));
+                using (FileStream held = new FileStream(log.Path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                { Check(log.Record(Rdv3Text.OpSend, 1, "one").StartsWith("spooled", StringComparison.Ordinal), "expected a spooled line"); }
+                // a reader that shares nothing else: the spool can neither be deleted nor truncated
+                using (FileStream reader = new FileStream(log.SpoolPath, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    string first = log.Flush();
+                    string second = log.Flush();
+                    Check(first != null && first.StartsWith("written", StringComparison.Ordinal), "first flush outcome: " + first);
+                    Check(File.ReadAllLines(log.Path).Length == 2, "delivered line appended twice: " + first + " / " + second);
+                    Check(!log.HasSpool(), "delivered spool still counted as pending");
+                }
+                Rdv3OperationLog again = new Rdv3OperationLog(ledger, "PC-01", "taro", log.SpoolPath);
+                Check(!again.HasSpool() && again.Flush() == null && File.ReadAllLines(log.Path).Length == 2, "a new process resent the delivered spool");
+                Check(!File.Exists(log.SpoolPath) || new FileInfo(log.SpoolPath).Length == 0, "spool not settled after release");
+                Check(log.Record(Rdv3Text.OpSend, 1, "two") == null && File.ReadAllLines(log.Path).Length == 3, "later line not appended once");
+            });
+            Test("derived-typed-column-values-are-checked-before-the-ledger-write", delegate {
+                string dir = NewPath("-derived"); Directory.CreateDirectory(dir);
+                File.WriteAllText(Path.Combine(dir, "rows.csv"), "id,name\n001,Example\n", new UTF8Encoding(false));
+                foreach (string expression in new string[] { "'oops'", "'12'" })
+                {
+                    string steps = "{\"operation\":\"calculate\",\"target1\":\"A\",\"column\":\"amount\",\"expression\":\"" + expression + "\",\"output\":\"D\"}," + MergeStep("D");
+                    Rdv3Config cfg = ConfigOf(dir, SingleTableData("rows.csv", "\"D.amount\":{\"type\":\"number\"}", "\"D\":\"Calc\",\"D.amount\":\"Amount\",", steps, "\"A.id\",\"A.name\",\"D.amount\""));
+                    if (expression == "'oops'")
+                    {
+                        try { Rdv3Ledger.BuildFromCsv(cfg.Data, dir); throw new Exception("typed result violation accepted"); }
+                        catch (Rdv3DataError ex) { Check(ex.Message.Contains("D.amount") && ex.Message.Contains("oops") && ex.Message.Contains("001"), "message: " + ex.Message); }
+                    }
+                    else { Check(Rdv3Ledger.BuildFromCsv(cfg.Data, dir).Lines[0] == "001\tExample\t12", "valid number rejected"); }
+                }
+            });
             Test("ledger-read-keeps-state-identity-and-contract-checks", delegate {
                 ApplyFixture f = new ApplyFixture();
                 f.Save(Lines(), new string[] { "unknown", "0" });

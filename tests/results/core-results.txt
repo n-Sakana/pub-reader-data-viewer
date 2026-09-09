@@ -1,4 +1,4 @@
-UTC 2026-09-09T01:25:21.6137672Z
+UTC 2026-09-09T02:10:41.3504380Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -72,6 +72,14 @@ PASS operation-log-path-name-and-protection
 PASS operation-log-header-once-quoting-and-spool-flush
 PASS operation-log-keeps-one-file-per-terminal-under-parallel-writers
 PASS apply-records-create-and-update-only-when-the-file-was-replaced
+PASS xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules
+PASS xlsx-1904-date-system-converts-to-the-same-calendar-day
+PASS reload-asks-when-content-changed-even-if-the-last-marker-is-a-send
+FAIL send-detail-and-notice-name-the-actual-states: System.Exception: two-state notice names the only destination
+   場所 Rdv3RegressionTests.<Run>b__7d()
+   場所 Rdv3RegressionTests.Test(String name, Action action)
+PASS operation-log-never-resends-a-delivered-spool
+PASS derived-typed-column-values-are-checked-before-the-ledger-write
 PASS ledger-read-keeps-state-identity-and-contract-checks
 PASS apply-prepared-pipeline-keeps-general-path
 PASS reset-notice-unites-shared-and-local-without-dropping-rows
@@ -98,4 +106,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=98 failed=0
+TOTAL passed=103 failed=1

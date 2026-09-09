@@ -132,7 +132,7 @@
         "key": "key2"
       }
     },
-    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。calculate/aggregate/selectで作った列にも宣言できます。XLSXの日付セルはdateの宣言でformatの文字列に変換します。
+    // [K053] data.types — 数値・日付の型宣言。省略列は文字列、形からの型推測なし。表示だけの書式はscreenのvalue.formatで指定します。calculate/aggregate/selectで作った列にも宣言でき、その値は更新の実行時に検査して違反があれば止まります。XLSXの日付セルはdateの宣言でformatの文字列に変換します。
     "types": {
       // [K054] data.types["A.a_date"] — この実在する入力列の型宣言。ラベルではなく表ID.見出しで指定。番号の先頭ゼロを保つ列はtextまたは省略。
       "A.a_date": {
