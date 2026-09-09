@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Rdv3Ui.cs -- settings-driven WebView2 UI bridge.
 //
 // The browser owns pixels and focus.  Rdv3App still owns every operation and
@@ -253,6 +253,17 @@ public sealed class Rdv3Form
                 View.StoredState = stored ?? "";
             }
             View.Saving = saving && index == View.SelectedIndex;
+            RefreshValues();
+        });
+    }
+
+    // 送信の後だけ使う。候補も選択行も残したまま、入力欄の値だけを空にする。
+    public void ClearSearchKey()
+    {
+        Ui(delegate
+        {
+            keyText = "";
+            View.SearchKey = "";
             RefreshValues();
         });
     }

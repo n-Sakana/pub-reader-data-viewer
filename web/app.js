@@ -199,7 +199,8 @@
         }
       }
     });
-    actions.appendChild(input);
+    inputBox.appendChild(input);
+    actions.appendChild(inputBox);
     (definition.buttons || []).forEach(function (entry) { actions.appendChild(button(entry)); });
     line.appendChild(actions);
     set.appendChild(line);

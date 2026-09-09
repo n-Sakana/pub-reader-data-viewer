@@ -39,7 +39,10 @@
 .runtime .cols>.gb{min-width:0;}
 .runtime .keyline{display:flex;align-items:flex-end;gap:var(--card-gap);min-width:0;}
 .runtime .keyfigure{flex:1;min-width:0;}
-.runtime .keyactions{display:flex;align-items:center;gap:var(--card-gap);padding-bottom:2px;min-width:0;}
+.runtime .keyactions{display:flex;align-items:flex-end;gap:var(--card-gap);padding-bottom:2px;min-width:0;}
+/* 入力欄は表示欄 (.keyfigure) と同じ縦並び。ラベルが上、欄が下。 */
+.runtime .keyinput{display:flex;flex-direction:column;min-width:0;}
+.runtime .keyinput>label{display:block;}
 .runtime .keyvalue{width:100%;height:var(--key-height);line-height:calc(var(--key-height) - 2px);font-size:var(--key-font);font-weight:bold;max-width:none;}
 .runtime .dynamic-row{height:var(--row-height);margin:0;}
 .runtime .dynamic-row label{width:var(--label-width);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}

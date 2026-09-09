@@ -1,4 +1,4 @@
-// ============================================================================
+﻿// ============================================================================
 // Rdv3App.cs -- state machine and timing boundaries.
 //
 // The two figures the log carries, and exactly where they start and stop:
@@ -1058,6 +1058,9 @@ public sealed class Rdv3App
                 if (keepMarker != null) { RememberMarker(keepMarker); }
                 EndWriteGuard(tag, true);
                 ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)), displayedIdentity, displayedKey);
+                // 送信が通ったら次の入力へ移れるよう、入力欄の値だけ空にする。
+                // 表示中のレコードと候補は残す (2026-09-09 に直した「送信後の表示保持」)。
+                form.ClearSearchKey();
                 if (keepApply.Resolved.Count > 0)
                 {
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
