@@ -1,0 +1,763 @@
+{
+  "tests": [
+    {
+      "name": "split-missing",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "p*q",
+          "q"
+        ],
+        [
+          "3",
+          "c",
+          "r*s",
+          "s"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。splitPart の入力「missing」から指定された文字列を取得できません（条件: *, 1）。 列と値: A.id=2 / A.name=b / A.v=missing"
+      ]
+    },
+    {
+      "name": "split-empty-result",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "p*q",
+          "q"
+        ],
+        [
+          "3",
+          "c",
+          "r*s",
+          "s"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。splitPart の入力「p*」から指定された文字列を取得できません（条件: *, 1）。 列と値: A.id=2 / A.name=b / A.v=p*"
+      ]
+    },
+    {
+      "name": "substring-range",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "ab",
+          "b"
+        ],
+        [
+          "3",
+          "c",
+          "cd",
+          "d"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。substring の入力「x」から指定された文字列を取得できません（条件: 1, 1）。 列と値: A.id=2 / A.name=b / A.v=x"
+      ]
+    },
+    {
+      "name": "substring-empty",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "ab",
+          "b"
+        ],
+        [
+          "3",
+          "c",
+          "cd",
+          "d"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。substring の入力「」から指定された文字列を取得できません（条件: 1, 1）。 列と値: A.id=2 / A.name=b / A.v="
+      ]
+    },
+    {
+      "name": "regex-missing",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "P-100",
+          "P-100"
+        ],
+        [
+          "3",
+          "c",
+          "P-300",
+          "P-300"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。regexExtract の入力「none」から指定された文字列を取得できません（条件: P-[0-9]+）。 列と値: A.id=2 / A.name=b / A.v=none"
+      ]
+    },
+    {
+      "name": "arithmetic-number",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10",
+          "20"
+        ],
+        [
+          "3",
+          "c",
+          "30",
+          "60"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=b / A.v=bad"
+      ]
+    },
+    {
+      "name": "arithmetic-zero",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "2",
+          "5"
+        ],
+        [
+          "3",
+          "c",
+          "5",
+          "2"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。0 で割る計算です（左の値「10」、右の値「0」）。 列と値: A.id=2 / A.name=b / A.v=0"
+      ]
+    },
+    {
+      "name": "arithmetic-overflow",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10",
+          "20"
+        ],
+        [
+          "3",
+          "c",
+          "30",
+          "60"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 calculate（A → D）、rows.csv の 3 行目。計算結果が数値として扱える範囲を超えました。 列と値: A.id=2 / A.name=b / A.v=79228162514264337593543950335"
+      ]
+    },
+    {
+      "name": "aggregate-atomic",
+      "status": "PASS",
+      "summary": {
+        "rows": 1,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "G",
+          "40",
+          "60",
+          "2"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 aggregate（A → G）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=G / A.v=99 / A.other=bad"
+      ]
+    },
+    {
+      "name": "aggregate-all-invalid",
+      "status": "PASS",
+      "summary": {
+        "rows": 1,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 3,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0",
+          "0"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 aggregate（A → G）、rows.csv の 2 行目。数値として読めない値「bad」です。 列と値: A.id=1 / A.name=a / A.v=bad",
+        "1 行を除外しました: 手順 aggregate（A → G）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=b / A.v=bad",
+        "1 行を除外しました: 手順 aggregate（A → G）、rows.csv の 4 行目。数値として読めない値「bad」です。 列と値: A.id=3 / A.name=c / A.v=bad"
+      ]
+    },
+    {
+      "name": "numeric-sort",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "3",
+          "c",
+          "5"
+        ],
+        [
+          "1",
+          "a",
+          "10"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 sort（A → S）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=b / A.v=bad"
+      ]
+    },
+    {
+      "name": "numeric-condition",
+      "status": "PASS",
+      "summary": {
+        "rows": 3,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "2",
+          "b",
+          "bad"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: 手順 extract（A → S）、rows.csv の 3 行目。数値として読めない値「bad」です。 列と値: A.id=2 / A.name=b / A.v=bad"
+      ]
+    },
+    {
+      "name": "typed-cells-one-row",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "20260909",
+          "10"
+        ],
+        [
+          "3",
+          "20260910",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.csv の 3 行目。rows.csv の 3 行目: 列 A.name の実際の値「wrong」を 日付（yyyyMMdd） として読めません 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"A.name\"].type を \"text\" にします。 / rows.csv の 3 行目: 列 A.v の実際の値「bad」を 数値 として読めません 値を指定した型・日付書式に直してください。数値・日付として扱わない列なら、settings.json の data.types[\"A.v\"].type を \"text\" にします。"
+      ]
+    },
+    {
+      "name": "key-ascii",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0001",
+          "a",
+          "10"
+        ],
+        [
+          "0003",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.csv の 3 行目。rows.csv の 3 行目、列 id: 必要なのは「ASCII」、実際は「00あ2」です。入力値を直してください。この形を許す定義なら、settings.json の data.tables.A.keyValidation.characters を \"unicode\" にします。"
+      ]
+    },
+    {
+      "name": "key-width",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0001",
+          "a",
+          "10"
+        ],
+        [
+          "0003",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.csv の 3 行目。rows.csv の 3 行目、列 id: 必要なのは「最初の有効行と同じ 4 文字のキー」、実際は「02」です。入力値を直してください。この形を許す定義なら、settings.json の data.tables.A.keyValidation.length を \"variable\" にします。"
+      ]
+    },
+    {
+      "name": "key-control",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0001",
+          "a",
+          "10"
+        ],
+        [
+          "0003",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.csv の 3 行目。キー列 id の値「00\\u000102」に制御文字があります。"
+      ]
+    },
+    {
+      "name": "empty-key-error-compat",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 1,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 0,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0001",
+          "a",
+          "10"
+        ],
+        [
+          "0003",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.csv の 3 行目。キー列 id の値が空です。",
+        "rows.csv: キー列 id が空の 1 行と重複の 0 行を除き、2 行を読みました。"
+      ]
+    },
+    {
+      "name": "duplicate-conflict",
+      "status": "PASS",
+      "summary": {
+        "rows": 1,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 2,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 0,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0003",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "rows.csv: キー列 id、値「0001」の 2 行を除外しました（元の行番号: 2, 3）。同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。",
+        "rows.csv: キー列 id が空の 0 行と重複の 2 行を除き、1 行を読みました。"
+      ]
+    },
+    {
+      "name": "duplicate-conflict-after-identical",
+      "status": "PASS",
+      "summary": {
+        "rows": 1,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 3,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 0,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "0004",
+          "d",
+          "40"
+        ]
+      ],
+      "warnings": [
+        "rows.csv: キー列 id、値「0001」の 3 行を除外しました（元の行番号: 2, 3, 4）。同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。",
+        "rows.csv: キー列 id が空の 0 行と重複の 3 行を除き、1 行を読みました。"
+      ]
+    },
+    {
+      "name": "identical-retransmission",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 1,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 0,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "rows.csv: キー列 id、値「1」の 1 行を除外しました（元の行番号: 3）。同じキーの重複行です。",
+        "rows.csv: キー列 id が空の 0 行と重複の 1 行を除き、2 行を読みました。"
+      ]
+    },
+    {
+      "name": "quoted-comma",
+      "status": "PASS",
+      "summary": {
+        "rows": 3,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 0,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "2",
+          "b, comma",
+          "20"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": []
+    },
+    {
+      "name": "xlsx-error",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.xlsx の 3 行目。rows.xlsx、セル B3: エラー値「#VALUE!」が入っています。元のブックの値を訂正してください。 / rows.xlsx、セル C3: エラー値「#N/A」が入っています。元のブックの値を訂正してください。"
+      ]
+    },
+    {
+      "name": "xlsx-formula",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.xlsx の 3 行目。rows.xlsx、セル C3: 数式「1/0」の保存済み計算結果がありません。元のブックを再計算して保存してください。"
+      ]
+    },
+    {
+      "name": "xlsx-extra",
+      "status": "PASS",
+      "summary": {
+        "rows": 2,
+        "skippedEmpty": 0,
+        "skippedDuplicate": 0,
+        "skippedShort": 0,
+        "skippedBlank": 0,
+        "skippedColumns": 0,
+        "skippedInvalid": 1,
+        "baselineRows": 0,
+        "resetRows": 0
+      },
+      "rows": [
+        [
+          "1",
+          "a",
+          "10"
+        ],
+        [
+          "3",
+          "c",
+          "30"
+        ]
+      ],
+      "warnings": [
+        "1 行を除外しました: rows.xlsx の 3 行目。列数が見出しと違います。必要な列数 3、実際の列数 4。rows.xlsx、セル D3: extra"
+      ]
+    },
+    {
+      "name": "structural-shared-index",
+      "status": "PASS"
+    },
+    {
+      "name": "structural-header-error",
+      "status": "PASS"
+    },
+    {
+      "name": "structural-csv-width",
+      "status": "PASS"
+    },
+    {
+      "name": "structural-unclosed-quote",
+      "status": "PASS"
+    },
+    {
+      "name": "ledger-state",
+      "status": "FAIL",
+      "detail": "{'name': 'ledger-state', 'validateExit': 0, 'runExit': 3}"
+    },
+    {
+      "name": "ledger-duplicate",
+      "status": "FAIL",
+      "detail": "{'name': 'ledger-duplicate', 'validateExit': 0, 'runExit': 3}"
+    }
+  ],
+  "passed": 28,
+  "failed": 2,
+  "inputFilesUnchanged": 62
+}
