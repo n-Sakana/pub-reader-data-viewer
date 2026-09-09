@@ -37,6 +37,6 @@
   {
     "name": "duplicate-key-guidance",
     "status": "PASS",
-    "detail": "exit 3; detail key -> aggregate/groupBy; distinct is not summing"
+    "detail": "exit 0; both conflicting rows excluded and named; detail key -> aggregate/groupBy; distinct is not summing"
   }
 ]

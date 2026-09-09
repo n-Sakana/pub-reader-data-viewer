@@ -32,6 +32,6 @@
   {
     "name": "padding-overflow",
     "status": "PASS",
-    "detail": "exit 3; 9 digits rejected before truncation"
+    "detail": "exit 0; 9-digit source row excluded and named before truncation"
   }
 ]
