@@ -1,6 +1,6 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-08T23:56:59.266850+00:00",
+  "utc": "2026-09-09T00:26:03.461495+00:00",
   "details": {
     "excludedFingerprints": [
       "data/ReaderDataViewer.log",
@@ -272,6 +272,10 @@
       "status": "PASS"
     },
     {
+      "name": "preserved:tests/test_delimiter.py",
+      "status": "PASS"
+    },
+    {
       "name": "win98-only-presentation",
       "status": "PASS"
     },
@@ -288,6 +292,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 69,
+  "passed": 70,
   "failed": 0
 }
