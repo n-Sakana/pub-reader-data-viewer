@@ -1,26 +1,37 @@
-2026-09-09 09:28:30.749	pid=40016	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\rows.json validate=False update=True
-2026-09-09 09:28:30.784	pid=40016	PHASE	loading assemblies and compiling application sources
-2026-09-09 09:28:31.435	pid=40016	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\rows.json validate=False update=True
-2026-09-09 09:28:31.444	pid=40016	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\settings.json
-2026-09-09 09:28:31.508	pid=40016	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\data\tableA.csv
-2026-09-09 09:28:31.526	pid=40016	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\data\tableB.csv
-2026-09-09 09:28:31.534	pid=40016	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\data\tableC.csv
-2026-09-09 09:28:31.543	pid=40016	PHASE	input columns and types
-2026-09-09 09:28:31.564	pid=40016	PHASE	preparing job merge-ledger
-2026-09-09 09:28:31.569	pid=40016	PHASE	preparing job delete-listed-records
-2026-09-09 09:28:31.574	pid=40016	PHASE	executing update job merge-ledger
-2026-09-09 09:28:31.604	pid=40016	PHASE	writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\rows.json
-2026-09-09 09:28:31.614	pid=40016	PASS	RunUpdate C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\settings.json
-2026-09-09 09:28:31.662	pid=40016	RESULT	rows=990
-2026-09-09 09:28:31.666	pid=40016	RESULT	skippedEmpty=10
-2026-09-09 09:28:31.668	pid=40016	RESULT	skippedDuplicate=0
-2026-09-09 09:28:31.671	pid=40016	RESULT	skippedShort=0
-2026-09-09 09:28:31.675	pid=40016	RESULT	skippedBlank=0
-2026-09-09 09:28:31.678	pid=40016	RESULT	skippedColumns=0
-2026-09-09 09:28:31.681	pid=40016	RESULT	baselineRows=0
-2026-09-09 09:28:31.685	pid=40016	RESULT	resetRows=0
-2026-09-09 09:28:31.688	pid=40016	RESULT	JOIN middle1 unmatchedLeft=10 unmatchedRight=310
-2026-09-09 09:28:31.692	pid=40016	RESULT	JOIN middle2 unmatchedLeft=0 unmatchedRight=10
-2026-09-09 09:28:31.694	pid=40016	RESULT	WARNING tableB.csv: キー列 key2 が空の 10 行と重複の 0 行を除き、990 行を読みました。
-2026-09-09 09:28:31.697	pid=40016	RESULT	OUTPUT C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\rows.json
-2026-09-09 09:28:31.703	pid=40016	END	exit=0 last phase=writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-huwo01j5\update-ok\rows.json
+2026-09-09 13:17:50.610	pid=38176	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\rows.json validate=False update=True
+2026-09-09 13:17:50.647	pid=38176	PHASE	loading assemblies and compiling application sources
+2026-09-09 13:17:51.338	pid=38176	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\settings.json data= output=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\rows.json validate=False update=True
+2026-09-09 13:17:51.347	pid=38176	PHASE	RunUpdate settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\settings.json
+2026-09-09 13:17:51.418	pid=38176	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\data\tableA.csv
+2026-09-09 13:17:51.434	pid=38176	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\data\tableB.csv
+2026-09-09 13:17:51.441	pid=38176	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\data\tableC.csv
+2026-09-09 13:17:51.450	pid=38176	PHASE	input columns and types
+2026-09-09 13:17:51.476	pid=38176	PHASE	preparing job merge-ledger
+2026-09-09 13:17:51.480	pid=38176	PHASE	preparing job delete-listed-records
+2026-09-09 13:17:51.483	pid=38176	PHASE	executing update job merge-ledger
+2026-09-09 13:17:51.514	pid=38176	PHASE	writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\rows.json
+2026-09-09 13:17:51.519	pid=38176	PASS	RunUpdate C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\settings.json
+2026-09-09 13:17:51.565	pid=38176	RESULT	rows=990
+2026-09-09 13:17:51.566	pid=38176	RESULT	skippedEmpty=10
+2026-09-09 13:17:51.567	pid=38176	RESULT	skippedDuplicate=0
+2026-09-09 13:17:51.568	pid=38176	RESULT	skippedShort=0
+2026-09-09 13:17:51.568	pid=38176	RESULT	skippedBlank=0
+2026-09-09 13:17:51.570	pid=38176	RESULT	skippedColumns=0
+2026-09-09 13:17:51.572	pid=38176	RESULT	skippedInvalid=0
+2026-09-09 13:17:51.573	pid=38176	RESULT	baselineRows=0
+2026-09-09 13:17:51.573	pid=38176	RESULT	resetRows=0
+2026-09-09 13:17:51.574	pid=38176	RESULT	JOIN middle1 unmatchedLeft=10 unmatchedRight=310
+2026-09-09 13:17:51.575	pid=38176	RESULT	JOIN middle2 unmatchedLeft=0 unmatchedRight=10
+2026-09-09 13:17:51.577	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 49 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.580	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 105 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.582	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 136 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.584	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 173 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.587	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 322 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.589	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 491 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.590	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 767 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.592	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 780 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.594	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 995 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.596	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log 1 行を除外しました: tableB.csv の 1001 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:51.598	pid=38176	warning	run=RunUpdate log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\operation.log tableB.csv: キー列 key2 が空の 10 行と重複の 0 行を除き、990 行を読みました。
+2026-09-09 13:17:51.600	pid=38176	RESULT	OUTPUT C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\rows.json
+2026-09-09 13:17:51.603	pid=38176	END	exit=0 last phase=writing report C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\update-ok\rows.json
