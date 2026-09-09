@@ -36,7 +36,7 @@ public static class Rdv3Files
         string[] dirs = { "src", "lib", "web", "docs", "tests" };
         for (int i = 0; i < dirs.Length; i++) { if (Under(path, Path.Combine(appDir, dirs[i]))) { return true; } }
         string[] files = { "ReaderDataViewer.cmd", "ReaderDataViewer.vbs", "README.md", "LICENSE",
-            "THIRD-PARTY-NOTICES.md", "build.bat", "AUDIT_REPORT.md" };
+            "THIRD-PARTY-NOTICES.md", "build.bat" };
         for (int i = 0; i < files.Length; i++) { if (Same(path, Path.Combine(appDir, files[i]))) { return true; } }
         return false;
     }

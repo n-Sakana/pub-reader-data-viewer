@@ -39,7 +39,7 @@ id,name
   "paths": {
     "dataDir": "data",
     "ledger": "data/ReaderDataViewer-Ledger.xlsx",
-    "log": "data/ReaderDataViewer.log"
+    "log": "ReaderDataViewer.log"
   },
   "search": {
     "pattern": ".+",
@@ -344,7 +344,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 "paths": {
   "dataDir": "data",
   "ledger": "\\\\server\\share\\ReaderDataViewer-Ledger.xlsx",
-  "log": "data/ReaderDataViewer.log"
+  "log": "ReaderDataViewer.log"
 }
 ```
 
@@ -776,7 +776,7 @@ id,cancel
 ```jsonc
 {
   "schema": 3,
-  "paths": {"dataDir":"data", "ledger":"data/ReaderDataViewer-Ledger.xlsx", "log":"data/ReaderDataViewer.log"},
+  "paths": {"dataDir":"data", "ledger":"data/ReaderDataViewer-Ledger.xlsx", "log":"ReaderDataViewer.log"},
   "search": {"pattern":"R[0-9]{2}"},
   "watch": {"targets":[]},
   "data": {
@@ -989,10 +989,10 @@ OSがPowerShellの開始を拒む場合、スクリプト自体の構文・引�
 | 番号・JSONパス | 意味・変えると起きること |
 |---|---|
 | <a id="k001"></a>K001 `schema` | 設定形式の版。必須で3。この数字は調整しません。 |
-| <a id="k002"></a>K002 `paths` | 配置を決める領域。全体を省略すると入力data、台帳data/ReaderDataViewer-Ledger.xlsx、ログdata/ReaderDataViewer.log。変更は再起動後。 |
+| <a id="k002"></a>K002 `paths` | 配置を決める領域。全体を省略すると入力data、台帳data/ReaderDataViewer-Ledger.xlsx、ログReaderDataViewer.log。変更は再起動後。 |
 | <a id="k003"></a>K003 `paths.dataDir` | 入力フォルダー。相対パスはアプリ一式のフォルダーが基準。入力のfileはこの中を探します。省略data。 |
 | <a id="k004"></a>K004 `paths.ledger` | 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。同じフォルダーへ端末別の操作ログ <台帳名>-操作ログ-<端末名>.csv を追記します。 |
-| <a id="k005"></a>K005 `paths.log` | このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略data/ReaderDataViewer.log。 |
+| <a id="k005"></a>K005 `paths.log` | このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略ReaderDataViewer.log。 |
 | <a id="k006"></a>K006 `search` | 検索入力の形式と候補数。テーブルのキー検証とは別で、設定画面の保存後から効きます。 |
 | <a id="k007"></a>K007 `search.pattern` | 入力全体に一致させる正規表現。省略は数字8桁。英字等を使う入力なら例 [A-Z0-9-]+ へ。台帳の検索対象列はdata.ledger.search.columns。 |
 | <a id="k008"></a>K008 `search.candidateRowsShown` | 候補一覧へ載せる上限1～1000、省略100。小さくすると一覧から選べる行も減るので、検索条件を絞れることを確認。 |

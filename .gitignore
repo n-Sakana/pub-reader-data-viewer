@@ -30,7 +30,10 @@ dist/
 /build/dist/
 /build/work/
 
-# アプリが自分の隣へ書く実行時の産物
+# テーブル出力の既定の行き先。中身は利用者の出力で、リポジトリには入れない
+/output/
+
+# アプリが自分の隣へ書く実行時の産物 (実行ログ ReaderDataViewer.log はアプリ直下)
 *.log
 *.pid
 *.xlsx
