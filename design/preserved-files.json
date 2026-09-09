@@ -62,7 +62,7 @@
     },
     {
       "path": "settings.json",
-      "sha256": "5ded424bf7772ccd4bce8fcfd70475407e7d79beee654c62454aece85f425094",
+      "sha256": "f52b4f04e51f53c50efe245e6aea2dc13cf4d305dcc4f36a4bf0b6c80ed36962",
       "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
@@ -107,7 +107,7 @@
     },
     {
       "path": "src/Rdv3Files.cs",
-      "sha256": "d506cdb6ddd2666ed7a95d819c7600bde090d7c9ebde5649201f4d4b62967c94",
+      "sha256": "ebbd6188bcd493723c0600393f50992650882137e64ae059ed76bcf5d32b20d9",
       "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
     },
     {

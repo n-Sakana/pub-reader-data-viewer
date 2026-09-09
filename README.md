@@ -348,7 +348,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 }
 ```
 
-各PCにアプリを置き、台帳だけを全PCから同じ共有ファイルへ向け、ログはPC別にします。OneDrive等の同期コピーを同じ1本のファイルとして扱う運用は対象外です。台帳をExcel等で同時編集しないでください。パス比較は通常の絶対パス比較であり、共有先の別名・シンボリックリンク・ハードリンクの完全な同一性判定ではありません。
+各PCにアプリを置き、台帳だけを全PCから同じ共有ファイルへ向け、ログはPC別にします。実行ログ`paths.log`はアプリ一式のフォルダー直下に置き、入力フォルダー`data`の中には置きません（出荷時の設定も`ReaderDataViewer.log`）。OneDrive等の同期コピーを同じ1本のファイルとして扱う運用は対象外です。台帳をExcel等で同時編集しないでください。パス比較は通常の絶対パス比較であり、共有先の別名・シンボリックリンク・ハードリンクの完全な同一性判定ではありません。
 
 台帳は初回には同梱されません。起動後の作成確認は正常です。読めない既存台帳を無条件に作り直す動作はしません。
 
@@ -992,7 +992,7 @@ OSがPowerShellの開始を拒む場合、スクリプト自体の構文・引�
 | <a id="k002"></a>K002 `paths` | 配置を決める領域。全体を省略すると入力data、台帳data/ReaderDataViewer-Ledger.xlsx、ログReaderDataViewer.log。変更は再起動後。 |
 | <a id="k003"></a>K003 `paths.dataDir` | 入力フォルダー。相対パスはアプリ一式のフォルダーが基準。入力のfileはこの中を探します。省略data。 |
 | <a id="k004"></a>K004 `paths.ledger` | 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。同じフォルダーへ端末別の操作ログ <台帳名>-操作ログ-<端末名>.csv を追記します。 |
-| <a id="k005"></a>K005 `paths.log` | このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略ReaderDataViewer.log。 |
+| <a id="k005"></a>K005 `paths.log` | このPCの実行ログ。相対パスはアプリ基準で、省略するとアプリ一式のフォルダー直下のReaderDataViewer.log（dataの中ではない）。共有台帳と分け、PCごとに別の場所へ。 |
 | <a id="k006"></a>K006 `search` | 検索入力の形式と候補数。テーブルのキー検証とは別で、設定画面の保存後から効きます。 |
 | <a id="k007"></a>K007 `search.pattern` | 入力全体に一致させる正規表現。省略は数字8桁。英字等を使う入力なら例 [A-Z0-9-]+ へ。台帳の検索対象列はdata.ledger.search.columns。 |
 | <a id="k008"></a>K008 `search.candidateRowsShown` | 候補一覧へ載せる上限1～1000、省略100。小さくすると一覧から選べる行も減るので、検索条件を絞れることを確認。 |

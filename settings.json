@@ -22,7 +22,7 @@
     "dataDir": "data",
     // [K004] paths.ledger — 複数PCで共有する1本の.xlsx。相対パスはアプリ基準。入力・ログと同じファイルにはできません。省略data/ReaderDataViewer-Ledger.xlsx。同じフォルダーへ端末別の操作ログ <台帳名>-操作ログ-<端末名>.csv を追記します。
     "ledger": "data/ReaderDataViewer-Ledger.xlsx",
-    // [K005] paths.log — このPCの実行ログ。相対パスはアプリ基準。共有台帳と分け、PCごとに別の場所へ。省略ReaderDataViewer.log。
+    // [K005] paths.log — このPCの実行ログ。相対パスはアプリ基準で、省略するとアプリ一式のフォルダー直下のReaderDataViewer.log（dataの中ではない）。共有台帳と分け、PCごとに別の場所へ。
     "log": "ReaderDataViewer.log"
   },
   // [K006] search — 検索入力の形式と候補数。テーブルのキー検証とは別で、設定画面の保存後から効きます。
