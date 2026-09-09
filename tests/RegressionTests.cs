@@ -995,6 +995,75 @@ public static class Rdv3RegressionTests
         });
     }
 
+    // A small workbook: header row plus data rows; an int cell is written as a
+    // numeric <v> (a serial date), anything else as an inline string.
+    private static string WorkbookFile(string[] head, object[][] rows, bool date1904)
+    {
+        string path = NewPath(".xlsx");
+        string ns = "http://schemas.openxmlformats.org/spreadsheetml/2006/main";
+        string rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
+        StringBuilder sheet = new StringBuilder();
+        sheet.Append("<worksheet xmlns=\"" + ns + "\"><sheetData>");
+        for (int r = -1; r < rows.Length; r++)
+        {
+            object[] cells = (r < 0) ? head : rows[r];
+            string number = (r + 2).ToString(CultureInfo.InvariantCulture);
+            sheet.Append("<row r=\"" + number + "\">");
+            for (int c = 0; c < cells.Length; c++)
+            {
+                string address = ((char)('A' + c)).ToString() + number;
+                if (cells[c] is int) { sheet.Append("<c r=\"" + address + "\"><v>" + ((int)cells[c]).ToString(CultureInfo.InvariantCulture) + "</v></c>"); }
+                else { sheet.Append("<c r=\"" + address + "\" t=\"inlineStr\"><is><t>" + cells[c] + "</t></is></c>"); }
+            }
+            sheet.Append("</row>");
+        }
+        sheet.Append("</sheetData></worksheet>");
+        using (FileStream stream = File.Create(path))
+        using (ZipArchive zip = new ZipArchive(stream, ZipArchiveMode.Create))
+        {
+            Entry(zip, "[Content_Types].xml", "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\"><Default Extension=\"rels\" ContentType=\"application/vnd.openxmlformats-package.relationships+xml\"/><Default Extension=\"xml\" ContentType=\"application/xml\"/><Override PartName=\"/xl/workbook.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml\"/><Override PartName=\"/xl/worksheets/sheet1.xml\" ContentType=\"application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml\"/></Types>");
+            Entry(zip, "_rels/.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"" + rel + "/officeDocument\" Target=\"xl/workbook.xml\"/></Relationships>");
+            Entry(zip, "xl/workbook.xml", "<workbook xmlns=\"" + ns + "\" xmlns:r=\"" + rel + "\"><workbookPr date1904=\"" + (date1904 ? "1" : "0") + "\"/><sheets><sheet name=\"Input\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>");
+            Entry(zip, "xl/_rels/workbook.xml.rels", "<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\"><Relationship Id=\"rId1\" Type=\"" + rel + "/worksheet\" Target=\"worksheets/sheet1.xml\"/></Relationships>");
+            Entry(zip, "xl/worksheets/sheet1.xml", sheet.ToString());
+        }
+        return path;
+    }
+
+    // A configuration whose data section is given; the screen is the two-state minimum.
+    private static Rdv3Config ConfigOf(string dir, string data)
+    {
+        string screen = "{\"workState\":{\"trigger\":\"manual\",\"store\":{\"column\":\"state\"},\"states\":[{\"id\":\"todo\",\"stored\":\"FALSE\",\"text\":\"Todo\"},{\"id\":\"done\",\"stored\":\"TRUE\",\"text\":\"Done\"}],\"initial\":\"todo\"},\"export\":{\"defaultFields\":[\"A.id\"]},\"candidates\":{\"columns\":[{\"value\":{\"field\":\"A.id\"}}]},\"sections\":[{\"type\":\"titleBar\"}]}";
+        string path = Path.Combine(dir, "settings.json");
+        File.WriteAllText(path, "{\"schema\":3,\"data\":" + data + ",\"screen\":" + screen + "}", new UTF8Encoding(false));
+        return Rdv3Config.Load(path);
+    }
+
+    private static string SingleTableData(string file, string types, string extraLabels, string steps, string source)
+    {
+        return "{\"tables\":{\"A\":{\"file\":\"" + file + "\",\"key\":\"id\"}},\"types\":{" + types + "},"
+            + "\"labels\":{\"A.id\":\"ID\",\"A.name\":\"Name\"," + extraLabels + "\"ledger\":\"Ledger\"},"
+            + "\"jobs\":[{\"id\":\"update\",\"kind\":\"update\",\"inputs\":[{\"table\":\"A\"}],\"steps\":[" + steps + "]}],"
+            + "\"ledger\":{\"identity\":\"A.id\",\"search\":{\"columns\":[\"A.id\"]},\"columns\":{\"source\":[" + source + "],\"application\":[{\"name\":\"workState\",\"onSourceChange\":\"reset\"}]}}}";
+    }
+
+    private static string MergeStep(string target1)
+    {
+        return "{\"operation\":\"merge\",\"target1\":\"" + target1 + "\",\"target2\":\"ledger\",\"keys\":[[\"A.id\"],[\"A.id\"]],\"sourceOnly\":\"add\",\"both\":\"update\",\"output\":\"ledger\"}";
+    }
+
+    private static Rdv3Config DateJoinConfig(string dir, string format, string keyRule)
+    {
+        string data = "{\"tables\":{\"A\":{\"file\":\"rows.csv\",\"key\":\"id\"},\"B\":{\"file\":\"dates.xlsx\",\"key\":\"day\"" + keyRule + "}},"
+            + "\"types\":{\"B.day\":{\"type\":\"date\",\"format\":\"" + format + "\"}},"
+            + "\"labels\":{\"A.id\":\"ID\",\"A.name\":\"Name\",\"A.day\":\"Left\",\"B.day\":\"Right\",\"B.label\":\"Label\",\"J\":\"Joined\",\"ledger\":\"Ledger\"},"
+            + "\"jobs\":[{\"id\":\"update\",\"kind\":\"update\",\"inputs\":[{\"table\":\"A\"},{\"table\":\"B\"}],\"steps\":["
+            + "{\"operation\":\"join\",\"target1\":\"A\",\"target2\":\"B\",\"keys\":[[\"A.day\"],[\"B.day\"]],\"condition\":\"left\",\"output\":\"J\"},"
+            + MergeStep("J") + "]}],"
+            + "\"ledger\":{\"identity\":\"A.id\",\"search\":{\"columns\":[\"A.id\"]},\"columns\":{\"source\":[\"A.id\",\"A.name\",\"A.day\",\"B.day\",\"B.label\"],\"application\":[{\"name\":\"workState\",\"onSourceChange\":\"reset\"}]}}}";
+        return ConfigOf(dir, data);
+    }
+
     private sealed class CompositeFixture
     {
         public readonly string Dir;
