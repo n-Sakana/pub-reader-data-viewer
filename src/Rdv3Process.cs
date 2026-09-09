@@ -89,7 +89,7 @@ internal sealed class Rdv3Relation
     public int NeedColumn(string name)
     {
         int column = ColumnOf(name);
-        if (column < 0) { throw new InvalidDataException("table has no column " + name); }
+        if (column < 0) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessMissingColumn, name)); }
         return column;
     }
 
@@ -306,7 +306,7 @@ public static class Rdv3Process
                 result.Update = update;
                 result.Deleted += update.Deleted;
             }
-            else { throw new InvalidOperationException("unknown operation " + step.Operation); }
+            else { throw new InvalidOperationException(Rdv3Text.Format(Rdv3Text.ProcessUnknownOperation, step.Operation)); }
             Rdv3Relation outputTable = output as Rdv3Relation;
             if (outputTable != null && outputTable.Kind != "ledger")
             { output = ValidResultTypes(data, outputTable, step, result); }
@@ -372,7 +372,7 @@ public static class Rdv3Process
         }
         if (content.Length != app.Length)
         {
-            throw new InvalidDataException("ledger content and application-column lengths differ");
+            throw new InvalidDataException(Rdv3Text.LedgerLengths);
         }
         Rdv3Relation relation = new Rdv3Relation();
         relation.Kind = "ledger";
@@ -383,7 +383,7 @@ public static class Rdv3Process
             string[] row = Rdv3Ledger.SplitLine(content[i]);
             if (row.Length != relation.Columns.Length)
             {
-                throw new InvalidDataException("ledger row has a different column count");
+                throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerRowColumns, i + 2, relation.Columns.Length, row.Length));
             }
             relation.Rows.Add(row);
             relation.Origins.Add(Rdv3Text.Format(Rdv3Text.SourceRow, "ledger", i + 2));
@@ -432,7 +432,7 @@ public static class Rdv3Process
         {
             if (left.ColumnOf(right.Columns[c]) >= 0)
             {
-                throw new InvalidDataException("join would duplicate column " + right.Columns[c]);
+                throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessDuplicateColumn, right.Columns[c]));
             }
             columns[left.Columns.Length + c] = right.Columns[c];
         }
@@ -501,13 +501,13 @@ public static class Rdv3Process
     {
         if (left.Columns.Length != right.Columns.Length)
         {
-            throw new InvalidDataException("append requires the same number of columns");
+            throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessAppendCount, left.Columns.Length, right.Columns.Length));
         }
         for (int c = 0; c < left.Columns.Length; c++)
         {
             if (ColumnName(left.Columns[c]) != ColumnName(right.Columns[c]))
             {
-                throw new InvalidDataException("append columns differ at " + (c + 1).ToString(CultureInfo.InvariantCulture));
+                throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessAppendColumn, c + 1, left.Columns[c], right.Columns[c]));
             }
         }
         Rdv3Relation output = new Rdv3Relation();
@@ -557,7 +557,7 @@ public static class Rdv3Process
         Rdv3RowSelection b = (Rdv3RowSelection)rightValue;
         if (!object.ReferenceEquals(a.Table, b.Table))
         {
-            throw new InvalidDataException("row sets come from different table values");
+            throw new InvalidDataException(Rdv3Text.ProcessSelectionSource);
         }
         Rdv3RowSelection combined = new Rdv3RowSelection();
         combined.Table = a.Table;
@@ -595,7 +595,7 @@ public static class Rdv3Process
     {
         if (!object.ReferenceEquals(source, selected.Table))
         {
-            throw new InvalidDataException("delete rows come from a different table value");
+            throw new InvalidDataException(Rdv3Text.ProcessSelectionSource);
         }
         Rdv3Relation output = NewLike(source);
         for (int i = 0; i < source.Rows.Count; i++)
@@ -616,7 +616,7 @@ public static class Rdv3Process
     {
         if (!object.ReferenceEquals(source, selected.Table))
         {
-            throw new InvalidDataException("update rows come from a different table value");
+            throw new InvalidDataException(Rdv3Text.ProcessSelectionSource);
         }
         int[] columns = new int[step.Set.Count];
         Rdv3Expression[] expressions = new Rdv3Expression[step.Set.Count];
@@ -627,7 +627,7 @@ public static class Rdv3Process
             {
                 if (columns[k] == columns[i])
                 {
-                    throw new InvalidDataException("update names column twice: " + step.Set[i].Column);
+                    throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessDuplicateColumn, step.Set[i].Column));
                 }
             }
             expressions[i] = Rdv3Expression.Compile(step.Set[i].Expression, source.Columns);
@@ -699,7 +699,7 @@ public static class Rdv3Process
             {
                 if (output.Columns[k] == output.Columns[i])
                 {
-                    throw new InvalidDataException("select names column twice: " + output.Columns[i]);
+                    throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessDuplicateColumn, output.Columns[i]));
                 }
             }
         }
@@ -716,7 +716,7 @@ public static class Rdv3Process
     private static Rdv3Relation Calculate(Rdv3Relation source, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
     {
         string added = step.Output + "." + step.Column;
-        if (source.ColumnOf(added) >= 0) { throw new InvalidDataException("calculate would duplicate column " + added); }
+        if (source.ColumnOf(added) >= 0) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessDuplicateColumn, added)); }
         Rdv3Expression expression = Rdv3Expression.Compile(step.Expression, source.Columns);
         Rdv3Relation output = new Rdv3Relation();
         output.Columns = new string[source.Columns.Length + 1];
@@ -806,7 +806,7 @@ public static class Rdv3Process
             {
                 if (output.Columns[k] == output.Columns[i])
                 {
-                    throw new InvalidDataException("aggregate names column twice: " + output.Columns[i]);
+                    throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.ProcessDuplicateColumn, output.Columns[i]));
                 }
             }
         }
@@ -935,7 +935,7 @@ public static class Rdv3Process
         int[] targetKey = target.NeedColumns(step.KeySide(1));
         if (!SameColumns(targetKey, data.IdentityCols))
         {
-            throw new InvalidDataException("ledger write target key is not data.ledger.identity");
+            throw new InvalidDataException(Rdv3Text.ProcessLedgerKey);
         }
         int[] sourceKey = source.NeedColumns(step.KeySide(0));
         source = ValidSourceIdentity(data, job, source, sourceKey, step, result);

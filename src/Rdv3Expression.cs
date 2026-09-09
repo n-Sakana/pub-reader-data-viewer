@@ -208,7 +208,7 @@ internal abstract class Rdv3Expression
             int start = position;
             while (position < text.Length && !char.IsWhiteSpace(text[position])
                    && "+-*/(),".IndexOf(text[position]) < 0) { position++; }
-            if (start == position) { throw Error("expected a number, quoted text, column, function, or ("); }
+            if (start == position) { throw Error(Rdv3Text.ExpressionExpected); }
             string token = text.Substring(start, position - start);
             Skip();
             if (Take('(')) { return ParseFunction(token); }
@@ -221,12 +221,12 @@ internal abstract class Rdv3Expression
             {
                 if (columns[i] == token) { return new Field(i); }
             }
-            throw Error("unknown column " + token);
+            throw Error(Rdv3Text.Format(Rdv3Text.ExpressionColumn, token));
         }
 
         private Rdv3Expression ParseFunction(string name)
         {
-            if (!IsFunctionName(name)) { throw Error("unknown function " + name); }
+            if (!IsFunctionName(name)) { throw Error(Rdv3Text.Format(Rdv3Text.ExpressionFunction, name)); }
             List<Rdv3Expression> arguments = new List<Rdv3Expression>();
             Skip();
             if (!Take(')'))
@@ -236,7 +236,7 @@ internal abstract class Rdv3Expression
                     arguments.Add(ParseExpression());
                     Skip();
                     if (Take(')')) { break; }
-                    if (!Take(',')) { throw Error("expected , or ) in " + name); }
+                    if (!Take(',')) { throw Error(Rdv3Text.Format(Rdv3Text.ExpressionArgumentSeparator, name)); }
                 }
             }
             return MakeFunction(name, arguments);
@@ -247,22 +247,22 @@ internal abstract class Rdv3Expression
             int wanted = (name == "regexExtract") ? 2 : 3;
             if (arguments.Count != wanted)
             {
-                throw Error(name + " expects " + wanted.ToString(CultureInfo.InvariantCulture) + " arguments");
+                throw Error(Rdv3Text.Format(Rdv3Text.ExpressionArguments, name, wanted, arguments.Count));
             }
             if (name == "regexExtract")
             {
                 string regex = Quoted(name, "pattern", arguments[1]);
-                if (regex.Length == 0) { throw Error("regexExtract pattern must not be empty"); }
+                if (regex.Length == 0) { throw Error(Rdv3Text.ExpressionEmptyPattern); }
                 try { return new Function(name, arguments[0], regex, 0, 0); }
                 catch (ArgumentException ex)
                 {
-                    throw Error("regexExtract pattern is not a usable regular expression (" + ex.Message + ")");
+                    throw Error(Rdv3Text.Format(Rdv3Text.ExpressionBadPattern, regex, ex.Message));
                 }
             }
             if (name == "splitPart")
             {
                 string separator = Quoted(name, "separator", arguments[1]);
-                if (separator.Length == 0) { throw Error("splitPart separator must not be empty"); }
+                if (separator.Length == 0) { throw Error(Rdv3Text.ExpressionEmptySeparator); }
                 return new Function(name, arguments[0], separator,
                                     Whole(name, "position", arguments[2], false), 0);
             }
@@ -276,7 +276,7 @@ internal abstract class Rdv3Expression
             Literal literal = expression as Literal;
             if (literal == null || !literal.Quoted)
             {
-                throw Error(functionName + " " + argumentName + " must be quoted text");
+                throw Error(Rdv3Text.Format(Rdv3Text.ExpressionQuotedArgument, functionName, argumentName));
             }
             return literal.Value;
         }
@@ -289,8 +289,7 @@ internal abstract class Rdv3Expression
                 && decimal.TryParse(literal.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out value)
                 && value == decimal.Truncate(value) && value >= 0 && value <= int.MaxValue;
             if (valid && (!positive || value > 0)) { return (int)value; }
-            throw Error(functionName + " " + argumentName + " must be a "
-                + (positive ? "positive" : "non-negative") + " whole number");
+            throw Error(Rdv3Text.Format(Rdv3Text.ExpressionWholeArgument, functionName, argumentName, positive ? 1 : 0));
         }
 
         private string ParseString()
@@ -309,13 +308,13 @@ internal abstract class Rdv3Expression
                 }
                 return sb.ToString();
             }
-            throw Error("quoted text has no closing quote");
+            throw Error(Rdv3Text.ExpressionQuote);
         }
 
         public void Finish()
         {
             Skip();
-            if (position != text.Length) { throw Error("unexpected text"); }
+            if (position != text.Length) { throw Error(Rdv3Text.ExpressionUnexpected); }
         }
 
         private bool Take(char wanted)
@@ -331,8 +330,7 @@ internal abstract class Rdv3Expression
 
         private InvalidDataException Error(string message)
         {
-            return new InvalidDataException("expression at " + position.ToString(CultureInfo.InvariantCulture)
-                + ": " + message);
+            return new InvalidDataException(Rdv3Text.Format(Rdv3Text.ExpressionLocation, text, position + 1, message));
         }
     }
 }

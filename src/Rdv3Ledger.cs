@@ -83,7 +83,7 @@ public static class Rdv3Ledger
     {
         if (d == null || job == null || job.Kind != "update")
         {
-            throw new InvalidOperationException("not an update job");
+            throw new InvalidOperationException(Rdv3Text.LedgerNotUpdate);
         }
         Rdv3MergeResult r = new Rdv3MergeResult();
         r.Job = job;
@@ -126,7 +126,7 @@ public static class Rdv3Ledger
             r.Prepared = Rdv3Process.Prepare(d, job, dataDir, tables);
             Rdv3ProcessResult process = Rdv3Process.Execute(r.Prepared, new string[0], new string[0], "", false);
             r.Warnings.AddRange(process.Warnings);
-            if (process.Kind != "ledger") { throw new InvalidDataException("automatic update job did not produce ledger"); }
+            if (process.Kind != "ledger") { throw new InvalidDataException(Rdv3Text.LedgerNoResult); }
             r.Head = d.Head;
             r.Lines = process.Lines;
             r.Rows = process.Lines.Length;
@@ -270,18 +270,18 @@ public static class Rdv3Ledger
     public static Rdv3UpdateResult ApplyUpdate(Rdv3ProcessJobDef job, string[] targetLines, string[] targetStates,
                                                 string[] sourceLines, int[] identityCol, string initialStored)
     {
-        if (job == null || job.ApplyStep == null) { throw new InvalidOperationException("update job has no ledger-writing step"); }
+        if (job == null || job.ApplyStep == null) { throw new InvalidOperationException(Rdv3Text.LedgerNoWrite); }
         string[] oldLines = targetLines ?? new string[0];
         string[] oldStates = targetStates ?? FreshStates(oldLines.Length, initialStored);
         string[] newLines = sourceLines ?? new string[0];
-        if (oldStates.Length != oldLines.Length) { throw new InvalidDataException("ledger content and application-column lengths differ"); }
+        if (oldStates.Length != oldLines.Length) { throw new InvalidDataException(Rdv3Text.LedgerLengths); }
 
         Dictionary<string, int> oldById = RowMap(oldLines, identityCol, "target");
         Dictionary<string, int> sourceById = RowMap(newLines, identityCol, "source");
         Rdv3ProcessStepDef step = job.ApplyStep;
         if (job.OnSourceChange != "reset" && job.OnSourceChange != "preserve")
         {
-            throw new InvalidDataException("application column has no onSourceChange rule");
+            throw new InvalidDataException(Rdv3Text.LedgerNoChangeRule);
         }
         string sourceOnly = (step.Operation == "replace") ? "add" : step.SourceOnly;
         string both = (step.Operation == "replace") ? "update" : step.Both;
@@ -414,8 +414,8 @@ public static class Rdv3Ledger
     {
         int blank, first, second;
         Dictionary<string, int> rows = ScanIdentities(lines, identityCol, out blank, out first, out second);
-        if (blank >= 0) { throw new InvalidDataException("blank row identity in " + where + " at row " + Row(blank)); }
-        if (second >= 0) { throw new InvalidDataException("duplicate row identity in " + where + ": " + Rdv3Key.FromLine(lines[second], identityCol)); }
+        if (blank >= 0) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerBlankRow, where, Row(blank))); }
+        if (second >= 0) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerDuplicateRows, where, Rdv3Key.FromLine(lines[second], identityCol), Row(first), Row(second))); }
         return rows;
     }
 
@@ -453,9 +453,9 @@ public static class Rdv3Ledger
                                                 string dataDir, string[] ledgerLines,
                                                 string[] ledgerStates, string initialStored)
     {
-        if (data == null || job == null || job.Kind != "delete") { throw new InvalidOperationException("not a delete job"); }
+        if (data == null || job == null || job.Kind != "delete") { throw new InvalidOperationException(Rdv3Text.LedgerNotDelete); }
         Rdv3ProcessResult run = Rdv3Process.Run(data, job, dataDir, ledgerLines, ledgerStates, initialStored);
-        if (run.Kind != "ledger") { throw new InvalidOperationException("delete job did not produce ledger"); }
+        if (run.Kind != "ledger") { throw new InvalidOperationException(Rdv3Text.LedgerNoDeleteResult); }
         Rdv3DeleteResult result = new Rdv3DeleteResult();
         result.Lines = run.Lines;
         result.States = run.States;
@@ -482,7 +482,7 @@ public static class Rdv3Ledger
     {
         if (onSourceChange != "reset" && onSourceChange != "preserve")
         {
-            throw new InvalidDataException("application column has no onSourceChange rule");
+            throw new InvalidDataException(Rdv3Text.LedgerNoChangeRule);
         }
         Dictionary<string, int> byId = new Dictionary<string, int>(oldLines.Length, StringComparer.Ordinal);
         for (int i = 0; i < oldLines.Length; i++)
