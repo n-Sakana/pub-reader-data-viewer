@@ -1027,6 +1027,9 @@ public sealed class Rdv3App
                 log.Write(tag, "persist", "target=xlsx rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
                     + " changes=" + apply.Resolved.Count.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+                string spooled = shared.RecordOperation(Rdv3Text.OpSend, latestLines.Length,
+                    Rdv3OperationLog.SendDetail(work.InitialTargetState, apply.FromInitial, work.InitialState, apply.ToInitial));
+                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
                 marker = shared.WriteMarker("send", latestLines.Length, apply.FromInitial, apply.ToInitial);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=send");
             }
@@ -1239,6 +1242,9 @@ public sealed class Rdv3App
                 ledgerWritten = true;
                 log.Write(tag, "persist", "target=xlsx rows=" + result.Lines.Length.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+                string spooled = shared.RecordOperation(Rdv3Text.OpDelete, result.Lines.Length,
+                    Rdv3OperationLog.DeleteDetail(process, result.Deleted));
+                log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
                 marker = shared.WriteMarker("update", result.Lines.Length, 0, 0);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }

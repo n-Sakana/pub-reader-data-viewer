@@ -153,6 +153,16 @@ public static class Rdv3Program
                 string instance = Environment.MachineName + "-" + currentPid.ToString(CultureInfo.InvariantCulture)
                     + "-" + DateTime.UtcNow.Ticks.ToString(CultureInfo.InvariantCulture);
                 shared = new Rdv3SharedFiles(ledgerPath, Environment.MachineName, Environment.UserName, instance);
+                // Operation lines kept back by an unreachable share get another
+                // chance now; whatever still fails waits for the next write.
+                try
+                {
+                    string undelivered = shared.Operations.Flush();
+                    if (undelivered != null)
+                    { new Rdv3Log(logPath).Write("-", "oplog", "spool kept: " + undelivered); }
+                }
+                catch (Exception flushError)
+                { new Rdv3Log(logPath).Write("-", "oplog", "spool flush failed: " + flushError.Message); }
                 initialMarker = null;
                 try { initialMarker = shared.ReadMarker(); }
                 catch (Exception markerError)

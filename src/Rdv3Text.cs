@@ -210,6 +210,17 @@ public static class Rdv3Text
     public const string UnmatchedChanged = "\u4E2D\u8EAB\u304C\u5909\u308F\u3063\u3066\u3044\u307E\u3059";
     public const string ColReason = "\u7406\u7531";
 
+    // ---- the per-terminal operation log beside the shared ledger -------------
+    public const string OpLogInfix = "-\u64cd\u4f5c\u30ed\u30b0-";
+    public const string OpLogHeader = "\u64cd\u4f5c\u65e5\u6642,\u7aef\u672b\u540d,\u30e6\u30fc\u30b6\u30fc\u540d,\u64cd\u4f5c,\u53f0\u5e33\u306e\u884c\u6570,\u5185\u5bb9";
+    public const string OpCreate = "\u4f5c\u6210";
+    public const string OpUpdate = "\u66f4\u65b0";
+    public const string OpDelete = "\u524a\u9664";
+    public const string OpSend = "\u9001\u4fe1";
+    public const string OpUpdateDetailFmt = "{job}: \u8ffd\u52a0 {added} \u4ef6\u3001\u66f4\u65b0 {updated} \u4ef6\u3001\u524a\u9664 {deleted} \u4ef6\u3001{state}\u306b\u623b\u3057\u305f {reset} \u4ef6";
+    public const string OpDeleteDetailFmt = "{job}: \u524a\u9664 {n} \u4ef6";
+    public const string OpSendDetailFmt = "{changedState} {changed} \u4ef6\u3001{initialState} {initial} \u4ef6";
+
     // ---- process job dialogs --------------------------------------------------
     public const string UpdateRecordsTitle = "\u30EC\u30B3\u30FC\u30C9\u66F4\u65B0";
     public const string DeleteRecordsTitle = "\u30EC\u30B3\u30FC\u30C9\u524A\u9664";

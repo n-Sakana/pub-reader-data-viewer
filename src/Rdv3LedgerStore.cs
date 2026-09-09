@@ -119,6 +119,12 @@ internal sealed class Rdv3LedgerStore
                 committed = true;
                 trace("persist", "target=xlsx rows=" + update.Lines.Length.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
+                // The operation line goes before the notification: a marker
+                // failure is reported to the operator, but the file was replaced
+                // either way and the record must say so.
+                string spooled = shared.RecordOperation(latestLines == null ? Rdv3Text.OpCreate : Rdv3Text.OpUpdate,
+                    update.Lines.Length, Rdv3OperationLog.UpdateDetail(source.Job, update, work));
+                trace("oplog", spooled == null ? "written " + shared.Operations.Path : "spooled: " + spooled);
                 marker = shared.WriteMarker("update", update.Lines.Length, 0, 0);
                 trace("marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }

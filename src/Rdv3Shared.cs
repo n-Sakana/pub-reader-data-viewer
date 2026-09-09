@@ -397,19 +397,35 @@ public sealed class Rdv3SharedFiles
     private readonly string host;
     private readonly string user;
     private readonly string writerId;
+    private readonly Rdv3OperationLog operations;
 
     public Rdv3SharedFiles(string ledgerPath, string machine, string userName, string instance)
+        : this(ledgerPath, machine, userName, instance, null) { }
+
+    public Rdv3SharedFiles(string ledgerPath, string machine, string userName, string instance, string operationSpool)
     {
         lockPath = ledgerPath + ".lock";
         markerPath = ledgerPath + ".version";
         host = (machine == null) ? "" : machine;
         user = (userName == null) ? "" : userName;
         writerId = (instance == null) ? "" : instance;
+        operations = new Rdv3OperationLog(ledgerPath, host, user,
+            (operationSpool == null) ? Rdv3OperationLog.SpoolPathFor(ledgerPath) : operationSpool);
     }
 
     public string LockPath { get { return lockPath; } }
     public string MarkerPath { get { return markerPath; } }
     public string WriterId { get { return writerId; } }
+    public Rdv3OperationLog Operations { get { return operations; } }
+
+    // Records that this terminal has just replaced the shared ledger. The
+    // ledger is already saved, so nothing here may throw back into the job:
+    // a line that cannot be appended is spooled and the reason is returned.
+    public string RecordOperation(string operation, int rows, string detail)
+    {
+        try { return operations.Record(operation, rows, detail); }
+        catch (Exception ex) { return ex.Message; }
+    }
 
     public Rdv3LedgerLock TryAcquire(out Rdv3LockInfo owner)
     {

@@ -65,12 +65,13 @@ public static class Rdv3Files
         if (!string.Equals(Path.GetExtension(ledger), ".xlsx", StringComparison.OrdinalIgnoreCase))
         { throw new IOException("paths.ledger must have the .xlsx extension"); }
         if (Same(ledger, log) || Same(log, ledger + ".lock") || Same(log, ledger + ".version")
-            || ProgramFile(ledger, appDir, configPath) || ProgramFile(log, appDir, configPath))
+            || ProgramFile(ledger, appDir, configPath) || ProgramFile(log, appDir, configPath)
+            || Rdv3OperationLog.IsOperationLog(log, ledger))
         { throw new IOException("paths collide with a protected application/ledger file"); }
         foreach (string source in InputPaths(cfg.Data, data))
         {
             if (Same(source, ledger) || Same(source, log) || Same(source, ledger + ".lock")
-                || Same(source, ledger + ".version"))
+                || Same(source, ledger + ".version") || Rdv3OperationLog.IsOperationLog(source, ledger))
             { throw new IOException("input file collides with a ledger/log file: " + source); }
         }
     }
@@ -90,7 +91,8 @@ public static class Rdv3Files
         if (!string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase))
         { throw new IOException(extension == ".csv" ? Rdv3Text.ExportCsvOnly : "-Output: use a new .json file"); }
         if (ProgramFile(path, appDir, configPath) || Same(path, ledgerPath) || Same(path, logPath)
-            || Same(path, ledgerPath + ".lock") || Same(path, ledgerPath + ".version"))
+            || Same(path, ledgerPath + ".lock") || Same(path, ledgerPath + ".version")
+            || Rdv3OperationLog.IsOperationLog(path, ledgerPath))
         { throw new IOException(Rdv3Text.ExportProtected); }
         foreach (string source in InputPaths(data, dataDir))
         {
