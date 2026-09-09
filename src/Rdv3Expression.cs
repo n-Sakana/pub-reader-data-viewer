@@ -201,7 +201,7 @@ internal abstract class Rdv3Expression
             {
                 Rdv3Expression value = ParseExpression();
                 Skip();
-                if (!Take(')')) { throw Error("missing )"); }
+                if (!Take(')')) { throw Error(Rdv3Text.ExpressionParen); }
                 return value;
             }
             if (position < text.Length && text[position] == '\'') { return new Literal(ParseString(), true); }

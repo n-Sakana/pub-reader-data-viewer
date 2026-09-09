@@ -43,36 +43,7 @@
     // [K013] watch.preferFocusedWindow — 一致する窓が複数あるとき前面を優先するか。省略true。別窓を拾わないようwindowも絞ってください。
     "preferFocusedWindow": true,
     // [K014] watch.targets — 監視先の配列。複数指定可、[]または省略なら監視しません。各対象はwindow→pathの順→fieldをたどります。
-    "targets": [
-      {
-        // [K015] watch.targets[0].enabled — この監視先を使うか。falseでも定義は保存されます。
-        "enabled": true,
-        // [K016] watch.targets[0].name — 監視先を人が見分ける表示名。窓を探す条件はwindowの中へ。
-        "name": "メモ帳",
-        // [K017] watch.targets[0].window — 対象のトップレベル窓を絞る条件。別のアプリを拾わないようprocessName等を指定。
-        "window": {
-          // [K018] watch.targets[0].window.className — UI Automationが公開するクラス名。省略ならこの属性で絞りません。
-          "className": "Progman",
-          // [K019] watch.targets[0].window.processName — 対象プロセス名、.exeなし。省略ならこの属性で絞りません。
-          "processName": "explorer",
-          // [K020] watch.targets[0].window.scope — 互換項目。トップレベルの窓だけを探すため、この位置のscopeは動作に影響しません。省略可。path/fieldのscopeは有効。
-          "scope": "children"
-        },
-        // [K021] watch.targets[0].path — 窓から対象欄の親までの経路。[]ならwindowから直接fieldを探します。
-        "path": [],
-        // [K022] watch.targets[0].field — 値を読む対象欄の条件。設定画面の選択機能で実際の属性を取得できます。
-        "field": {
-          // [K023] watch.targets[0].field.automationId — UI Automationの識別子。省略ならこの属性で絞りません。
-          "automationId": "1",
-          // [K024] watch.targets[0].field.controlTypes — UIAの種類、例Edit/Document/List。[]または省略なら種類を限定しません。
-          "controlTypes": ["List"],
-          // [K025] watch.targets[0].field.scope — descendants（省略時）は子孫全部、childrenは直接の子だけ。深い欄をchildrenにすると見つかりません。
-          "scope": "descendants"
-        },
-        // [K026] watch.targets[0].read — valueはValuePattern、textはTextPattern、nameは表示名を読みます。対象欄が提供する方式を選択。
-        "read": "name"
-      }
-    ]
+    "targets": []
   },
   // [K027] jobs — 処理時間の監視と共有ファイルの再確認間隔。単位ms。OSのI/Oを強制終了する設定ではありません。省略可。
   "jobs": {

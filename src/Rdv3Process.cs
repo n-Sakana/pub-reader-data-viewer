@@ -754,7 +754,7 @@ public static class Rdv3Process
 
         Dictionary<string, GroupValue> byKey = new Dictionary<string, GroupValue>(StringComparer.Ordinal);
         List<GroupValue> ordered = new List<GroupValue>();
-        if (source.Rows.Count == 0 && groups.Length == 0)
+        if (groups.Length == 0)
         {
             GroupValue empty = NewGroup(new string[0], step.Aggregates.Count);
             byKey.Add("", empty);

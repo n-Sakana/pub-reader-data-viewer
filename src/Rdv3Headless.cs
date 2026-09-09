@@ -45,7 +45,12 @@ public static class Rdv3Headless
                     + " unmatchedLeft=" + join.Member("unmatchedLeft").Num.ToString(CultureInfo.InvariantCulture)
                     + " unmatchedRight=" + join.Member("unmatchedRight").Num.ToString(CultureInfo.InvariantCulture));
             }
-            foreach (Rdv3Json warning in parsed.Member("warnings").Items) { Report("WARNING " + warning.Str); }
+            Rdv3Log configuredLog = new Rdv3Log(Rdv3Files.Full(cfg.Log, appDir));
+            foreach (Rdv3Json warning in parsed.Member("warnings").Items)
+            {
+                configuredLog.Write(execute ? "RunUpdate" : "ValidateOnly", "warning", warning.Str);
+                Console.WriteLine("WARNING " + warning.Str);
+            }
             if (execute) { Report("OUTPUT " + outputPath); }
             return 0;
         }
