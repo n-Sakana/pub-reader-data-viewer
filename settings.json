@@ -12,6 +12,7 @@
 // 参照する重複名は、片方の全セルが空でも拒否します。labelsやselectでは読み分けられません（READMEの入力境界）。
 // 計算結果・集計結果は作った名前のまま台帳へ保存できます（calculateのcolumn、aggregateのas、selectのasを <結果名>.<列名> でsourceへ）。README「計算結果を台帳へ保存する」。
 // 台帳のidentityには集計後のグループ列も使えます。見出しの前に表題行があるCSV/XLSXは tables.<ID>.headerRow に見出しの行番号。XLSXの日付セルは types の date 宣言で書式の文字列へ変換します。
+// タブ区切り（Excelの「Unicode テキスト」）は tables.<ID>.delimiter に "tab"。コードを名前に置き換える等の条件つきの置き換えは extract の where と update の set の組合せ（README「コード表がファイルに無いとき」）。
 {
   // [K001] schema — 設定形式の版。必須で3。この数字は調整しません。
   "schema": 3,

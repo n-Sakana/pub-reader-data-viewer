@@ -509,7 +509,7 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 
 `expression`は列参照、数値、単一引用符の文字列、括弧、`+ - * /`、`substring(列,開始,長さ)`、`splitPart(列,'区切り',位置)`、`regexExtract(列,'正規表現')`です。開始位置は0。`'it''s'`のように単一引用符を重ねて文字自体を表します。`+`は両辺が数値なら加算、どちらかが数値でなければ文字列連結です。例えば`A.id + '-' + A.part`は区切り付きの文字列になりますが、数字だけの`A.id + A.part`は加算され得ます。行の識別には連結の代わりに複合キーを使ってください。
 
-任意のC#/SQL、IFやCASE、`concat`等の未定義関数は使えません。上の3つの文字列抽出関数は、空入力・空の抽出結果・不一致・範囲外をエラーにします。空欄を別の値へ変えると決めた場合は、`extract`で選んで`update.set.expression`に定数を書く形で表せます。
+任意のC#/SQL、IFやCASE、`concat`等の未定義関数は使えません。上の3つの文字列抽出関数は、空入力・空の抽出結果・不一致・範囲外をエラーにします。空欄を別の値へ変える、コードを名前に置き換えるなど条件つきの置き換えは、`extract`で選んで`update.set.expression`に定数を書く形で表せます（[完成例](#conditional-replace)）。
 
 `data.types`をtextへ変えるのは、その値を数値・日付として扱わないときの対応です。数値の差や合計が必要な値をtextへ変えただけでは計算できません。単位付きの値は、形式が決まっていればregexExtract等で必要な部分を計算列へ取り出し、その列を計算・集計に使えます。形式や単位の意味が混在していて規則を決められない場合は、未対応のまま報告してください。
 
@@ -682,6 +682,38 @@ XLSX入力は、ブックで最初に列挙されたワークシートを読み�
 ```
 
 `extract`と`delete`は同じ表の値（ここでは`uniq`）に対して使います。`distinct`の前の`all`から選んだ行集合を`uniq`から`delete`することはできません。RunUpdateの`summary.rows`が「4月の件数＋5月だけの件数－取消の件数」になることを確かめてください。`join`でまとめると片方のファイルにしか無い受注が台帳に入りません。
+
+<a id="conditional-replace"></a>
+
+### コード表がファイルに無いとき、値を条件で置き換える
+
+状態が`1`、`2`、`9`のコードで出力され、その意味（1＝受注、2＝出荷済、9＝取消）がマニュアルにしか無い場合の例です。IFやCASEの式はありませんが、**`calculate`で列を複製し、コードごとに`extract`の`where`で行を選んで`update`の`set`に定数を書く**ことで、条件つきの置き換えを表せます。定数は単一引用符で囲みます。
+
+```jsonc
+{
+  "tables": {"A": {"label":"受注", "file":"受注.csv", "key":"受注番号"}},
+  "types": {"A.受注日":{"type":"date","format":"yyyy/MM/dd"}, "A.金額":{"type":"number"}},
+  "labels": {"A.受注番号":"受注番号", "A.受注日":"受注日", "A.得意先":"得意先", "A.金額":"金額",
+             "A.状態コード":"状態コード", "A.状態名":"状態名",
+             "c1":"コード1の行", "c2":"コード2の行", "c9":"コード9の行", "ledger":"台帳"},
+  "jobs": [{"id":"update", "kind":"update", "inputs":[{"table":"A"}], "steps":[
+    {"operation":"calculate", "target1":"A", "column":"状態名", "expression":"A.状態コード", "output":"A"},
+    {"operation":"extract", "target1":"A", "where":{"column":"A.状態コード","operator":"equals","value":"1"}, "output":"c1"},
+    {"operation":"update", "target1":"A", "target2":"c1", "set":[{"column":"A.状態名","expression":"'受注'"}], "output":"A"},
+    {"operation":"extract", "target1":"A", "where":{"column":"A.状態コード","operator":"equals","value":"2"}, "output":"c2"},
+    {"operation":"update", "target1":"A", "target2":"c2", "set":[{"column":"A.状態名","expression":"'出荷済'"}], "output":"A"},
+    {"operation":"extract", "target1":"A", "where":{"column":"A.状態コード","operator":"equals","value":"9"}, "output":"c9"},
+    {"operation":"update", "target1":"A", "target2":"c9", "set":[{"column":"A.状態名","expression":"'取消'"}], "output":"A"},
+    {"operation":"merge", "target1":"A", "target2":"ledger", "keys":["A.受注番号","A.受注番号"],
+     "sourceOnly":"add", "both":"update", "targetOnly":"keep", "output":"ledger"}
+  ]}],
+  "ledger": {"identity":"A.受注番号", "search":{"columns":["A.受注番号"],"match":"exact"},
+             "columns":{"source":["A.受注番号","A.受注日","A.得意先","A.金額","A.状態コード","A.状態名"],
+                        "application":[{"name":"workState","onSourceChange":"reset"}]}}
+}
+```
+
+最初の`calculate`はコードをそのまま複製しているので、表に無いコードは名前に変わらずコードのまま残り、画面で気づけます。`update`の行集合は、その直前の`A`（更新済みの表）から選びます。古い表の値から選んだ行集合を新しい表へ適用することはできません。置き換えが多い場合や表が変わる場合は、コード表をCSVにして`join`で付けるほうが変更に強く、依頼元にコード表の提供を求める価値があります。`extract`は`contains`や`startsWith`、数値の`atLeast`等も使えるので、範囲による区分（金額が1万円以上なら「大口」）も同じ形で表せます。
 
 <a id="four-tables"></a>
 
@@ -892,7 +924,7 @@ R02,1
 ## 設定では提供しないこと
 
 - グループ・場所等の単位での確認状態の一括変更。人は行ごとに確認します。
-- 任意SQL/C#、任意の関数、データベース接続、CSV到着を合図にした自動更新。
+- 任意SQL/C#、任意の関数、データベース接続、CSV到着を合図にした自動更新。IFやCASEの式も無いが、条件つきの置き換えは`extract`と`update`の組合せで表せる（[例](#conditional-replace)）。
 - 取消の列だけを特別扱いする状態リセット。source内容の変更に対するreset/preserveを使います。
 - 日付形式やBOMなし文字コードの自動選択、同じ列で複数日付形式を試す機能。読取り失敗時のUTF-16候補表示は案内だけで、自動切替はしません。
 - 更新ジョブが作らない列を台帳に増設すること。保存できるのは入力表の列と、calculate / aggregate / select が作った列だけです（[計算結果の保存](#calculation-storage)）。

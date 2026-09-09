@@ -42,6 +42,8 @@
 
 見出しより前に表題や出力日の行があるファイルは、`tables.<ID>.headerRow`に見出しの行番号を書きます（例 `"headerRow": 3`）。それより前の行は読み飛ばして件数を通知します。CSVもXLSXも、ジョブの外部入力も同じです。省略すると1行目が見出しです。
 
+区切りがカンマでないファイルは`tables.<ID>.delimiter`に`"tab"`、`"semicolon"`、`"pipe"`、または1文字を書きます。Excelの「Unicode テキスト」は`"encoding": "utf-16"`と`"delimiter": "tab"`です。指定の無いタブ区切りは、見出しのタブを検出してdelimiterの指定を促すエラーで止まります。
+
 BOMなしUTF-16LEは`utf-16`、BEは`utf-16BE`と明示できます。読取失敗時に十分なバイト配列の特徴があれば、UTF-16の候補と設定キーをエラーに添えます。自動切替はしません。[バイト列の確認方法](../README.md#inputs)もREADMEにあります。
 
 `key`は1列の文字列、または列名の配列。複合キーは組合せ全体で一意、文字種と長さは列ごとに確認します。省略規則はASCII、固定長、内容が違う重複キーはエラー、キー空は除外です。
@@ -72,6 +74,8 @@ BOMなしUTF-16LEは`utf-16`、BEは`utf-16BE`と明示できます。読取失�
 入力表のkeyは各行の一意性、結合のkeysは対応づける単位です。入力をid+partで識別しても、要件がidごとの照合ならidで集計してidだけで結合します。件数が多い候補を自動採用せず、業務フローと実際の一致・未一致行で確かめます。
 
 合計は`aggregate`、`groupBy:["B.id"]`、`aggregates:[{"function":"sum","column":"B.amount","as":"amount"}]`。全件を1組にするならgroupByは空配列。countにはcolumnを書きません。集計結果は`output`と`as`で決まる参照（`B.amount`、`output:"totals"`なら`totals.amount`）を`ledger.columns.source`に書いて、その名前のまま台帳へ保存できます。`calculate`の列や`select`の`as`も同じです。保存する列は最後のmerge/replaceの入力に無ければならず、結合していない表の列を書くとエラーになります。
+
+コードを名前に置き換えるなど、コード表がファイルに無い条件つきの置き換えは、`calculate`で列を複製してから、コードごとに`extract`の`where`と`update`の`set`（単一引用符の定数）で書き換えます。[READMEの完成例](../README.md#conditional-replace)。
 
 同じ列構成の月次ファイルを1つの台帳にまとめるのは`append`（縦に足す）です。`join`は別表の列を横に付ける操作で、片方にしか無い行は増えません。[READMEの完成例](../README.md#append-files)にappend → distinct → extract → delete → mergeの形があります。明細ファイルだけから伝票単位の台帳を作る例は[こちら](../README.md#detail-only)です。
 

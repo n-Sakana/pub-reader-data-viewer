@@ -90,5 +90,14 @@ with tempfile.TemporaryDirectory(prefix='rdv-readme-derived-') as temporary:
     check(report['summary']['rows'] == 2 and report['values']['cancelled']['count'] == 3, 'summary %r' % report['summary'])
     passed('readme-append-files', 'union of both months, May wins, 3 cancelled rows removed, 2 rows kept')
 
+    data = section('conditional-replace', 'four-tables')
+    cfg = settings(data, 'A.受注番号', ['A.受注番号', 'A.受注日', 'A.得意先', 'A.金額', 'A.状態コード', 'A.状態名'])
+    orders = ('受注番号,受注日,得意先,金額,状態コード\nQ0001,2026/09/01,青葉商事,1000,1\nQ0002,2026/09/02,北山電機,2000,2\n'
+              'Q0003,2026/09/03,駿河物産,3000,9\nQ0004,2026/09/04,高橋建材,4000,7\n')
+    report = run('conditional-replace', cfg, {'受注.csv': orders})
+    names = {r[0]: r[5] for r in report['rows']}
+    check(names == {'Q0001': '受注', 'Q0002': '出荷済', 'Q0003': '取消', 'Q0004': '7'}, 'state names %r' % names)
+    passed('readme-conditional-replace', 'codes 1/2/9 replaced by names, an unlisted code stays visible as the code')
+
 (evidence/'readme-derived-results.json').write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding='utf-8')
 print('TOTAL %d/%d' % (len(results), len(results)))
