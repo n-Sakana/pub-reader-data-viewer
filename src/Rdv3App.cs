@@ -1183,7 +1183,7 @@ public sealed class Rdv3App
             + " pending=" + pending.Count.ToString(CultureInfo.InvariantCulture) + " note=" + note);
     }
 
-    // Row ordinals belong to a snapshot. After a send, find the selected
+    // Row ordinals belong to a snapshot. After a send or reload, find the selected
     // identity in the freshly read ledger; never reuse the old row number.
     private void RestoreShown(string identity, string key)
     {
@@ -1556,7 +1556,13 @@ public sealed class Rdv3App
     {
         if (deferredMarker == null || sharedReloading || writes.Pending || form.IsModalOpen || DateTime.UtcNow < reloadRetryAfter
             || (state != StReady && state != StBlocked)) { return; }
-        ClearShown();
+        string displayedKey = shownKey;
+        string displayedIdentity = shownRow >= 0 && ledLines != null && shownRow < ledLines.Length
+            ? Rdv3Key.FromLine(ledLines[shownRow], dataDef.IdentityCols) : "";
+        // Keep the selected record while reading. Cancel a queued search so
+        // its old snapshot cannot replace the selection during the reload.
+        activeSearchId = "";
+        if (displayedIdentity.Length == 0) { ClearShown(); }
         Rdv3SharedMarker marker = deferredMarker;
         deferredMarker = null;
         sharedReloading = true;
@@ -1568,11 +1574,11 @@ public sealed class Rdv3App
         job.RunId = tag;
         job.Kind = "reload";
         job.TimeoutMs = cfg.CheckTimeoutMs;
-        job.Work = delegate { ReloadSharedJob(tag, marker); };
+        job.Work = delegate { ReloadSharedJob(tag, marker, displayedIdentity, displayedKey); };
         worker.Post(job);
     }
 
-    private void ReloadSharedJob(string tag, Rdv3SharedMarker marker)
+    private void ReloadSharedJob(string tag, Rdv3SharedMarker marker, string displayedIdentity, string displayedKey)
     {
         try
         {
@@ -1608,7 +1614,7 @@ public sealed class Rdv3App
                     ledStates = effective;
                     ledHead = expectedHead;
                     ledIndex = index;
-                    ReadyAfterShared(tag, "marker-" + marker.Version.ToString(CultureInfo.InvariantCulture));
+                    ReadyAfterShared(tag, "marker-" + marker.Version.ToString(CultureInfo.InvariantCulture), displayedIdentity, displayedKey);
                 }
                 else
                 {
