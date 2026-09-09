@@ -472,6 +472,7 @@ public static class Rdv3Text
     public const string XlsxNoMetadata = "ブックの構成情報（workbook.xml または関連付け）がありません。";
     public const string XlsxLedgerSheets = "共有台帳には LEDGER シートだけを置いてください。追加のシートは別のブックへ保存してください。";
     public const string XlsxNoLedgerSheet = "LEDGER シートがありません。";
+    public const string XlsxSheetNotFound = "\u30d6\u30c3\u30af\u306b\u30b7\u30fc\u30c8\u300c{name}\u300d\u304c\u3042\u308a\u307e\u305b\u3093\u3002\u3042\u308b\u306e\u306f: {sheets}";
     public const string XlsxNoSheet = "ブックにワークシートがありません。";
     public const string XlsxExternalSheet = "シート「{0}」の参照先がブック内のワークシートではありません。参照先「{1}」。";
     public const string XlsxBadTarget = "シートの参照先「{0}」が不正です。";

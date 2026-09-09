@@ -590,12 +590,14 @@ public static class Rdv3Xlsx
         XmlDocument relations = Document(z.GetEntry("xl/_rels/workbook.xml.rels"));
         XmlElement selected = null;
         int sheetCount = 0;
+        List<string> names = new List<string>();
         foreach (XmlNode node in workbook.GetElementsByTagName("*"))
         {
             XmlElement sheet = node as XmlElement;
             if (sheet == null || sheet.LocalName != "sheet") { continue; }
             sheetCount++;
             string name = sheet.GetAttribute("name");
+            names.Add(name);
             if (ledger) { if (name == SheetName) { selected = sheet; } }
             else if (wanted.Length > 0) { if (name == wanted) { selected = sheet; } }
             else if (selected == null) { selected = sheet; }
@@ -603,6 +605,15 @@ public static class Rdv3Xlsx
         // The writer creates a single managed sheet. Do not silently discard
         // additional sheets someone added to the shared ledger.
         if (ledger && sheetCount != 1) { throw new InvalidDataException(Rdv3Text.XlsxLedgerSheets); }
+        if (selected == null && !ledger && wanted.Length > 0)
+        {
+            // 名前で指したのに見つからないときは、探した名前と実際の一覧を出す。
+            // 「ワークシートがありません」だけでは、綴りの違いなのか
+            // ファイルが違うのかが分からない。
+            throw new InvalidDataException(Rdv3Text.XlsxSheetNotFound
+                .Replace("{name}", wanted)
+                .Replace("{sheets}", string.Join(" / ", names.ToArray())));
+        }
         if (selected == null) { throw new InvalidDataException(ledger ? Rdv3Text.XlsxNoLedgerSheet : Rdv3Text.XlsxNoSheet); }
         string id = "";
         foreach (XmlAttribute attribute in selected.Attributes)
