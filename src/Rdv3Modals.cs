@@ -190,7 +190,8 @@ public static class Rdv3ProcessForm
                         input.EncodingSetting,
                         data.SourceReferences(input),
                         input.HeaderRow,
-                        input.Delimiter);
+                        input.Delimiter,
+                        input.Sheet);
                     if (input.IsTable) { data.ValidateInput(table, input.TableOrd); }
                     new Rdv3Index(table);
                     rows = table.Rows.ToString("N0", CultureInfo.InvariantCulture);

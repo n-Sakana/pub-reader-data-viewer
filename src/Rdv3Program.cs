@@ -74,7 +74,8 @@ public static class Rdv3Program
                 Rdv3Log.Phase("window input header " + p);
                 if (!File.Exists(p)) { throw new Rdv3DataError(Rdv3Text.ErrNoData + p); }
                 heads[t] = Rdv3Table.ReadHead(p, cfg.Data.Tables[t].Enc, cfg.Data.Tables[t].EncodingSetting,
-                    cfg.Data.SourceReferences(cfg.Data.Tables[t].Id), cfg.Data.Tables[t].HeaderRow, cfg.Data.Tables[t].Delimiter);
+                    cfg.Data.SourceReferences(cfg.Data.Tables[t].Id), cfg.Data.Tables[t].HeaderRow, cfg.Data.Tables[t].Delimiter,
+                    cfg.Data.Tables[t].Sheet);
             }
             cfg.Data.Bind(heads);
             if (cfg.Data.TypeOrder.Count > 0)
@@ -88,7 +89,7 @@ public static class Rdv3Program
                     Rdv3TableDef table = cfg.Data.Tables[tableOrd];
                     typedTables[tableOrd] = Rdv3Table.Read(Path.Combine(dataDir, table.File),
                         table.Id, table.Enc, table.KeyColumns, table.KeyValidation, table.EncodingSetting, cfg.Data.SourceReferences(table.Id),
-                        table.HeaderRow, table.Delimiter);
+                        table.HeaderRow, table.Delimiter, table.Sheet);
                 }
                 cfg.Data.ConvertWorkbookDates(typedTables);
                 cfg.Data.ValidateTypes(typedTables);
