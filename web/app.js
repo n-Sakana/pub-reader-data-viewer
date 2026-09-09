@@ -170,9 +170,10 @@
     figure.appendChild(boundField(definition.value, 'keyvalue'));
     line.appendChild(figure);
     var actions = element('div', 'keyactions');
-    var label = element('label');
+    var inputBox = element('div', 'keyinput');
+    var label = element('label', 'lab');
     setMnemonic(label, definition.inputLabel || '');
-    actions.appendChild(label);
+    inputBox.appendChild(label);
     input = boundField('', 'inp');
     input.id = 'input';
     input.contentEditable = 'true';
