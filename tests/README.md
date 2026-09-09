@@ -1,5 +1,13 @@
 # 検証コードと実行結果
 
+## 2026-09-09 コードレビュー（hyogo）で再現した6件の修正
+
+C#回帰は104/104（既存98件と追加6件）。追加分は次を確かめます。日付を宣言したXLSXのキー列で、CSVからの高速結合が一般経路と同じ行を返すこと、変換後のキーに文字種・桁数の規則を適用し直すこと（漢字を含む書式はunicode、桁数が変わる書式はvariableの指定が要る）。1904年日付方式のブックが1900方式と同じ暦日になること。最後の通知が送信でも、読み直した内容が表示中と違えば戻った行を数えて切替を確認すること（未表示のWPF窓で実際のReloadSharedJobを呼び、確認を断った場合に旧内容が残る）。3状態以上の送信の記録が実際に保存した状態名で数えられ、他PCへの案内が推測した状態名を使わないこと。操作ログの控えを削除も切詰めもできない間に再送しても同じ行を二度追記せず、別プロセスからも再送しないこと。calculate等で作った列に宣言した型を、台帳へ渡す前の実行段階で検査すること。
+
+hyogoが残した再現資料（`C:/repos-lab/reader-review-hyogo-20260909/probes`）を修正後の製品で走らせた結果は`work/review-fixes-20260909/probes/observations.json`。join-plainは高速経路でも結合1件、date-1904は`20260812`、derived-numberは識別001を示す型エラー、spool-delete-deniedは2回目のFlushでも2行のまま、three-statesは`Checked 0 件、Approved 1 件、Todo 0 件`、marker-sendは`changed=true reset=1`で切替確認へ進みました。
+
+`python tests/test_static.py` exit 0、`test_theme_static.py` 71/71、`test_readme_example.py` 5/5、`test_readme_derived.py` 3/3、`test_relaxations.py` 9/9、`test_delimiter.py` 5/5、`test_input_boundaries.py` 7/7、`test_feedback_hints.py` 8/8。配布は`releases/build-20260909-111324-e3b62a46`（-RunTests）。試験コードの修理は1回（3状態の試験fixtureにtransitionsを足した。製品の判定は変えていない）。実窓・本番共有・複数PCは未実施です。
+
 ## 2026-09-09 端末別の操作ログ
 
 C#回帰は98/98（既存94件と追加4件）。追加分は、操作ログのファイル名と保護（入力・ログ・出力に同名を使えない）、見出しを1回だけ書くこととCSVの引用、共有ファイルが開かれている間の控えと次回の順序どおりの再送、8スレッドが2端末名で同じフォルダーへ書いても端末ごとの1ファイルに行が欠けず混ざらないこと、更新ジョブが台帳を新規作成・更新したときだけ記録し、差分なし・書込み失敗では記録しないこと、通知（.version）が失敗しても記録が残ることを確かめます。

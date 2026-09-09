@@ -62,7 +62,7 @@
     },
     {
       "path": "settings.json",
-      "sha256": "e0a952df50447b55369c376b6e290c3ed4143cc515bd59838e91a84a62326ae4",
+      "sha256": "5ded424bf7772ccd4bce8fcfd70475407e7d79beee654c62454aece85f425094",
       "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "4113a8b4e71540a7a7d08e841200f324bdb91fdd72e9c7f2d871589ad53292e4",
+      "sha256": "182b8471da4b8296aace73f82acc2f7851aa4ab05e148068614e50eca69a8fed",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -87,7 +87,7 @@
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "33412c8bcb6ed3a0380904a53079e70842f3979294db8c440c91c9ac3d89f5e0",
+      "sha256": "6adbaa76cee6c87cbd915a7fa91ea1d61916e28975625a297278d6fd11129427",
       "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
     },
     {
@@ -97,7 +97,7 @@
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "065b83e9463e766c9ff241edc057c25d0118833fc42cc2232b4313b3871c7b1a",
+      "sha256": "c757024c6f8d7cd5a52d468c0415640f393d271dc834620d977954892f88bd69",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
@@ -122,7 +122,7 @@
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "4d155394a652ddc79e24febbc8bf45876331310231d0623b388113367eafdfeb",
+      "sha256": "16186b5183d66cc278692f549d2b26dc87fb07f446b4f8b5eeaff72313dada0a",
       "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
     },
     {
@@ -146,7 +146,7 @@
     },
     {
       "path": "src/Rdv3LedgerStore.cs",
-      "sha256": "ee1c951766efe413e90e35d71d4b231e711e7b7f95d47e8820e52bd874099926",
+      "sha256": "5b7eb0dd8d999ef8b5fecfe02183e98ae82f8e8d38b292fc78ea75fa37fe6ff7",
       "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
     },
     {
@@ -161,17 +161,17 @@
     },
     {
       "path": "src/Rdv3OperationLog.cs",
-      "sha256": "53ab9c1f000a8896050a84f38428803806fe71782a0e46db6655f857cdcf356b",
+      "sha256": "e0bdd5d408cd28877d70cae1b453aac55f7e719c1fe0b6756576160fe12c1b53",
       "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "404a54783584e6f0a9746a3fa7bf168aea718e70e10509a0f438c26e3dd6c3b2",
+      "sha256": "f11fa6d019a0e411975892bd42d9aada079b8e818472f775ca7102cd035d4322",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
       "path": "src/Rdv3Program.cs",
-      "sha256": "9b9ed94827b953d217afb5a5caa4aba94f9781bfac5160e9ec96a88403bb1e02",
+      "sha256": "d5affed2d37a8231f11814af8855451fbff9e90f99db212874452d34ddf5ce20",
       "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
     },
     {
@@ -196,7 +196,7 @@
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "6c9866b794d4de2d96fd0a17ac64d5e568d84cbc1310b61703408fd69c600037",
+      "sha256": "b92ad4ca87b39cb31611e8356999020e7249c56f8d83ef85d05860a9455d4e46",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -228,7 +228,7 @@
     },
     {
       "path": "src/Rdv3Xlsx.cs",
-      "sha256": "579a1b9744d3bc3b21c15640f6507db1f3ba0afcbab2c6a24e87e4fcee214761",
+      "sha256": "fe85c59b21f334bf367ff534724b79f705f8c5d3ac7847e05221963fbd7be4d5",
       "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
     },
     {
@@ -238,7 +238,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "4bfa52a543826e1ee73a8385592ed657c64e4a2ae9e07e2eefb0d992247098da",
+      "sha256": "7ae1642f21e1e16a239298122e6280fd9e51f3da38cd861eab5fef9d0bbc8991",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
