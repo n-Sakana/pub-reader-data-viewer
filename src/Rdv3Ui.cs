@@ -492,7 +492,10 @@ public sealed class Rdv3Form
                 Rdv3Json action = root;
                 PostOnUi(delegate { DispatchAction(action); });
             }
-            else if (type == "window") { host.WindowCommand(Text(root, "command")); }
+            // A close request can end in a refusal shown as a modal, and a
+            // modal cannot complete while this handler is on the stack (see
+            // the picker note below): run it from the queue.
+            else if (type == "window") { string command = Text(root, "command"); PostOnUi(delegate { host.WindowCommand(command); }); }
             else if (type == "modalResult") { CompleteModal(root); }
             else if (type == "dialogSize")
             {
@@ -507,17 +510,22 @@ public sealed class Rdv3Form
             }
             else if (type == "settingsSubmit") { ValidateSettings(root); }
             else if (type == "validateExportFilter") { ValidateExportFilter(root); }
-            else if (type == "browse") { Browse(root); }
-            // The pick runs its own message loop. Starting it from inside
+            // The pickers run their own message loops. Starting one from inside
             // this handler stops WebView2 delivering anything else until it
-            // ends, so the dialog size reported right after never arrives.
+            // ends: the dialog size reported right after never arrives, and a
+            // surface whose clicks are held back looks frozen. Both run from
+            // the queue.
+            else if (type == "browse") { PostOnUi(delegate { Browse(root); }); }
             else if (type == "picker") { PostOnUi(delegate { PickTarget(); }); }
             else if (type == "pickerCancel") { Rdv3PickerForm.CancelCurrent(); }
         }
         catch (Exception exception)
         {
             Rdv3Log.Error("web message", exception);
-            Error(exception.Message);
+            // The error is a modal whose answer is itself a web message, which
+            // cannot be delivered while this handler is still running.
+            string message = exception.Message;
+            PostOnUi(delegate { Error(message); });
         }
     }
 
@@ -651,13 +659,16 @@ public sealed class Rdv3Form
         string field = Text(root, "field");
         string kind = Text(root, "kind");
         string initial = Text(root, "value");
-        string value = kind == "folder" ? BrowseFolder(initial)
-            : BrowseFile(initial, kind == "export" ? "csv"
+        // Both pickers are modal to the surface that asked for them, so the
+        // surface cannot be clicked out from under them and they stay in front.
+        Window owner = host.DialogSurfaceWindow;
+        string value = kind == "folder" ? BrowseFolder(owner, initial)
+            : BrowseFile(owner, initial, kind == "export" ? "csv"
                 : kind == "log" ? "log" : "xlsx");
         if (value.Length > 0) { PatchModal(field, value); }
     }
 
-    private string BrowseFile(string initial, string extension)
+    private static string BrowseFile(Window owner, string initial, string extension)
     {
         SaveFileDialog dialog = new SaveFileDialog();
         dialog.AddExtension = true;
@@ -671,53 +682,17 @@ public sealed class Rdv3Form
             dialog.FileName = Path.GetFileName(initial);
         }
         catch (Exception) { }
-        return dialog.ShowDialog(host) == true ? dialog.FileName : "";
+        return dialog.ShowDialog(owner) == true ? dialog.FileName : "";
     }
 
-    private string BrowseFolder(string initial)
+    private static string BrowseFolder(Window owner, string initial)
     {
-        object shell = null;
-        object folder = null;
-        object self = null;
-        try
+        try { return Rdv3FolderDialog.Pick(owner, Rdv3Text.LblDataShort, initial); }
+        catch (Exception error)
         {
-            Type type = Type.GetTypeFromProgID("Shell.Application");
-            if (type == null) { return ""; }
-            shell = Activator.CreateInstance(type);
-            folder = type.InvokeMember(
-                "BrowseForFolder",
-                BindingFlags.InvokeMethod,
-                null,
-                shell,
-                new object[] { 0, Rdv3Text.LblDataShort, 0, initial });
-            if (folder == null) { return ""; }
-            self = folder.GetType().InvokeMember(
-                "Self",
-                BindingFlags.GetProperty,
-                null,
-                folder,
-                null);
-            object path = self.GetType().InvokeMember(
-                "Path",
-                BindingFlags.GetProperty,
-                null,
-                self,
-                null);
-            return path == null ? "" : path.ToString();
+            Rdv3Log.Error("folder dialog", error);
+            return "";
         }
-        catch (Exception) { return ""; }
-        finally
-        {
-            ReleaseCom(self);
-            ReleaseCom(folder);
-            ReleaseCom(shell);
-        }
-    }
-
-    private static void ReleaseCom(object value)
-    {
-        try { if (value != null && Marshal.IsComObject(value)) { Marshal.FinalReleaseComObject(value); } }
-        catch (Exception) { }
     }
 
     private void PickTarget()

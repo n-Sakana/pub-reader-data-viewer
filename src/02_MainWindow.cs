@@ -218,6 +218,17 @@ namespace ReaderDataViewer
             if (dialogWindow != null) { dialogWindow.FitTo(width, height, title); }
         }
 
+        // The window a native dialog (file or folder picker) belongs to: the
+        // dialog surface while one is open, otherwise this window. A picker
+        // owned by the disabled main window is not modal to the surface above
+        // it, and one with no owner sinks behind the app as soon as the app is
+        // clicked; either way the operator is left with a surface that does
+        // not answer and a picker they cannot find.
+        public Window DialogSurfaceWindow
+        {
+            get { return (dialogWindow != null && dialogWindow.IsVisible) ? (Window)dialogWindow : (Window)this; }
+        }
+
         // Messages that belong to an open dialog go to that surface; everything
         // else keeps flowing to the main page so it stays current underneath.
         public void PostSurfaceJson(string json)
