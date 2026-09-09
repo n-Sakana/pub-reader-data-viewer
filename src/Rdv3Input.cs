@@ -3,12 +3,37 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
+// A value error belongs to one record. Only this exception is caught at row
+// boundaries; malformed definitions, files and persisted ledgers still stop.
+public sealed class Rdv3RecordError : Exception
+{
+    public Rdv3RecordError(string message) : base(message) { }
+}
+
 public sealed class Rdv3InputCounts
 {
     public int ShortRows, BlankRows, HeaderColumns, HeaderOffset;
+    public int InvalidRows;
+    public readonly List<int> SourceRows = new List<int>();
+    public readonly List<string> RowWarnings = new List<string>();
     // the workbook's date system: serial dates count from 1904-01-01 when set
     public bool Date1904;
     public readonly List<string> DuplicateHeaders = new List<string>();
+
+    public void Exclude(string path, int row, string reason)
+    {
+        InvalidRows++;
+        RowWarnings.Add(Rdv3Text.Format(Rdv3Text.RecordExcluded,
+            Rdv3Text.Format(Rdv3Text.SourceRow, System.IO.Path.GetFileName(path), row), reason));
+    }
+
+    public void Shape(string path, int row, int actual, int expected, bool blank)
+    {
+        if (blank) { BlankRows++; } else { ShortRows++; }
+        RowWarnings.Add(Rdv3Text.Format(Rdv3Text.RecordExcluded,
+            Rdv3Text.Format(Rdv3Text.SourceRow, System.IO.Path.GetFileName(path), row),
+            Rdv3Text.Format(Rdv3Text.RecordColumns, expected, actual)));
+    }
 
     public void AddWarnings(string path, List<string> warnings)
     {
@@ -24,6 +49,7 @@ public sealed class Rdv3InputCounts
         { warnings.Add(Rdv3Text.InputHeadersSkipped.Replace("{file}", file)
             .Replace("{n}", HeaderColumns.ToString(CultureInfo.InvariantCulture))
             .Replace("{names}", string.Join(" / ", DuplicateHeaders.ToArray()))); }
+        warnings.AddRange(RowWarnings);
     }
 }
 

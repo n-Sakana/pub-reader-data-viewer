@@ -16,6 +16,28 @@
 
 public static class Rdv3Text
 {
+    public static string Format(string text, params object[] values)
+    { return string.Format(System.Globalization.CultureInfo.InvariantCulture, text, values); }
+
+    public const string SourceRow = "{0} の {1} 行目";
+    public const string RecordExcluded = "1 行を除外しました: {0}。{1}";
+    public const string RecordColumns = "列数が見出しと違います。必要な列数 {0}、実際の列数 {1}。";
+    public const string RecordControlKey = "キー列 {0} の値「{1}」に制御文字があります。";
+    public const string RecordEmptyKey = "キー列 {0} の値が空です。";
+    public const string RecordDuplicate = "{0}: キー列 {1}、値「{2}」の {3} 行を除外しました（元の行番号: {4}）。{5}";
+    public const string RecordConflict = "同じキーで内容が違うため、どの行も採用しません。キーに枝番を付けるか、入力データを訂正してください。";
+    public const string RecordIdentical = "同じキーの重複行です。";
+    public const string RecordStep = "手順 {0}（{1} → {2}）、{3}";
+    public const string RecordValues = "列と値: {0}";
+    public const string RecordNumber = "数値として読めない値「{0}」です。";
+    public const string RecordDivisionZero = "0 で割る計算です（左の値「{0}」、右の値「{1}」）。";
+    public const string RecordOverflow = "計算結果が数値として扱える範囲を超えました。";
+    public const string RecordFunction = "{0} の入力「{1}」から指定された文字列を取得できません（条件: {2}）。";
+    public const string RecordRegexTimeout = "正規表現の照合が制限時間を超えました。";
+    public const string RecordXlsxCell = "{0}、セル {1}: {2}";
+    public const string RecordXlsxError = "エラー値「{0}」が入っています。元のブックの値を訂正してください。";
+    public const string RecordXlsxFormula = "数式の保存済み計算結果がありません。元のブックを再計算して保存してください。";
+    public const string RecordXlsxLong = "セルの値が上限の 32767 文字を超えています（{0} 文字）。";
     public const string SettingsLabelExample = "画面に表示する名前";
     public const string SettingsFixLabel = " settings.json の data.labels に {entry} を設定してください（表示名は用途に合わせ、空にしません）。中間結果と ledger も画面名が必要です。同じ名前の登録は1回で足ります。README.md の「処理に使う名前と画面名」を参照してください。";
     public const string SettingsFixTableLabel = " settings.json の data.tables[{id}].label に空でない画面名を設定してください。この表IDは予約済みなので、data.labels へ同じIDを追加できません。";
