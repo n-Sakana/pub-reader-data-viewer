@@ -449,10 +449,14 @@ public sealed class Rdv3SharedFiles
             }
             return new Rdv3LedgerLock(stream);
         }
-        catch (IOException)
+        catch (IOException error)
         {
             if (stream != null) { try { stream.Dispose(); } catch (Exception) { } }
-            if (!File.Exists(lockPath)) { throw; }
+            // The winner can close its DeleteOnClose lease between CreateNew
+            // rejecting us and this catch. File.Exists cannot identify that
+            // race. Retry only a creation collision, never a failed lock write.
+            int code = error.HResult & 0xffff;
+            if (stream != null || (code != 80 && code != 183 && code != 32)) { throw; }
             owner = ReadLock();
             return null;
         }

@@ -234,7 +234,10 @@ public static class Rdv3RegressionTests
                     Check(t.Rows == 3 && t.SourceRow(1) == 5 && t.Field(2, 1) == "", "record values or positions shifted");
                     Check(t.InputCounts.ShortRows == 1 && t.InputCounts.BlankRows == 1, "exclusion counts");
                     List<string> warnings = new List<string>(); t.AddWarnings(warnings);
-                    Check(warnings.Count == 3 && warnings[1].Contains("3") && warnings[2].Contains("4"), "shape summary or excluded physical rows missing");
+                    string shortRow = Rdv3Text.Format(Rdv3Text.SourceRow, Path.GetFileName(t.Path), 3);
+                    string blankRow = Rdv3Text.Format(Rdv3Text.SourceRow, Path.GetFileName(t.Path), 4);
+                    Check(warnings.Count == 3 && warnings.Exists(delegate(string warning) { return warning.Contains(shortRow); })
+                        && warnings.Exists(delegate(string warning) { return warning.Contains(blankRow); }), "shape summary or excluded physical rows missing");
                 }
             });
             Test("unused-header-projection-and-key-ambiguity", delegate {

@@ -1,4 +1,4 @@
-UTC 2026-09-09T04:26:38.4768767Z
+UTC 2026-09-09T04:28:06.0422213Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
 PASS json-comments-trailing-comma
 PASS json-string-roundtrip
@@ -28,9 +28,7 @@ PASS csv-cr-only
 PASS csv-declared-utf16
 PASS csv-invalid-encoding
 PASS csv-malformed-and-control-key
-FAIL short-csv-counts-values-and-physical-rows: System.Exception: shape summary or excluded physical rows missing
-   at Rdv3RegressionTests.<Run>b__38()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS short-csv-counts-values-and-physical-rows
 PASS unused-header-projection-and-key-ambiguity
 PASS structural-exclusions-match-ledger-and-process-preview
 PASS csv-unicode-variable-keys
@@ -86,15 +84,7 @@ PASS reset-notice-unites-shared-and-local-without-dropping-rows
 PASS write-guard-local-outcome-controls-close
 PASS write-guard-close-and-acquisition-are-exclusive
 PASS write-guard-overdue-worker-remains-held-until-return
-FAIL eight-thread-shared-ledger-simulation: System.Exception: parallel writer failed ---> System.IO.IOException: ファイル 'C:\Users\ynisi\AppData\Local\Temp\rdv-regression-3a792912f63e47fd89647f70ee3edd6b\6d81309ec0c04cdb93d530142cdf572d.xlsx.lock' は既に存在します。
-   at System.IO.__Error.WinIOError(Int32 errorCode, String maybeFullPath)
-   at System.IO.FileStream.Init(String path, FileMode mode, FileAccess access, Int32 rights, Boolean useRights, FileShare share, Int32 bufferSize, FileOptions options, SECURITY_ATTRIBUTES secAttrs, String msgPath, Boolean bFromProxy, Boolean useLongPath, Boolean checkHost)
-   at System.IO.FileStream..ctor(String path, FileMode mode, FileAccess access, FileShare share, Int32 bufferSize, FileOptions options)
-   at Rdv3SharedFiles.TryAcquire(Rdv3LockInfo& owner)
-   at Rdv3RegressionTests.<>c__DisplayClass169.<ConcurrentWriters>b__166()
-   --- End of inner exception stack trace ---
-   at Rdv3RegressionTests.ConcurrentWriters()
-   at Rdv3RegressionTests.Test(String name, Action action)
+PASS eight-thread-shared-ledger-simulation
 PASS encoding-per-input-fast-and-general-join
 PASS encoding-errors-point-to-the-effective-setting
 PASS date-three-explicit-column-formats
@@ -114,4 +104,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=102 failed=2
+TOTAL passed=104 failed=0
