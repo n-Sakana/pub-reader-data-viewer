@@ -1,6 +1,6 @@
 {
   "scope": "Source fingerprints, fixed Win98 presentation and local assets. Not native execution or a full accessibility audit.",
-  "utc": "2026-09-09T02:13:18.984025+00:00",
+  "utc": "2026-09-09T02:42:16.021686+00:00",
   "details": {
     "excludedFingerprints": [
       "data/ReaderDataViewer.log",
@@ -85,6 +85,10 @@
     },
     {
       "name": "preserved:src/Rdv3Files.cs",
+      "status": "PASS"
+    },
+    {
+      "name": "preserved:src/Rdv3FolderDialog.cs",
       "status": "PASS"
     },
     {
@@ -296,6 +300,6 @@
       "status": "PASS"
     }
   ],
-  "passed": 71,
+  "passed": 72,
   "failed": 0
 }

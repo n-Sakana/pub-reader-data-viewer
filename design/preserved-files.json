@@ -72,7 +72,7 @@
     },
     {
       "path": "src/02_MainWindow.cs",
-      "sha256": "180b002f80cc61a3846018456d540e362d985c46be5147f13d35413af047dbcd",
+      "sha256": "7596260d9c5db3f37ddc211025cd4863355cd07d6420e7ce2afbd9bee0d69e76",
       "baselineSha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0"
     },
     {
@@ -108,6 +108,11 @@
     {
       "path": "src/Rdv3Files.cs",
       "sha256": "d506cdb6ddd2666ed7a95d819c7600bde090d7c9ebde5649201f4d4b62967c94",
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+    },
+    {
+      "path": "src/Rdv3FolderDialog.cs",
+      "sha256": "adaed5c639798240db85f2b90bd8567443b28b64f802b431c6ba41e3e4950e22",
       "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
     },
     {
@@ -201,7 +206,7 @@
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "c152b18048fa383a24e4b93b3fbcc5f48efa0bcc77a584041ca650d2c24ca1b6",
+      "sha256": "d3deebdfe24db1265cd41d4c1ebfd1c7beb4cd4f1e526128de7513caa1b9946d",
       "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
     },
     {
