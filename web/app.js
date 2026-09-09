@@ -243,6 +243,7 @@
 
   function renderTextBox(definition) {
     var set = fieldset(definition.title);
+    set.classList.add('text-section');
     var value = boundField(definition.value, 'v txt dynamic-text');
     value.style.setProperty('--text-height', px((Number(definition.lines) || 1) * 14 + 8));
     set.appendChild(value);

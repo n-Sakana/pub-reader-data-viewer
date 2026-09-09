@@ -45,6 +45,8 @@
 .runtime .dynamic-row{height:var(--row-height);margin:0;}
 .runtime .dynamic-row label{width:var(--label-width);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .runtime .dynamic-text{height:var(--text-height);line-height:20px;white-space:pre-wrap;overflow:auto;}
+.runtime .text-section{display:flex;flex-direction:column;flex:1 0 auto;}
+.runtime .text-section .dynamic-text{flex:1;min-height:var(--text-height);}
 .runtime .band{height:max(var(--band-height),var(--judgment-height));min-height:max(var(--band-height),var(--judgment-height));}
 .runtime .band .ok{font-size:var(--judgment-font);}
 .runtime .band .ok.unsearched{font-size:var(--unsearched-font);color:#606060;letter-spacing:0;}
