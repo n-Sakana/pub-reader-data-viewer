@@ -380,6 +380,12 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 "R": { "file": "拠点別売上.csv", "key": "拠点コード", "headerRow": 3 }
 ```
 
+区切りがカンマでないファイルは`delimiter`で区切り文字を指定します。Excelの「Unicode テキスト (*.txt)」はUTF-16のタブ区切りなので`"encoding": "utf-16"`と`"delimiter": "tab"`です。`"semicolon"`、`"pipe"`、または1文字（`";"`等）も書けます。省略はカンマです。引用符の扱いは同じで、外部入力にも書けます。指定の無いタブ区切りのファイルは「見出しにタブ文字があり、指定した区切り文字がありません」で止まります。
+
+```json
+"S": { "file": "出荷予定.txt", "encoding": "utf-16", "key": "出荷番号", "delimiter": "tab" }
+```
+
 <a id="process-labels"></a>
 
 ### 処理に使う名前と画面名
@@ -424,6 +430,7 @@ powershell.exe -NoProfile -STA -ExecutionPolicy Bypass -File src/ReaderDataViewe
 | 完全に同じ行の再送 | 正規化後に全セルが一致する同一キーの行は1行を採用し、除外件数を通知 |
 | 同じキーで内容が違う行 | 既定ではエラー。どちらを採るか、合算か、キーに足りない列がないかを確かめる |
 | 見出しより前の表題行・出力日の行 | `headerRow`に見出しの行番号を書いて読み飛ばす。指定が無ければ1行目を見出しとして読み、列数が合わない行で止まる |
+| タブ区切り・セミコロン区切り | `delimiter`で指定する。指定が無いタブ区切りは見出しのタブを検出して止まる |
 
 キー検証の省略値は`characters:ascii`、`length:fixed`、`duplicates:error`、`empty:skip`です。新しい表が可変長や日本語の識別子を持つ場合は、最小例のように`characters:unicode`、`length:variable`を指定します。複合キーでは**列ごとに**文字種と長さを検証し、**組合せ全体で**一意性を検証します。単純な文字連結ではなく組合せを保持するため、`["AB","C"]`と`["A","BC"]`は別のキーです。
 
