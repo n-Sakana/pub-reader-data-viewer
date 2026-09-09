@@ -1,7 +1,7 @@
 {
     "scope":  "PowerShell packaging integration; native only with -Native",
     "powershell":  "5.1.26100.9168",
-    "utc":  "2026-09-09T02:54:15.8231531Z",
+    "utc":  "2026-09-09T02:54:53.8186607Z",
     "tests":  [
                   {
                       "name":  "powershell-parser",
@@ -13,13 +13,11 @@
                   },
                   {
                       "name":  "metadata-hashes-data-and-zip",
-                      "status":  "FAIL",
-                      "detail":  "System.Management.Automation.CommandNotFoundException: 用語 \u0027Get-FileHash\u0027 は、コマンドレット、関数、スクリプト ファイル、または操作可能なプログラムの名前として認識されません。名前が正しく記述されていることを確認し、パスが含まれている場合はそのパスが正しいことを確認してから、再試行してください。\r\n   場所 System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)\r\n   場所 System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)\r\n   場所 System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)\r\n   場所 System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)"
+                      "status":  "PASS"
                   },
                   {
                       "name":  "repeat-build-never-overwrites",
-                      "status":  "FAIL",
-                      "detail":  "System.Management.Automation.CommandNotFoundException: 用語 \u0027Get-FileHash\u0027 は、コマンドレット、関数、スクリプト ファイル、または操作可能なプログラムの名前として認識されません。名前が正しく記述されていることを確認し、パスが含まれている場合はそのパスが正しいことを確認してから、再試行してください。\r\n   場所 System.Management.Automation.ExceptionHandlingOps.CheckActionPreference(FunctionContext funcContext, Exception exception)\r\n   場所 System.Management.Automation.Interpreter.ActionCallInstruction`2.Run(InterpretedFrame frame)\r\n   場所 System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)\r\n   場所 System.Management.Automation.Interpreter.EnterTryCatchFinallyInstruction.Run(InterpretedFrame frame)"
+                      "status":  "PASS"
                   },
                   {
                       "name":  "no-samples-folder-only",
@@ -58,6 +56,6 @@
                       "status":  "PASS"
                   }
               ],
-    "failed":  2,
+    "failed":  0,
     "nativeRequested":  false
 }
