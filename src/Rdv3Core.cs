@@ -81,6 +81,7 @@ public sealed class Rdv3Table
     public string Path;
     public byte[] Buf;
     public Encoding Enc;
+    public char Delimiter = ',';             // the field separator of a CSV source
     public int Rows;
     public int[] Start;
     public int[] End;
@@ -112,7 +113,7 @@ public sealed class Rdv3Table
     // the header row only (for the start-up check of the definition against
     // the data, before the full read in the worker)
     public static string[] ReadHead(string path, Encoding enc, string encodingSetting = "data.encoding",
-                                    HashSet<string> references = null, int headerRow = 1)
+                                    HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
     {
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
@@ -121,14 +122,18 @@ public sealed class Rdv3Table
         string[] head;
         string[][] rows;
         int[] rowNumbers;
-        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers, encodingSetting, references, null, headerRow);
+        Rdv3Csv.Read(path, enc, true, out head, out rows, out rowNumbers, encodingSetting, references, null, headerRow, delimiter);
         return head;
     }
 
-    private static string[] SplitHead(string line, string file, int row, out string warning)
+    private static string[] SplitHead(string line, string file, int row, out string warning, char delimiter)
     {
         warning = "";
         if (line.Length > 0 && line[0] == '\uFEFF') { line = line.Substring(1); }
+        // A header with tabs and none of the configured separator is a
+        // tab-separated file; name that instead of reading one odd column.
+        if (delimiter != '\t' && line.IndexOf('\t') >= 0 && line.IndexOf(delimiter) < 0)
+        { throw Rdv3Input.Error(file, row, "1", Rdv3Text.InputExpectHeader, line.Replace('\t', ' '), Rdv3Text.InputFixTab); }
         char[] safe = line.ToCharArray();
         bool changed = false;
         for (int i = 0; i < line.Length; i++)
@@ -139,7 +144,7 @@ public sealed class Rdv3Table
             changed = true;
         }
         if (changed) { line = new string(safe); }
-        string[] h = line.Split(',');
+        string[] h = line.Split(delimiter);
         for (int i = 0; i < h.Length; i++)
         {
             h[i] = h[i].Trim();
@@ -160,25 +165,27 @@ public sealed class Rdv3Table
     // it are a report title or similar and are skipped, not counted.
     public static Rdv3Table Read(string path, string name, Encoding enc, string keyName,
                                  Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
-                                 HashSet<string> references = null, int headerRow = 1)
+                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
     {
         if (validation == null) { validation = new Rdv3KeyValidation(); }
         if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.Add(keyName); }
         if (string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
-            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting, references, headerRow);
+            return ReadDecoded(path, name, enc, new string[] { keyName }, validation, true, encodingSetting, references, headerRow, delimiter);
         }
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
         t.Path = path;
         t.Enc = enc;
+        t.Delimiter = delimiter;
         t.KeyValidation = validation;
         t.Buf = File.ReadAllBytes(path);
-        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow); }
-        Rdv3Input.ValidateEncoding(t.Buf, enc, path, encodingSetting);
+        if (Rdv3Csv.NeedsDecoded(t.Buf, enc)) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow, delimiter); }
+        Rdv3Input.ValidateEncoding(t.Buf, enc, path, encodingSetting, delimiter);
         string file = System.IO.Path.GetFileName(path);
 
         byte[] b = t.Buf;
+        byte sep = (byte)delimiter;
         int n = b.Length;
         int cap = 65536;
         int[] st = new int[cap];
@@ -217,10 +224,10 @@ public sealed class Rdv3Table
         if (rows < 1) { throw new Rdv3DataError(Fmt(Rdv3Text.DataNoRows, file, 0)); }
 
         string headerWarning;
-        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, physicalRows[0], out headerWarning);
+        t.Head = SplitHead(enc.GetString(b, st[0], en[0] - st[0]), file, physicalRows[0], out headerWarning, delimiter);
         Rdv3InputColumns columns = Rdv3InputColumns.Read(t.Head, path, physicalRows[0], references, t.InputCounts);
         if (t.InputCounts.HeaderColumns > 0)
-        { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow); }
+        { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow, delimiter); }
         t.Head = columns.Head;
         t.ControlCharacterWarning = headerWarning;
         int cols = t.Head.Length;
@@ -255,7 +262,7 @@ public sealed class Rdv3Table
             {
                 if (p < re && b[p] == (byte)'"') { throw new Rdv3DataError(Fmt(Rdv3Text.DataQuoted, file, row)); }
                 int q = p;
-                while (q < re && b[q] != (byte)',')
+                while (q < re && b[q] != sep)
                 {
                     if (b[q] < 0x20)
                     {
@@ -284,7 +291,7 @@ public sealed class Rdv3Table
             {
                 // Unicode digits occupy several bytes. Validate their normalized
                 // characters, rather than guessing widths from the encoded bytes.
-                if (b[k] > 127) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow); }
+                if (b[k] > 127) { return ReadDecoded(path, name, enc, new string[] { keyName }, validation, false, encodingSetting, references, headerRow, delimiter); }
             }
             int klen = keyEnd - keyAt;
             if (klen <= 0)
@@ -337,28 +344,29 @@ public sealed class Rdv3Table
 
     public static Rdv3Table Read(string path, string name, Encoding enc, string[] keyNames,
                                  Rdv3KeyValidation validation, string encodingSetting = "data.encoding",
-                                 HashSet<string> references = null, int headerRow = 1)
+                                 HashSet<string> references = null, int headerRow = 1, char delimiter = ',')
     {
         if (keyNames == null || keyNames.Length == 0) { throw new ArgumentException("key names are empty"); }
-        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting, references, headerRow); }
+        if (keyNames.Length == 1) { return Read(path, name, enc, keyNames[0], validation, encodingSetting, references, headerRow, delimiter); }
         if (references != null) { references = new HashSet<string>(references, StringComparer.Ordinal); references.UnionWith(keyNames); }
         return ReadDecoded(path, name, enc, keyNames, validation ?? new Rdv3KeyValidation(),
-            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting, references, headerRow);
+            string.Equals(System.IO.Path.GetExtension(path), ".xlsx", StringComparison.OrdinalIgnoreCase), encodingSetting, references, headerRow, delimiter);
     }
 
     private static Rdv3Table ReadDecoded(string path, string name, Encoding enc, string[] keyNames,
                                           Rdv3KeyValidation validation, bool workbook, string encodingSetting,
-                                          HashSet<string> references, int headerRow)
+                                          HashSet<string> references, int headerRow, char delimiter)
     {
         Rdv3Table t = new Rdv3Table();
         t.Name = name;
         t.Path = path;
         t.Enc = enc;
+        t.Delimiter = delimiter;
         t.KeyValidation = validation;
         string warning = "";
         int[] originalRows = null;
         if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts, headerRow); }
-        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting, references, t.InputCounts, headerRow); }
+        else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting, references, t.InputCounts, headerRow, delimiter); }
         t.ControlCharacterWarning = warning;
         t.KeyCols = new int[keyNames.Length];
         for (int k = 0; k < keyNames.Length; k++)
@@ -506,14 +514,15 @@ public sealed class Rdv3Table
         if (Cells != null) { len = 0; return -1; }
         int p = Start[i];
         int e = End[i];
+        byte sep = (byte)Delimiter;
         for (int k = 0; k < f; k++)
         {
-            while (p < e && Buf[p] != (byte)',') { p++; }
+            while (p < e && Buf[p] != sep) { p++; }
             if (p >= e) { len = 0; return -1; }
             p++;
         }
         int q = p;
-        while (q < e && Buf[q] != (byte)',') { q++; }
+        while (q < e && Buf[q] != sep) { q++; }
         len = q - p;
         return p;
     }

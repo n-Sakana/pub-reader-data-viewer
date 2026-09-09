@@ -21,6 +21,7 @@ public sealed class Rdv3TableDef
     public string Label = "";
     public string File = "";
     public int HeaderRow = 1;                 // the line/row that holds the header
+    public char Delimiter = ',';              // the CSV field separator
     public string[] KeyColumns = new string[] { "" };
     public string Key { get { return KeyColumns[0]; } set { KeyColumns = new string[] { value }; } }
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
@@ -121,6 +122,7 @@ public sealed class Rdv3ProcessInputDef
     public string Column = "";
     public string Key = "";
     public int HeaderRow = 1;
+    public char Delimiter = ',';
     public string[] Columns;
     public Rdv3KeyValidation KeyValidation = new Rdv3KeyValidation();
     public int TableOrd = -1;
@@ -321,13 +323,14 @@ public sealed class Rdv3Data
             }
             if (id == "ledger") { throw to.Fail("ledger is a reserved value name"); }
             if (to.Kind != Rdv3Json.TObject) { throw to.Fail("must be an object { label, file, key }"); }
-            to.Only("label", "file", "key", "keyValidation", "encoding", "headerRow");
+            to.Only("label", "file", "key", "keyValidation", "encoding", "headerRow", "delimiter");
             Rdv3TableDef t = new Rdv3TableDef();
             t.Id = id;
             int before = to.ErrorCount;
             to.Check(delegate { t.Label = to.StrOr("label", id); });
             to.Check(delegate { t.File = to.Need("file"); });
             to.Check(delegate { t.HeaderRow = to.IntOr("headerRow", 1, 1, 1000000); });
+            to.Check(delegate { t.Delimiter = ReadDelimiter(to); });
             to.Check(delegate { t.KeyColumns = ReadColumnNames(to.Member("key")); });
             to.Check(delegate { t.KeyValidation = ReadKeyValidation(to); });
             to.Check(delegate { t.Enc = ReadEncoding(to, d.Enc); });
@@ -507,6 +510,20 @@ public sealed class Rdv3Data
         return nodes[0];
     }
 
+    // "comma" (default), "tab", "semicolon", "pipe", or one ASCII character.
+    private static char ReadDelimiter(Rdv3Json owner)
+    {
+        if (!owner.Has("delimiter")) { return ','; }
+        string value = owner.StrOr("delimiter", ",");
+        string word = value.Trim().ToLowerInvariant();
+        if (word == "comma" || value == ",") { return ','; }
+        if (word == "tab" || value == "\t") { return '\t'; }
+        if (word == "semicolon" || value == ";") { return ';'; }
+        if (word == "pipe" || value == "|") { return '|'; }
+        if (value.Length == 1 && value[0] > ' ' && value[0] < 127 && value[0] != '"') { return value[0]; }
+        throw owner.Member("delimiter").Fail("must be comma, tab, semicolon, pipe or one ASCII character, not " + value);
+    }
+
     private static Encoding ReadEncoding(Rdv3Json owner, Encoding fallback)
     {
         if (!owner.Has("encoding")) { return fallback; }
@@ -545,6 +562,7 @@ public sealed class Rdv3Data
                 input.Table = table.Id;
                 input.File = table.File;
                 input.HeaderRow = table.HeaderRow;
+                input.Delimiter = table.Delimiter;
                 input.Column = table.Key;
                 input.Columns = table.KeyColumns;
                 input.Key = table.Id + "." + table.Key;
@@ -555,11 +573,12 @@ public sealed class Rdv3Data
             }
             else
             {
-                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding", "headerRow");
+                io.Only("id", "label", "file", "column", "key", "keyValidation", "encoding", "headerRow", "delimiter");
                 input.Id = io.Need("id");
                 input.Label = io.StrOr("label", input.Id);
                 input.File = io.Need("file");
                 input.HeaderRow = io.IntOr("headerRow", 1, 1, 1000000);
+                input.Delimiter = ReadDelimiter(io);
                 input.Column = io.Need("column");
                 input.Key = io.Need("key");
                 input.KeyValidation = ReadKeyValidation(io);

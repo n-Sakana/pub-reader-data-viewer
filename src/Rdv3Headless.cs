@@ -89,7 +89,7 @@ public static class Rdv3Headless
             Action read = delegate {
             Rdv3Log.Phase("reading input " + def.Id + " " + Rdv3Files.Full(def.File, dataDir));
             tables[i] = Rdv3Table.Read(Rdv3Files.Full(def.File, dataDir), def.Id, def.Enc,
-                def.KeyColumns, def.KeyValidation, def.EncodingSetting, data.SourceReferences(def.Id), def.HeaderRow);
+                def.KeyColumns, def.KeyValidation, def.EncodingSetting, data.SourceReferences(def.Id), def.HeaderRow, def.Delimiter);
             heads[i] = tables[i].Head;
             new Rdv3Index(tables[i]);
             tables[i].AddWarnings(warnings);

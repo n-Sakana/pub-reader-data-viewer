@@ -79,7 +79,14 @@ public static class Rdv3Csv
                         {
                             head[i] = head[i].Trim();
                             for (int k = 0; k < head[i].Length; k++)
-                            { if (head[i][k] < ' ') { throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], Rdv3Text.InputFixHeader); } }
+                            {
+                                if (head[i][k] >= ' ') { continue; }
+                                // A tab inside a header cell of a comma-split line is almost
+                                // always a tab-separated file: say so instead of "duplicate header".
+                                string fix = (head[i][k] == '\t' && delimiter != '\t' && head.Length == 1)
+                                    ? Rdv3Text.InputFixTab : Rdv3Text.InputFixHeader;
+                                throw Failure(path, first, i + 1, Rdv3Text.InputExpectHeader, head[i], fix);
+                            }
                         }
                         columns = Rdv3InputColumns.Read(head, path, first, references, counts);
                         head = columns.Head;
@@ -103,7 +110,7 @@ public static class Rdv3Csv
         rowNumbers = numbers.ToArray();
     }
 
-    private static string[] Record(TextReader reader, string path, ref int line, out bool blank)
+    private static string[] Record(TextReader reader, string path, ref int line, out bool blank, char delimiter)
     {
         blank = true;
         List<string> cells = new List<string>();
@@ -149,7 +156,7 @@ public static class Rdv3Csv
                 return cells.ToArray();
             }
             blank = false;
-            if (ch == ',') { cells.Add(field.ToString()); field.Length = 0; afterQuote = false; continue; }
+            if (ch == delimiter) { cells.Add(field.ToString()); field.Length = 0; afterQuote = false; continue; }
             if (afterQuote && Rdv3Input.IsPadding(ch)) { continue; }
             if (afterQuote) { throw Failure(path, recordLine, cells.Count + 1, Rdv3Text.InputExpectDelimiter, ch.ToString(), Rdv3Text.InputFixCsv); }
             if (ch == '"')

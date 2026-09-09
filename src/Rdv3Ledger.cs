@@ -102,7 +102,7 @@ public static class Rdv3Ledger
             long m = Rdv3Clock.Now();
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
                 d.Tables[t].Enc, d.Tables[t].KeyColumns, d.Tables[t].KeyValidation, d.Tables[t].EncodingSetting, d.SourceReferences(d.Tables[t].Id),
-                d.Tables[t].HeaderRow);
+                d.Tables[t].HeaderRow, d.Tables[t].Delimiter);
             tables[t].AddWarnings(r.Warnings);
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
