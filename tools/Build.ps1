@@ -160,10 +160,8 @@ function New-Win98Package($Options) {
                 Write-Warning ('Sample CSVs not found in tests/fixtures/data: ' + ($missing -join ', ') + '. The package is built without them; run build/gen_data2.ps1 to regenerate.')
             }
         }
-        [IO.Directory]::CreateDirectory((Join-Path $package 'docs')) | Out-Null
-        foreach ($doc in @('design-build.md','theme-validation.md','settings.md','shared-ledger.md')) {
-            Copy-SafeFile (Join-Path $script:Root ('docs/' + $doc)) (Join-Path $package ('docs/' + $doc))
-        }
+        # docs/ は開発中の記録なので配布しない (先生の指示 2026-09-10)。
+        # 実機名や検証の経緯が入っていて、受け取る人には要らない。
         $readme = "Reader Data Viewer - Windows 98 Classic`r`n`r`n" +
             "Start: ReaderDataViewer.vbs (or .cmd for console diagnostics).`r`n" +
             "Extract the entire ZIP first. Requires 64-bit Windows, Windows PowerShell 5.1, WPF and WebView2 Runtime.`r`n" +
@@ -173,7 +171,7 @@ function New-Win98Package($Options) {
             "The original business settings are copied unchanged. Sample data is not your live data.`r`n" +
             "No live ledger, log, output or local pending changes were copied.`r`n" +
             "Review paths in settings.json BEFORE running a production copy.`r`n" +
-            "Japanese configuration guide: README.md (start with the copyable example).`r`n"
+            "Check steps before acceptance: README.md`r`n"
         Write-Utf8 (Join-Path $package 'PACKAGE-README.txt') $readme
         $manifest = [ordered]@{
             schema = 1; application = 'ReaderDataViewer'; theme = $id; motion = 'off'
@@ -181,7 +179,6 @@ function New-Win98Package($Options) {
             validation = [ordered]@{ nativeCompile = $compileStatus; coreTests = $testStatus; windowsUI = 'not_run_by_packager'; sharedLedger = 'not_run_by_packager' }
             files = @(Get-PackageHashes $package)
         }
-        Write-Json (Join-Path $package 'package-manifest.json') $manifest
         if ($Options.Format -ne 'folder') {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             [IO.Compression.ZipFile]::CreateFromDirectory($package, (Join-Path $stage ($packageName + '.zip')), [IO.Compression.CompressionLevel]::Optimal, $true)
@@ -189,6 +186,7 @@ function New-Win98Package($Options) {
         if ($Options.Format -eq 'zip') { Remove-Item -LiteralPath $package -Recurse -Force }
         $summary = @([ordered]@{theme=$id; name='Windows 98 Classic'; motion='off'; package=$packageName; format=$Options.Format})
         Write-Host '  Prepared: Windows 98 Classic' -ForegroundColor Green
+        Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
         [IO.Directory]::Move($stage, $published)

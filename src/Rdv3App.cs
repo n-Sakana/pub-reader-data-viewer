@@ -1059,7 +1059,7 @@ public sealed class Rdv3App
                 EndWriteGuard(tag, true);
                 // 送信が通ったら画面を空にして、次の入力へ移れるようにする。
                 // identity と key を渡さないので ReadyAfterShared が ClearShown() を通り、
-                // 入力欄・候補・選択行がまとめて消える (先生の指示 2026-09-10)。
+                // 入力欄・候補・選択行がまとめて消える。
                 ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
                 if (keepApply.Resolved.Count > 0)
                 {
