@@ -71,7 +71,7 @@ public static class Rdv3Csv
                     }
                     if (cells == null) { break; }
                     if (first < headerRow) { continue; }
-                    if (blank) { counts.BlankRows++; continue; }
+                    if (blank) { counts.Shape(path, first, 0, head == null ? 0 : columns.SourceCount, true); continue; }
                     if (head == null)
                     {
                         head = cells;
@@ -94,7 +94,7 @@ public static class Rdv3Csv
                     }
                     else
                     {
-                        if (cells.Length < columns.SourceCount) { counts.ShortRows++; continue; }
+                        if (cells.Length < columns.SourceCount) { counts.Shape(path, first, cells.Length, columns.SourceCount, false); continue; }
                         if (cells.Length > columns.SourceCount)
                         { throw Failure(path, first, columns.SourceCount + 1,
                             Rdv3Text.InputColumnCount.Replace("{n}", columns.SourceCount.ToString(CultureInfo.InvariantCulture)),

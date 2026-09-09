@@ -170,7 +170,15 @@ public static class Rdv3Input
     {
         return new Rdv3DataError(Rdv3Text.InputError.Replace("{file}", System.IO.Path.GetFileName(file))
             .Replace("{row}", row.ToString(CultureInfo.InvariantCulture)).Replace("{column}", column)
-            .Replace("{expected}", expected).Replace("{actual}", actual).Replace("{fix}", fix));
+            .Replace("{expected}", expected).Replace("{actual}", Display(actual)).Replace("{fix}", fix));
+    }
+
+    public static string Display(string value)
+    {
+        StringBuilder result = new StringBuilder();
+        foreach (char c in value ?? "")
+        { if (char.IsControl(c)) { result.Append("\\u").Append(((int)c).ToString("X4", CultureInfo.InvariantCulture)); } else { result.Append(c); } }
+        return result.ToString();
     }
 
     public static bool IsPadding(char c)

@@ -1335,6 +1335,7 @@ public sealed class Rdv3Data
     {
         decimal serial;
         if (!decimal.TryParse(value, NumberStyles.AllowDecimalPoint, CultureInfo.InvariantCulture, out serial)) { return null; }
+        if (serial < 0 || serial > 2958465) { return null; }
         int days = (int)decimal.Truncate(serial);
         DateTime date;
         if (date1904)
@@ -1355,6 +1356,7 @@ public sealed class Rdv3Data
     // must obey the declared representation exactly.
     public void ValidateTypes(Rdv3Table[] tables, Rdv3Validation validation = null)
     {
+        Dictionary<Rdv3Table, Dictionary<int, List<string>>> errors = new Dictionary<Rdv3Table, Dictionary<int, List<string>>>();
         for (int i = 0; i < TypeOrder.Count; i++)
         {
             Rdv3ColumnTypeDef type = TypeOrder[i];
@@ -1375,15 +1377,26 @@ public sealed class Rdv3Data
                     string displayType = (type.Type == "date")
                         ? Rdv3Text.TypeDateFormat.Replace("{format}", type.Format)
                         : Rdv3Text.TypeNumber;
-                    Report(validation, new Rdv3DataError(Rdv3Text.DataTypedValue
+                    string message = Rdv3Text.DataTypedValue
                         .Replace("{file}", System.IO.Path.GetFileName(table.Path))
                         .Replace("{row}", table.SourceRow(row).ToString(CultureInfo.InvariantCulture))
                         .Replace("{name}", type.Ref)
-                        .Replace("{value}", value)
+                        .Replace("{value}", Rdv3Input.Display(value))
                         .Replace("{type}", displayType)
-                        + Rdv3Text.InputFixType.Replace("{ref}", type.Ref)));
+                        + Rdv3Text.InputFixType.Replace("{ref}", type.Ref);
+                    Dictionary<int, List<string>> byRow;
+                    if (!errors.TryGetValue(table, out byRow)) { byRow = new Dictionary<int, List<string>>(); errors.Add(table, byRow); }
+                    List<string> messages;
+                    if (!byRow.TryGetValue(row, out messages)) { messages = new List<string>(); byRow.Add(row, messages); }
+                    messages.Add(message);
                 }
             }
+        }
+        foreach (KeyValuePair<Rdv3Table, Dictionary<int, List<string>>> pair in errors)
+        {
+            foreach (KeyValuePair<int, List<string>> row in pair.Value)
+            { pair.Key.InputCounts.Exclude(pair.Key.Path, pair.Key.SourceRow(row.Key), string.Join(" / ", row.Value.ToArray())); }
+            pair.Key.RemoveRows(new HashSet<int>(pair.Value.Keys));
         }
     }
 

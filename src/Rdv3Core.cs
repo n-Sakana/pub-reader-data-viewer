@@ -217,7 +217,7 @@ public sealed class Rdv3Table
                 en[rows] = e;
                 rows++;
             }
-            else { t.InputCounts.BlankRows++; }
+            else { t.InputCounts.Shape(path, physicalRow, 0, 0, true); }
             pos = nl + 1;
             physicalRow++;
         }
@@ -268,7 +268,7 @@ public sealed class Rdv3Table
                     {
                         if (field == t.KeyCol) { controlKey = true; }
                         if (controlCode < 0) { controlCode = (int)b[q]; }
-                        b[q] = (byte)'?';
+                        if (field != t.KeyCol) { b[q] = (byte)'?'; }
                     }
                     q++;
                 }
@@ -277,14 +277,19 @@ public sealed class Rdv3Table
                 if (q >= re) { break; }
                 p = q + 1;
             }
-            if (field < cols) { t.InputCounts.ShortRows++; continue; }
+            if (field < cols) { t.InputCounts.Shape(path, row, field, cols, false); continue; }
             if (field > cols)
             {
                 throw Rdv3Input.Error(path, row, (Math.Min(field, cols) + 1).ToString(CultureInfo.InvariantCulture),
                     Rdv3Text.InputColumnCount.Replace("{n}", cols.ToString(CultureInfo.InvariantCulture)),
                     Rdv3Text.InputColumnCount.Replace("{n}", field.ToString(CultureInfo.InvariantCulture)), Rdv3Text.InputFixCsv);
             }
-            if (controlKey) { throw new Rdv3DataError(file + ": control character in key at row " + row.ToString(CultureInfo.InvariantCulture)); }
+            if (controlKey)
+            {
+                t.InputCounts.Exclude(path, row, Rdv3Text.Format(Rdv3Text.RecordControlKey,
+                    keyName, Rdv3Input.Display(enc.GetString(b, keyAt, keyEnd - keyAt))));
+                continue;
+            }
             if (controlCode >= 0 && t.ControlCharacterWarning.Length == 0) { t.ControlCharacterWarning = ControlChar(file, row, controlCode); }
             while (keyEnd > keyAt && b[keyEnd - 1] == (byte)' ') { keyEnd--; }
             for (int k = keyAt; k < keyEnd; k++)
@@ -296,8 +301,10 @@ public sealed class Rdv3Table
             int klen = keyEnd - keyAt;
             if (klen <= 0)
             {
-                if (validation.SkipEmpty) { t.SkippedEmptyRows++; continue; }
-                throw t.KeyError(row, "", Rdv3Text.InputExpectKey, "empty", "skip");
+                t.SkippedEmptyRows++;
+                t.InputCounts.RowWarnings.Add(Rdv3Text.Format(Rdv3Text.RecordExcluded,
+                    Rdv3Text.Format(Rdv3Text.SourceRow, file, row), Rdv3Text.Format(Rdv3Text.RecordEmptyKey, keyName)));
+                continue;
             }
             if (validation.Ascii)
             {
@@ -318,11 +325,12 @@ public sealed class Rdv3Table
                 if (fixedLength < 0) { fixedLength = logicalLength; }
                 else if (logicalLength != fixedLength)
                 {
-                    throw t.KeyError(row, enc.GetString(b, keyAt, klen),
-                        Rdv3Text.InputExpectWidth.Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)), "length", "variable");
+                    t.InputCounts.Exclude(path, row, t.KeyError(row, enc.GetString(b, keyAt, klen),
+                        Rdv3Text.InputExpectWidth.Replace("{n}", fixedLength.ToString(CultureInfo.InvariantCulture)), "length", "variable").Message);
+                    continue;
                 }
             }
-            if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
+            if (distinct != null && !distinct.Add(key)) { t.DuplicateWarning(key, new List<int> { row }, false); continue; }
 
             int kept = t.Rows;
             t.Start[kept] = rs;
@@ -365,7 +373,11 @@ public sealed class Rdv3Table
         t.KeyValidation = validation;
         string warning = "";
         int[] originalRows = null;
-        if (workbook) { Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts, headerRow); }
+        if (workbook)
+        {
+            Rdv3Xlsx.ReadTable(path, out t.Head, out t.Cells, out warning, references, t.InputCounts, headerRow);
+            originalRows = t.InputCounts.SourceRows.ToArray();
+        }
         else { Rdv3Csv.Read(path, enc, false, out t.Head, out t.Cells, out originalRows, encodingSetting, references, t.InputCounts, headerRow, delimiter); }
         t.ControlCharacterWarning = warning;
         t.KeyCols = new int[keyNames.Length];
@@ -388,11 +400,17 @@ public sealed class Rdv3Table
             for (int c = 0; c < source[i].Length; c++) { source[i][c] = Rdv3Input.Cell(source[i][c]); }
             int row = originalRows == null ? i + 2 : originalRows[i];
             bool empty = false;
-            if (validation.SkipEmpty)
+            foreach (int col in t.KeyCols) { if (source[i][col].Length == 0) { empty = true; break; } }
+            if (empty)
             {
-                foreach (int col in t.KeyCols) { if (source[i][col].Length == 0) { empty = true; break; } }
-                if (empty) { t.SkippedEmptyRows++; continue; }
+                t.SkippedEmptyRows++;
+                t.InputCounts.RowWarnings.Add(Rdv3Text.Format(Rdv3Text.RecordExcluded,
+                    Rdv3Text.Format(Rdv3Text.SourceRow, file, row), Rdv3Text.Format(Rdv3Text.RecordEmptyKey, t.KeyLabel)));
+                continue;
             }
+            int[] rowLengths = (int[])fixedLengths.Clone();
+            try
+            {
             for (int part = 0; part < t.KeyCols.Length; part++)
             {
                 int col = t.KeyCols[part];
@@ -410,11 +428,14 @@ public sealed class Rdv3Table
                 }
                 if (validation.FixedLength)
                 {
-                    if (fixedLengths[part] < 0) { fixedLengths[part] = value.Length; }
-                    else if (value.Length != fixedLengths[part])
-                    { throw t.KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}", fixedLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col); }
+                    if (rowLengths[part] < 0) { rowLengths[part] = value.Length; }
+                    else if (value.Length != rowLengths[part])
+                    { throw t.KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}", rowLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col); }
                 }
             }
+            }
+            catch (Rdv3DataError error) { t.InputCounts.Exclude(path, row, error.Message); continue; }
+            fixedLengths = rowLengths;
             for (int c = 0; c < source[i].Length; c++)
             {
                 string value = source[i][c];
@@ -429,7 +450,7 @@ public sealed class Rdv3Table
                 if (safe != null) { source[i][c] = new string(safe); }
             }
             string key = Rdv3Key.FromCells(source[i], t.KeyCols);
-            if (distinct != null && !distinct.Add(key)) { t.SkippedDuplicateRows++; continue; }
+            if (distinct != null && !distinct.Add(key)) { t.DuplicateWarning(key, new List<int> { row }, false); continue; }
             kept.Add(source[i]);
             if (sourceRows != null) { sourceRows.Add(row); }
         }
@@ -451,9 +472,13 @@ public sealed class Rdv3Table
         if (Cells == null || KeyCols == null) { return; }
         int[] fixedLengths = new int[KeyCols.Length];
         for (int k = 0; k < fixedLengths.Length; k++) { fixedLengths[k] = -1; }
+        HashSet<int> rejected = new HashSet<int>();
         for (int i = 0; i < Rows; i++)
         {
             int row = SourceRow(i);
+            int[] rowLengths = (int[])fixedLengths.Clone();
+            try
+            {
             for (int part = 0; part < KeyCols.Length; part++)
             {
                 int col = KeyCols[part];
@@ -466,48 +491,83 @@ public sealed class Rdv3Table
                 }
                 if (KeyValidation.FixedLength)
                 {
-                    if (fixedLengths[part] < 0) { fixedLengths[part] = value.Length; }
-                    else if (value.Length != fixedLengths[part])
+                    if (rowLengths[part] < 0) { rowLengths[part] = value.Length; }
+                    else if (value.Length != rowLengths[part])
                     {
                         throw KeyError(row, value, Rdv3Text.InputExpectWidth.Replace("{n}",
-                            fixedLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col);
+                            rowLengths[part].ToString(CultureInfo.InvariantCulture)), "length", "variable", col);
                     }
                 }
             }
+            }
+            catch (Rdv3DataError error) { InputCounts.Exclude(Path, row, error.Message); rejected.Add(i); continue; }
+            fixedLengths = rowLengths;
         }
+        RemoveRows(rejected);
         KeyLen = KeyCols.Length == 1 && KeyValidation.UsesFixedAsciiPath && fixedLengths[0] > 0 ? fixedLengths[0] : 0;
+        RemoveIdenticalRows();
     }
 
     private void RemoveIdenticalRows()
     {
         if (!KeyValidation.Unique) { return; }
-        Dictionary<string, int> first = new Dictionary<string, int>(Rows, StringComparer.Ordinal);
-        int kept = 0;
+        Dictionary<string, List<int>> groups = new Dictionary<string, List<int>>(Rows, StringComparer.Ordinal);
         for (int row = 0; row < Rows; row++)
         {
             string key = Key(row);
-            int prior;
-            bool same = first.TryGetValue(key, out prior);
-            if (same)
+            List<int> group;
+            if (!groups.TryGetValue(key, out group)) { group = new List<int>(); groups.Add(key, group); }
+            group.Add(row);
+        }
+        HashSet<int> rejected = new HashSet<int>();
+        foreach (KeyValuePair<string, List<int>> pair in groups)
+        {
+            List<int> group = pair.Value;
+            if (group.Count < 2) { continue; }
+            bool conflict = false;
+            for (int i = 1; i < group.Count && !conflict; i++)
             {
                 for (int c = 0; c < Head.Length; c++)
-                { if (Field(prior, c) != Field(row, c)) { same = false; break; } }
+                { if (Field(group[0], c) != Field(group[i], c)) { conflict = true; break; } }
             }
-            else { first.Add(key, kept); }
-            if (same) { SkippedDuplicateRows++; continue; }
-            // Conflicting rows remain for Rdv3Index to reject with both source
-            // row numbers. Only an identical retransmission can disappear here.
+            List<int> numbers = new List<int>();
+            // Decide on the whole group before compacting: A,A,B must exclude
+            // all three, including the earlier identical retransmission.
+            for (int i = conflict ? 0 : 1; i < group.Count; i++)
+            { rejected.Add(group[i]); numbers.Add(SourceRow(group[i])); }
+            DuplicateWarning(pair.Key, numbers, conflict);
+        }
+        RemoveRows(rejected);
+    }
+
+    private void DuplicateWarning(string key, List<int> rows, bool conflict)
+    {
+        SkippedDuplicateRows += rows.Count;
+        List<string> numbers = new List<string>();
+        foreach (int row in rows) { numbers.Add(row.ToString(CultureInfo.InvariantCulture)); }
+        InputCounts.RowWarnings.Add(Rdv3Text.Format(Rdv3Text.RecordDuplicate,
+            System.IO.Path.GetFileName(Path), KeyLabel, Rdv3Input.Display(key), rows.Count,
+            string.Join(", ", numbers.ToArray()), conflict ? Rdv3Text.RecordConflict : Rdv3Text.RecordIdentical));
+    }
+
+    public void RemoveRows(HashSet<int> rejected)
+    {
+        if (rejected.Count == 0) { return; }
+        int kept = 0;
+        for (int row = 0; row < Rows; row++)
+        {
+            if (rejected.Contains(row)) { continue; }
             if (Cells != null) { Cells[kept] = Cells[row]; }
             else { Start[kept] = Start[row]; End[kept] = End[row]; KeyAt[kept] = KeyAt[row]; }
             if (KeyLengths != null) { KeyLengths[kept] = KeyLengths[row]; }
-            SourceRows[kept] = SourceRows[row];
+            if (SourceRows != null) { SourceRows[kept] = SourceRows[row]; }
             kept++;
         }
         Rows = kept;
         if (Cells != null) { Array.Resize(ref Cells, kept); }
         else { Array.Resize(ref Start, kept); Array.Resize(ref End, kept); Array.Resize(ref KeyAt, kept); }
         if (KeyLengths != null) { Array.Resize(ref KeyLengths, kept); }
-        Array.Resize(ref SourceRows, kept);
+        if (SourceRows != null) { Array.Resize(ref SourceRows, kept); }
     }
 
     public string InputNotice()

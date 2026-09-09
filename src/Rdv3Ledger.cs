@@ -103,7 +103,6 @@ public static class Rdv3Ledger
             tables[t] = Rdv3Table.Read(Path.Combine(dataDir, d.Tables[t].File), d.Tables[t].Id,
                 d.Tables[t].Enc, d.Tables[t].KeyColumns, d.Tables[t].KeyValidation, d.Tables[t].EncodingSetting, d.SourceReferences(d.Tables[t].Id),
                 d.Tables[t].HeaderRow, d.Tables[t].Delimiter);
-            tables[t].AddWarnings(r.Warnings);
             r.ReadMs[t] = Rdv3Clock.MsSince(m);
             heads[t] = tables[t].Head;
         }
@@ -113,6 +112,7 @@ public static class Rdv3Ledger
         d.ValidateTypes(tables);
         for (int t = 0; t < nt; t++)
         {
+            tables[t].AddWarnings(r.Warnings);
             long m = Rdv3Clock.Now();
             index[t] = new Rdv3Index(tables[t]);
             r.IndexMs[t] = Rdv3Clock.MsSince(m);
@@ -124,8 +124,8 @@ public static class Rdv3Ledger
             // the tables just read (and their keys just proved unique) are the
             // pipeline's table inputs; only a non-table input is read here
             r.Prepared = Rdv3Process.Prepare(d, job, dataDir, tables);
-            r.Warnings.AddRange(r.Prepared.Warnings);
             Rdv3ProcessResult process = Rdv3Process.Execute(r.Prepared, new string[0], new string[0], "", false);
+            r.Warnings.AddRange(process.Warnings);
             if (process.Kind != "ledger") { throw new InvalidDataException("automatic update job did not produce ledger"); }
             r.Head = d.Head;
             r.Lines = process.Lines;

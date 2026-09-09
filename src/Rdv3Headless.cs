@@ -91,8 +91,6 @@ public static class Rdv3Headless
             tables[i] = Rdv3Table.Read(Rdv3Files.Full(def.File, dataDir), def.Id, def.Enc,
                 def.KeyColumns, def.KeyValidation, def.EncodingSetting, data.SourceReferences(def.Id), def.HeaderRow, def.Delimiter);
             heads[i] = tables[i].Head;
-            new Rdv3Index(tables[i]);
-            tables[i].AddWarnings(warnings);
             };
             if (validation == null) { read(); }
             else { validation.Check("input " + def.Id + " (" + def.File + ")", read); }
@@ -102,6 +100,7 @@ public static class Rdv3Headless
         data.Bind(heads, validation);
         data.ConvertWorkbookDates(tables);
         data.ValidateTypes(tables, validation);
+        foreach (Rdv3Table table in tables) { new Rdv3Index(table); table.AddWarnings(warnings); }
         if (validation != null) { validation.Finish("input types", "job preparation"); }
         Rdv3PreparedProcess update = null;
         List<Rdv3InputResult> inputs = new List<Rdv3InputResult>();
