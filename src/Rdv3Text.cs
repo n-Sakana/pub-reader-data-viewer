@@ -183,6 +183,7 @@ public static class Rdv3Text
     public const string DataTypedValue = "{file} \u306E {row} \u884C\u76EE: \u5217 {name} \u306E\u5B9F\u969B\u306E\u5024\u300C{value}\u300D\u3092 {type} \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093";
     public const string TypeDateFormat = "\u65E5\u4ED8\uFF08{format}\uFF09";
     public const string TypeNumber = "\u6570\u5024";
+    public const string DataTypedResult = "\u51E6\u7406\u7D50\u679C\u306E\u5217 {name}\uFF08\u8B58\u5225 {identity}\uFF09\u306E\u5024\u300C{value}\u300D\u3092 {type} \u3068\u3057\u3066\u8AAD\u3081\u307E\u305B\u3093\u3002\u5F0F\u3084\u96C6\u8A08\u306E\u7D50\u679C\u3092\u78BA\u8A8D\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
     public const string ProcessBlankIdentity = "\u30B8\u30E7\u30D6\u300C{job}\u300D\u306E\u51FA\u529B\u3067\u3001\u8B58\u5225\u5217\u300C{column}\u300D\u304C\u7A7A\u3067\u3059";
     public const string ProcessDuplicateIdentity = "\u30B8\u30E7\u30D6\u300C{job}\u300D\u306E\u51FA\u529B\u3067\u3001\u8B58\u5225\u5217\u300C{column}\u300D\u306E\u5024\u300C{value}\u300D\u304C\u91CD\u8907\u3057\u3066\u3044\u307E\u3059";
 
@@ -220,7 +221,8 @@ public static class Rdv3Text
     public const string OpSend = "\u9001\u4fe1";
     public const string OpUpdateDetailFmt = "{job}: \u8ffd\u52a0 {added} \u4ef6\u3001\u66f4\u65b0 {updated} \u4ef6\u3001\u524a\u9664 {deleted} \u4ef6\u3001{state}\u306b\u623b\u3057\u305f {reset} \u4ef6";
     public const string OpDeleteDetailFmt = "{job}: \u524a\u9664 {n} \u4ef6";
-    public const string OpSendDetailFmt = "{changedState} {changed} \u4ef6\u3001{initialState} {initial} \u4ef6";
+    public const string OpSendDetailItemFmt = "{state} {n} \u4ef6";
+    public const string OpSendDetailSeparator = "\u3001";
 
     // ---- process job dialogs --------------------------------------------------
     public const string UpdateRecordsTitle = "\u30EC\u30B3\u30FC\u30C9\u66F4\u65B0";

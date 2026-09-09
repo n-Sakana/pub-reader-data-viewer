@@ -889,22 +889,37 @@ public static class Rdv3Process
         }
         int[] sourceKey = source.NeedColumns(step.KeySide(0));
         ValidateIdentity(data, job, source, sourceKey, step.KeySide(0));
+        // The column map does not change within the step: resolved once here,
+        // not by a name search for every cell of every row.
+        int[] from = new int[data.Columns.Count];
+        Rdv3ColumnTypeDef[] typed = new Rdv3ColumnTypeDef[data.Columns.Count];
+        for (int c = 0; c < data.Columns.Count; c++)
+        {
+            int identityPart = Array.IndexOf(data.IdentityCols, c);
+            from[c] = identityPart >= 0 ? sourceKey[identityPart] : source.ColumnOf(data.Columns[c].Ref);
+            // ValidateColumns proves this before any row is read; a blank
+            // written here would be a silent loss, never an acceptable value.
+            if (from[c] < 0)
+            {
+                throw new InvalidDataException(Rdv3Text.LedgerColumnNotProduced
+                    .Replace("{name}", data.Columns[c].Ref).Replace("{step}", step.Operation + " " + step.Target1));
+            }
+            // Input columns met their declared type when their file was read. A
+            // column the job makes has no file, so its values are checked here,
+            // before anything reaches the ledger.
+            Rdv3ColumnTypeDef type = data.TypeOf(data.Columns[c].Ref);
+            typed[c] = (type != null && type.TableOrd < 0) ? type : null;
+        }
         string[] sourceLines = new string[source.Rows.Count];
         for (int r = 0; r < source.Rows.Count; r++)
         {
             string[] row = new string[data.Columns.Count];
             for (int c = 0; c < data.Columns.Count; c++)
             {
-                int identityPart = Array.IndexOf(data.IdentityCols, c);
-                int from = identityPart >= 0 ? sourceKey[identityPart] : source.ColumnOf(data.Columns[c].Ref);
-                // ValidateColumns proves this before any row is read; a blank
-                // written here would be a silent loss, never an acceptable value.
-                if (from < 0)
-                {
-                    throw new InvalidDataException(Rdv3Text.LedgerColumnNotProduced
-                        .Replace("{name}", data.Columns[c].Ref).Replace("{step}", step.Operation + " " + step.Target1));
-                }
-                row[c] = source.Rows[r][from];
+                string value = source.Rows[r][from[c]] ?? "";
+                if (typed[c] != null && value.Length > 0)
+                { CheckTypedResult(typed[c], value, Rdv3Key.FromCells(source.Rows[r], sourceKey)); }
+                row[c] = value;
             }
             sourceLines[r] = string.Join("\t", row);
         }
@@ -916,6 +931,18 @@ public static class Rdv3Process
                                        sourceLines, data.IdentityCols, initialStored);
         Rdv3Relation output = RelationOfLedger(data, update.Lines, update.States, initialStored);
         return output;
+    }
+
+    private static void CheckTypedResult(Rdv3ColumnTypeDef type, string value, string identity)
+    {
+        DateTime date;
+        decimal number;
+        bool valid = (type.Type == "date") ? type.TryDate(value, out date) : type.TryNumber(value, out number);
+        if (valid) { return; }
+        string displayType = (type.Type == "date")
+            ? Rdv3Text.TypeDateFormat.Replace("{format}", type.Format) : Rdv3Text.TypeNumber;
+        throw new Rdv3DataError(Rdv3Text.DataTypedResult.Replace("{name}", type.Ref).Replace("{identity}", identity)
+            .Replace("{value}", value).Replace("{type}", displayType) + Rdv3Text.InputFixType.Replace("{ref}", type.Ref));
     }
 
     private static Rdv3Relation NewLike(Rdv3Relation source)

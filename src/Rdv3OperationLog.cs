@@ -4,7 +4,8 @@
 // each other's records. The ledger write is already committed when a line is
 // recorded, so a line that cannot reach the shared folder is never a failure of
 // the operation: it waits in a local spool and rides along with the next
-// successful append. C# 5.
+// successful append. A spool that has been delivered but cannot be removed is
+// remembered by length, so nothing is ever appended twice. C# 5.
 using System;
 using System.Globalization;
 using System.IO;
@@ -19,14 +20,18 @@ public sealed class Rdv3OperationLog
     private const int RetryMs = 200;
     private readonly string path;
     private readonly string spoolPath;
+    private readonly string deliveredPath;
     private readonly string host;
     private readonly string user;
     private readonly object gate = new object();
+    // characters at the start of the spool that already reached the shared file
+    private int deliveredChars;
 
     public Rdv3OperationLog(string ledgerPath, string machine, string userName, string spool)
     {
         path = PathFor(ledgerPath, machine);
         spoolPath = spool;
+        deliveredPath = spool + ".delivered";
         host = (machine == null) ? "" : machine;
         user = (userName == null) ? "" : userName;
     }
@@ -34,7 +39,7 @@ public sealed class Rdv3OperationLog
     public string Path { get { return path; } }
     public string SpoolPath { get { return spoolPath; } }
 
-    // <ledger stem><infix><terminal>.csv, for example Ledger-<infix>-PC01.csv next to Ledger.xlsx.
+    // <ledger stem><infix><terminal>.csv next to the ledger.
     public static string FileNameFor(string ledgerPath, string machine)
     {
         return System.IO.Path.GetFileNameWithoutExtension(ledgerPath) + Rdv3Text.OpLogInfix + SafeName(machine) + Extension;
@@ -92,7 +97,7 @@ public sealed class Rdv3OperationLog
         return Rdv3Text.OpUpdateDetailFmt.Replace("{job}", JobName(job))
             .Replace("{added}", N(update.Added)).Replace("{updated}", N(update.Updated))
             .Replace("{deleted}", N(update.Deleted)).Replace("{reset}", N(update.ResetLines.Count))
-            .Replace("{state}", (initial == null) ? "" : initial.Text);
+            .Replace("{state}", (initial == null || initial.Text == null) ? "" : initial.Text);
     }
 
     public static string DeleteDetail(Rdv3ProcessJobDef job, int deleted)
@@ -100,11 +105,33 @@ public sealed class Rdv3OperationLog
         return Rdv3Text.OpDeleteDetailFmt.Replace("{job}", JobName(job)).Replace("{n}", N(deleted));
     }
 
-    public static string SendDetail(Rdv3StateDef changedState, int changed, Rdv3StateDef initialState, int initial)
+    // Counts every row whose stored state changed, by the state it was changed
+    // to, and names each configured state: the states that are not the initial
+    // one first, the initial one last. Nothing is summed into a guessed state.
+    public static string SendDetail(Rdv3WorkState work, string[] before, string[] after)
     {
-        return Rdv3Text.OpSendDetailFmt
-            .Replace("{changedState}", (changedState == null) ? "" : changedState.Text).Replace("{changed}", N(changed))
-            .Replace("{initialState}", (initialState == null) ? "" : initialState.Text).Replace("{initial}", N(initial));
+        int[] counts = new int[work.States.Count];
+        int rows = Math.Min((before == null) ? 0 : before.Length, (after == null) ? 0 : after.Length);
+        for (int i = 0; i < rows; i++)
+        {
+            if (string.Equals(before[i], after[i], StringComparison.Ordinal)) { continue; }
+            for (int s = 0; s < work.States.Count; s++)
+            {
+                if (string.Equals(work.States[s].Stored, after[i], StringComparison.Ordinal)) { counts[s]++; break; }
+            }
+        }
+        StringBuilder sb = new StringBuilder();
+        for (int pass = 0; pass < 2; pass++)
+        {
+            for (int s = 0; s < work.States.Count; s++)
+            {
+                bool isInitial = string.Equals(work.States[s].Id, work.Initial, StringComparison.Ordinal);
+                if (isInitial != (pass == 1)) { continue; }
+                if (sb.Length > 0) { sb.Append(Rdv3Text.OpSendDetailSeparator); }
+                sb.Append(Rdv3Text.OpSendDetailItemFmt.Replace("{state}", work.States[s].Text ?? work.States[s].Id).Replace("{n}", N(counts[s])));
+            }
+        }
+        return sb.ToString();
     }
 
     private static string JobName(Rdv3ProcessJobDef job)
@@ -116,34 +143,41 @@ public sealed class Rdv3OperationLog
     private static string N(int value) { return value.ToString("N0", CultureInfo.InvariantCulture); }
 
     // Appends one line for a ledger replacement this terminal has just made.
-    // Returns null when the line reached the shared file, otherwise the reason
-    // it was kept in the local spool instead. Never throws.
+    // Returns null when the line reached the shared file and the spool is
+    // settled; otherwise a message saying what happened instead. Never throws.
     public string Record(string operation, int rows, string detail)
     {
         string line = Line(DateTime.Now, operation, rows, detail);
         lock (gate)
         {
-            string failure = TryAppend(line);
-            if (failure == null) { return null; }
-            try { AppendText(spoolPath, line, true); }
-            catch (Exception ex) { failure += "; spool: " + ex.Message; }
-            return failure;
+            bool delivered;
+            string outcome = TryAppend(line, out delivered);
+            if (delivered) { return outcome; }
+            try { AppendText(spoolPath, line); }
+            catch (Exception ex) { outcome += "; spool: " + ex.Message; }
+            return outcome;
         }
     }
 
-    // Re-sends spooled lines, oldest first. Null when nothing is left in the spool.
+    // Re-sends spooled lines, oldest first. Null when nothing is left to send
+    // and the spool is settled.
     public string Flush()
     {
         lock (gate)
         {
-            if (!HasSpool()) { return null; }
-            return TryAppend("");
+            bool delivered;
+            return TryAppend("", out delivered);
         }
     }
 
     public bool HasSpool()
     {
-        try { return File.Exists(spoolPath) && new FileInfo(spoolPath).Length > 0; }
+        try
+        {
+            string all, pending;
+            ReadSpool(out all, out pending);
+            return pending.Length > 0;
+        }
         catch (Exception) { return false; }
     }
 
@@ -159,27 +193,86 @@ public sealed class Rdv3OperationLog
         return Rdv3Files.CsvCell(text, false);
     }
 
-    private string TryAppend(string line)
+    // all: the whole spool file; pending: the part of it not yet delivered.
+    private void ReadSpool(out string all, out string pending)
     {
-        string spooled = "";
-        try { if (HasSpool()) { spooled = File.ReadAllText(spoolPath, Encoding.UTF8); } }
-        catch (Exception ex) { return "spool unreadable: " + ex.Message; }
-        string text = spooled + line;
-        if (text.Length == 0) { return null; }
+        all = File.Exists(spoolPath) ? File.ReadAllText(spoolPath, Encoding.UTF8) : "";
+        int skip = deliveredChars;
+        try
+        {
+            int recorded;
+            if (File.Exists(deliveredPath) && int.TryParse(File.ReadAllText(deliveredPath, Encoding.ASCII).Trim(),
+                NumberStyles.Integer, CultureInfo.InvariantCulture, out recorded) && recorded > skip) { skip = recorded; }
+        }
+        catch (Exception) { }
+        // A spool shorter than the delivered length was replaced meanwhile:
+        // nothing of it is known to be delivered.
+        if (skip > all.Length) { skip = 0; }
+        pending = all.Substring(skip);
+    }
+
+    // delivered: true when the text (spooled lines and the new line) reached the
+    // shared file, even if the spool could not be settled afterwards.
+    private string TryAppend(string line, out bool delivered)
+    {
+        delivered = false;
+        string all, pending;
+        try { ReadSpool(out all, out pending); }
+        catch (Exception ex) { return "spooled: spool unreadable: " + ex.Message; }
+        string text = pending + line;
+        if (text.Length == 0)
+        {
+            if (all.Length == 0) { return null; }
+            // everything in the spool is delivered; only its removal is outstanding
+            string outstanding = ClearSpool(all);
+            return outstanding == null ? null : "written; " + outstanding;
+        }
         Exception last = null;
         for (int attempt = 0; attempt < Attempts; attempt++)
         {
             try
             {
                 AppendShared(text);
-                if (spooled.Length > 0) { try { File.Delete(spoolPath); } catch (Exception) { } }
-                return null;
+                delivered = true;
+                string cleared = (all.Length == 0) ? null : ClearSpool(all);
+                return cleared == null ? null : "written; " + cleared;
             }
             catch (IOException ex) { last = ex; }
             catch (UnauthorizedAccessException ex) { last = ex; }
             if (attempt + 1 < Attempts) { Thread.Sleep(RetryMs); }
         }
-        return last.Message;
+        return "spooled: " + last.Message;
+    }
+
+    // Removes a delivered spool: delete, else truncate, else record how much of
+    // it is delivered so the next send skips it. Null when the spool is gone.
+    private string ClearSpool(string delivered)
+    {
+        Exception last = null;
+        try
+        {
+            File.Delete(spoolPath);
+            if (File.Exists(deliveredPath)) { File.Delete(deliveredPath); }
+            deliveredChars = 0;
+            return null;
+        }
+        catch (Exception ex) { last = ex; }
+        try
+        {
+            using (FileStream file = new FileStream(spoolPath, FileMode.Truncate, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+            { file.Flush(true); }
+            if (File.Exists(deliveredPath)) { try { File.Delete(deliveredPath); } catch (Exception) { } }
+            deliveredChars = 0;
+            return null;
+        }
+        catch (Exception ex) { last = ex; }
+        deliveredChars = delivered.Length;
+        try
+        {
+            File.WriteAllText(deliveredPath, delivered.Length.ToString(CultureInfo.InvariantCulture), Encoding.ASCII);
+            return "spool not cleared (" + last.Message + "); delivered length recorded";
+        }
+        catch (Exception ex) { return "spool not cleared (" + last.Message + "); delivered length kept in memory only: " + ex.Message; }
     }
 
     // One open per append: FileShare.Read denies other writers while the whole
@@ -216,10 +309,10 @@ public sealed class Rdv3OperationLog
         }
     }
 
-    private static void AppendText(string destination, string text, bool createDirectory)
+    private static void AppendText(string destination, string text)
     {
-        if (createDirectory) { Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination)); }
-        using (FileStream file = new FileStream(destination, FileMode.Append, FileAccess.Write, FileShare.Read))
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(destination));
+        using (FileStream file = new FileStream(destination, FileMode.Append, FileAccess.Write, FileShare.ReadWrite))
         {
             byte[] body = Encoding.UTF8.GetBytes(text);
             file.Write(body, 0, body.Length);
