@@ -1,5 +1,5 @@
 {
-  "scope": "Expected sources after the 2026-09-09 relaxations (derived ledger columns and identity, headerRow, workbook date serials, delimiter, pwsh guard); original baseline hashes retained.",
+  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -62,7 +62,7 @@
     },
     {
       "path": "settings.json",
-      "sha256": "f52b4f04e51f53c50efe245e6aea2dc13cf4d305dcc4f36a4bf0b6c80ed36962",
+      "sha256": "3d7723ef0ec592ad5340aba00e550f2c1ea5f6bd9def1c72fc5183be6f7207b2",
       "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
     },
     {
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "182b8471da4b8296aace73f82acc2f7851aa4ab05e148068614e50eca69a8fed",
+      "sha256": "bde3fa938e78f3dc9dc3bcb41f2e63c4af759c9ea526f219c140b4eccdd07565",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -87,22 +87,22 @@
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "6adbaa76cee6c87cbd915a7fa91ea1d61916e28975625a297278d6fd11129427",
+      "sha256": "aedbf81c54faa3f69f65f75ac181b91cd0e4d7f7b584c91448c63e28dc791259",
       "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
     },
     {
       "path": "src/Rdv3Csv.cs",
-      "sha256": "a15fa4c21c0d1d3753bb149539ced168108da377ab7b3d6d5710175a92daad5f",
+      "sha256": "bff8d40494bf7154588383ffb0bb4649e9481572883760b2eae65d1a8e63d69e",
       "baselineSha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df"
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "c757024c6f8d7cd5a52d468c0415640f393d271dc834620d977954892f88bd69",
+      "sha256": "e790167b9d1336bb6e1667c9e638e47f7f6a76f583e0372aba862a591f97f395",
       "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
     },
     {
       "path": "src/Rdv3Expression.cs",
-      "sha256": "3aa7e69640f4624b3243f4c21df89aa7fecf7124f1d777657b3715e2292ed09d",
+      "sha256": "fa1753ab82eb9dfe8e2163cd329e10ee53db07bcb9fa9f80a5a047b49b51b97c",
       "baselineSha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
     },
     {
@@ -117,7 +117,7 @@
     },
     {
       "path": "src/Rdv3Headless.cs",
-      "sha256": "97bec8f5ea008bb4d625ba5bf55762764efca5dca5c7c49c409db3e3d32b51a8",
+      "sha256": "881ebc38fcf45e50187b9ae0bd0e4ed1949d0b791e2dff3ff97f5d7c521a0a61",
       "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
     },
     {
@@ -127,7 +127,7 @@
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "16186b5183d66cc278692f549d2b26dc87fb07f446b4f8b5eeaff72313dada0a",
+      "sha256": "e8dd5ebe9de95f9f7e96f823e0ba809a97c37b29ba7599daa67fc6d8f5a38527",
       "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
     },
     {
@@ -146,12 +146,12 @@
     },
     {
       "path": "src/Rdv3Ledger.cs",
-      "sha256": "de0f559a7db461a2a0374fdbcfd72df37c2fa00c495efc0385aed5ce3a42ba4c",
+      "sha256": "1a944a006dd6316dcd16962462cda63f3d3a1f0fb077043a0d07565cbdbf8eef",
       "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465"
     },
     {
       "path": "src/Rdv3LedgerStore.cs",
-      "sha256": "5b7eb0dd8d999ef8b5fecfe02183e98ae82f8e8d38b292fc78ea75fa37fe6ff7",
+      "sha256": "b0ac0704819806a2530ed7524848fb5e6bc76c0b4cece1876e588ee2b1588b39",
       "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
     },
     {
@@ -161,7 +161,7 @@
     },
     {
       "path": "src/Rdv3Modals.cs",
-      "sha256": "0b9e831ccc395925fbe5e2107752335da5e4a76990cf45aab881018fcbb46327",
+      "sha256": "30bdfc00badee291ab375a9e9c50b0da98e3ee5ae1ae14fc18b0d3a8f18ff243",
       "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184"
     },
     {
@@ -171,7 +171,7 @@
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "f11fa6d019a0e411975892bd42d9aada079b8e818472f775ca7102cd035d4322",
+      "sha256": "0e4ad055af3b276b2fd9244b693d69ba0ac6322c527a8c3ef81f42f60da46ded",
       "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
     },
     {
@@ -201,7 +201,7 @@
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "b92ad4ca87b39cb31611e8356999020e7249c56f8d83ef85d05860a9455d4e46",
+      "sha256": "64798ea63d11b282538acb1e2af0078f47710ba8fc4c63fcaa349d958900bec8",
       "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
     },
     {
@@ -233,7 +233,7 @@
     },
     {
       "path": "src/Rdv3Xlsx.cs",
-      "sha256": "fe85c59b21f334bf367ff534724b79f705f8c5d3ac7847e05221963fbd7be4d5",
+      "sha256": "cceab91729271d9d946e4c38eab93da6f526fb2758cf19c091acbda5477be2d9",
       "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
     },
     {
@@ -243,7 +243,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "7ae1642f21e1e16a239298122e6280fd9e51f3da38cd861eab5fef9d0bbc8991",
+      "sha256": "ad001648fe8b624962579d0e2295cc5e1b763d21882b2f5350dd4fa75c9da00f",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
@@ -276,11 +276,12 @@
     },
     {
       "path": "web/app.css",
-      "sha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d"
+      "sha256": "67a0368f9e5744186e33083fc4ee218bfde1e67264f1d3b74ec942ed670fb401",
+      "baselineSha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d"
     },
     {
       "path": "web/app.js",
-      "sha256": "6d490b42200435eda53d5d97282da44b4f09a2e05eafd3948ffc9506823fdcfa",
+      "sha256": "41e1d702403260d7dd2ee9284b904f77f7ea247e3cbd81a546b0a4b9361dfe65",
       "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
     },
     {
@@ -309,16 +310,17 @@
     },
     {
       "path": "tests/test_readme_example.py",
-      "sha256": "311586d800f943a428952cd9a2166470e836639db0cd0f18386e375387d1d451",
+      "sha256": "023def8b0c1bc44792a4c1bb9f6c3eba99eb29b32fbf20c68532b16c8c571477",
       "baselineSha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce"
     },
     {
       "path": "tests/test_feedback_hints.py",
-      "sha256": "0f0f7ebf4a3c6641bfdbe231a6eee8cddf349876eda2958697dd65af4da9d58c"
+      "sha256": "b993f42da7de4f56167d90ffa191ac81b2365a15ffd6e2839fd5b91bd83d35da",
+      "baselineSha256": "0f0f7ebf4a3c6641bfdbe231a6eee8cddf349876eda2958697dd65af4da9d58c"
     },
     {
       "path": "tests/test_input_boundaries.py",
-      "sha256": "de69d5d99080df30f473e76949e2f6e9d0a335d1c3f7fc2dbc35970e44ed3879",
+      "sha256": "be7de2c14a3d7e07f7117d1b85c19c09590b8240b3227d4dccb622604b0f1f68",
       "baselineSha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9"
     },
     {
