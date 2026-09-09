@@ -1057,10 +1057,10 @@ public sealed class Rdv3App
             {
                 if (keepMarker != null) { RememberMarker(keepMarker); }
                 EndWriteGuard(tag, true);
-                ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)), displayedIdentity, displayedKey);
-                // 送信が通ったら次の入力へ移れるよう、入力欄の値だけ空にする。
-                // 表示中のレコードと候補は残す (2026-09-09 に直した「送信後の表示保持」)。
-                form.ClearSearchKey();
+                // 送信が通ったら画面を空にして、次の入力へ移れるようにする。
+                // identity と key を渡さないので ReadyAfterShared が ClearShown() を通り、
+                // 入力欄・候補・選択行がまとめて消える (先生の指示 2026-09-10)。
+                ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
                 if (keepApply.Resolved.Count > 0)
                 {
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));

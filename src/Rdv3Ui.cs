@@ -257,17 +257,6 @@ public sealed class Rdv3Form
         });
     }
 
-    // 送信の後だけ使う。候補も選択行も残したまま、入力欄の値だけを空にする。
-    public void ClearSearchKey()
-    {
-        Ui(delegate
-        {
-            keyText = "";
-            View.SearchKey = "";
-            RefreshValues();
-        });
-    }
-
     public void ClearResult(bool keepKey = false)
     {
         Ui(delegate
