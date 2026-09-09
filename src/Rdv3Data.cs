@@ -1304,20 +1304,21 @@ public sealed class Rdv3Data
         for (int i = 0; i < TypeOrder.Count; i++)
         {
             Rdv3ColumnTypeDef type = TypeOrder[i];
-            if (type.Type != "date" || type.TableOrd < 0 || type.TableOrd >= tables.Length || type.Field < 0) { continue; }
+            if (type.Type != "date" || type.TableOrd < 0 || type.TableOrd >= tables.Length) { continue; }
             Rdv3Table table = tables[type.TableOrd];
             if (table == null || table.Cells == null
                 || !string.Equals(System.IO.Path.GetExtension(table.Path), ".xlsx", StringComparison.OrdinalIgnoreCase)) { continue; }
-            bool isKey = table.KeyCols != null && Array.IndexOf(table.KeyCols, type.Field) >= 0;
+            int field = TypeField(table, type);
+            bool isKey = table.KeyCols != null && Array.IndexOf(table.KeyCols, field) >= 0;
             for (int row = 0; row < table.Rows; row++)
             {
-                string value = table.Cells[row][type.Field];
+                string value = table.Cells[row][field];
                 if (value.Length == 0) { continue; }
                 DateTime parsed;
                 if (type.TryDate(value, out parsed)) { continue; }
                 string converted = SerialDate(value, type.Format, table.InputCounts.Date1904);
                 if (converted == null) { continue; }
-                table.Cells[row][type.Field] = converted;
+                table.Cells[row][field] = converted;
                 if (isKey && !keyChanged.Contains(table)) { keyChanged.Add(table); }
             }
         }
@@ -1363,9 +1364,10 @@ public sealed class Rdv3Data
             Rdv3Table table = (tables == null || type.TableOrd < 0 || type.TableOrd >= tables.Length)
                 ? null : tables[type.TableOrd];
             if (table == null || type.Type == "text") { continue; }
+            int field = TypeField(table, type);
             for (int row = 0; row < table.Rows; row++)
             {
-                string value = table.Field(row, type.Field);
+                string value = table.Field(row, field);
                 if (value.Length == 0) { continue; }
                 bool valid;
                 DateTime date;
@@ -1398,6 +1400,22 @@ public sealed class Rdv3Data
             { pair.Key.InputCounts.Exclude(pair.Key.Path, pair.Key.SourceRow(row.Key), string.Join(" / ", row.Value.ToArray())); }
             pair.Key.RemoveRows(new HashSet<int>(pair.Value.Keys));
         }
+    }
+
+    public void ValidateInput(Rdv3Table table, int ordinal)
+    {
+        Rdv3Table[] tables = new Rdv3Table[Tables.Count];
+        tables[ordinal] = table;
+        ConvertWorkbookDates(tables);
+        ValidateTypes(tables);
+    }
+
+    private int TypeField(Rdv3Table table, Rdv3ColumnTypeDef type)
+    {
+        string column = type.Ref.Substring(type.Ref.IndexOf('.') + 1);
+        int field = FieldOf(table.Head, column);
+        if (field < 0) { throw Missing(Tables[type.TableOrd], column, "types." + type.Ref); }
+        return field;
     }
 
     private static void Report(Rdv3Validation validation, Rdv3DataError error)

@@ -16,6 +16,7 @@
 
 public static class Rdv3Text
 {
+    public const string RecordXmlValue = "値「{0}」には XLSX に保存できない文字があります。";
     public static string Format(string text, params object[] values)
     { return string.Format(System.Globalization.CultureInfo.InvariantCulture, text, values); }
 

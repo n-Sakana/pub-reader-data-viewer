@@ -620,10 +620,14 @@ public static class Rdv3Xlsx
         { throw new InvalidDataException(Rdv3Text.StorageContractMismatch); }
     }
 
-    private static void ValidateCell(string value)
+    private static void ValidateCell(string value, int column, int row)
     {
-        if (value == null || value.Length > 32767) { throw new InvalidDataException(Rdv3Text.XlsxInvalidWriteCell); }
-        XmlConvert.VerifyXmlChars(value);
+        string location = CellAddress(column, row);
+        if (value == null || value.Length > 32767)
+        { throw new InvalidDataException(location + ": " + Rdv3Text.XlsxInvalidWriteCell); }
+        try { XmlConvert.VerifyXmlChars(value); }
+        catch (XmlException)
+        { throw new InvalidDataException(location + ": " + Rdv3Text.Format(Rdv3Text.RecordXmlValue, Rdv3Input.Display(value))); }
     }
 
     private static void ValidateWrite(string[] head, string stateHead, string[] lines, string[] states)
@@ -631,15 +635,15 @@ public static class Rdv3Xlsx
         if (head == null || lines == null || states == null || lines.Length != states.Length
             || head.Length == 0 || head.Length >= 16384 || lines.Length >= 1048576)
         { throw new InvalidDataException(Rdv3Text.XlsxInvalidDimensions); }
-        ValidateCell(stateHead);
-        for (int c = 0; c < head.Length; c++) { ValidateCell(head[c]); }
+        ValidateCell(stateHead, 0, 1);
+        for (int c = 0; c < head.Length; c++) { ValidateCell(head[c], c + 1, 1); }
         for (int r = 0; r < lines.Length; r++)
         {
-            ValidateCell(states[r]);
+            ValidateCell(states[r], 0, r + 2);
             if (lines[r] == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNullRow, r + 2)); }
             string[] cells = lines[r].Split('\t');
             if (cells.Length != head.Length) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerRowColumns, r + 2, head.Length, cells.Length)); }
-            for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c]); }
+            for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c], c + 1, r + 2); }
         }
     }
 

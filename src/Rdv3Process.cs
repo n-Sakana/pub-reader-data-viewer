@@ -154,6 +154,7 @@ public static class Rdv3Process
             {
                 string path = Path.IsPathRooted(input.File) ? input.File : Path.Combine(dataDir, input.File);
                 table = Rdv3Table.Read(path, input.Id, input.Enc, input.Columns ?? new string[] { input.Column }, input.KeyValidation, input.EncodingSetting, data.SourceReferences(input), input.HeaderRow, input.Delimiter);
+                if (input.IsTable) { data.ValidateInput(table, input.TableOrd); }
                 new Rdv3Index(table);                    // enforce the configured duplicate rule
                 table.AddWarnings(prepared.Warnings);
             }
@@ -854,7 +855,14 @@ public static class Rdv3Process
                 string cell = source.Rows[i][fields[c]];
                 decimal number;
                 if (step.Orders[c].Type == "number" && cell.Length > 0 && !Rdv3Input.TryNumber(cell, out number))
-                { Exclude(result, source, i, step, Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(cell))); invalid = true; break; }
+                {
+                    string reason = Rdv3Text.Format(Rdv3Text.RecordNumber, Rdv3Input.Display(cell));
+                    // A sort can directly replace ledger. Never turn a bad
+                    // persisted value into an implicit deletion of that row.
+                    if (source.Kind == "ledger")
+                    { throw new InvalidDataException(source.Origin(i) + ": " + step.Orders[c].Column + ": " + reason); }
+                    Exclude(result, source, i, step, reason); invalid = true; break;
+                }
             }
             if (invalid) { continue; }
             SortValue value = new SortValue();

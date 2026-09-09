@@ -98,9 +98,14 @@ internal sealed class Rdv3LedgerStore
                 || (checkedLines != null && !Rdv3Ledger.SameContent(checkedLines, latestLines, out firstChanged)))
             { throw new IOException(Rdv3Text.UpdateChangedDuringCheck); }
             t = Rdv3Clock.Now();
-            update = source.Prepared == null
-                ? Rdv3Ledger.ApplyUpdate(source.Job, latestLines, latestStates, source.Lines, data.IdentityCols, work.InitialStored)
-                : Rdv3Process.Execute(source.Prepared, latestLines, latestStates, work.InitialStored, false).Update;
+            if (source.Prepared == null)
+            { update = Rdv3Ledger.ApplyUpdate(source.Job, latestLines, latestStates, source.Lines, data.IdentityCols, work.InitialStored); }
+            else
+            {
+                Rdv3ProcessResult executed = Rdv3Process.Execute(source.Prepared, latestLines, latestStates, work.InitialStored, false);
+                update = executed.Update;
+                foreach (string warning in executed.Warnings) { warn(warning); }
+            }
             string operation = source.Job.ApplyStep == null ? "pipeline" : source.Job.ApplyStep.Operation;
             trace("apply", "operation=" + operation
                 + " source=" + source.Lines.Length.ToString(CultureInfo.InvariantCulture)
