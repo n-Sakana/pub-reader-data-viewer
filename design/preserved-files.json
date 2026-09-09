@@ -1,5 +1,5 @@
 {
-  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained. Includes selected-record restoration after another PC sends (2026-09-09 VPS verification).",
+  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained. Includes selected-record restoration after another PC sends (2026-09-09 VPS verification). Includes the search input label placed above its field to match the display fields, and the search key cleared after a successful send (2026-09-10).",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "283a257c06370f3d436d081e749e1351385a264003ce3526e9c6ede87e8c16a2",
+      "sha256": "b7e2ee6e752c117c129dba3c7d4fec696fb322548a9e2216192b5c7ce1463add",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -206,7 +206,7 @@
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "7450613001952f4ed50b60d84b79ea99be63c0160d35c6e4518ad8ac448a9bf6",
+      "sha256": "057c6b421ffc2dbb8618ae9e7647b1d0e8e8c235cfe9ada5fc3ceb66cfd704fa",
       "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
     },
     {
@@ -276,12 +276,12 @@
     },
     {
       "path": "web/app.css",
-      "sha256": "67a0368f9e5744186e33083fc4ee218bfde1e67264f1d3b74ec942ed670fb401",
+      "sha256": "50dd51f9776739ee701b4aedc926dae782345192ee7c58c6651cb405a285643c",
       "baselineSha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d"
     },
     {
       "path": "web/app.js",
-      "sha256": "41e1d702403260d7dd2ee9284b904f77f7ea247e3cbd81a546b0a4b9361dfe65",
+      "sha256": "15aee6050a0f756b2d1b8da8762b58c09bec5093d68ee0ccf26a7fb50692484e",
       "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
     },
     {
