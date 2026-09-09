@@ -17,8 +17,7 @@
   --calendar-cell:24px;
 }
 
-/* 窓を広げたぶんは画面がそのまま受け取る（引いている間も追従する）。
-   縦は card の自然な高さのまま（fieldset を伸ばしても内側の箱は追従しない）。 */
+/* 窓の余った高さはメモと備考へ配る。狭い窓では自然な高さを保ってスクロールする。 */
 .stage.runtime{max-width:none;}
 .runtime .win{height:100%;display:flex;flex-direction:column;font-family:var(--ff);font-size:var(--body-font);}
 /* Windows が枠と題を描くので、ページ側の外枠は要らない。中身だけを描く。 */
@@ -45,7 +44,9 @@
 .runtime .dynamic-row{height:var(--row-height);margin:0;}
 .runtime .dynamic-row label{width:var(--label-width);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .runtime .dynamic-text{height:var(--text-height);line-height:20px;white-space:pre-wrap;overflow:auto;}
-.runtime .text-section{display:flex;flex-direction:column;flex:1 0 auto;}
+/* fieldset は高さが auto のままだと内部の表示欄が伸びない。
+   内容の初期高さを lines から与え、枠の padding は既存の値をそのまま加える。 */
+.runtime .text-section{display:flex;flex-direction:column;flex:1 0 auto;height:var(--text-height);box-sizing:content-box;}
 .runtime .text-section .dynamic-text{flex:1;min-height:var(--text-height);}
 .runtime .band{height:max(var(--band-height),var(--judgment-height));min-height:max(var(--band-height),var(--judgment-height));}
 .runtime .band .ok{font-size:var(--judgment-font);}

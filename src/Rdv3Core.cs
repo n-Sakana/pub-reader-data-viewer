@@ -7,14 +7,14 @@
 //
 // The CSVs are RAW data and the tables are described by settings.json
 // ("data": which files, which column is the key, how they join -- Rdv3Data).
-// A table's column names are its header row. Key validation is strict by
-// default; a definition can opt into Unicode, variable width, distinct values
-// and skipped blank keys for condition-list inputs.
+// A table's column names are its header row. Key rules select ASCII or
+// Unicode, fixed or variable width, and unique or explicit distinct values.
+// Invalid records and conflicting key groups are reported and excluded.
 //
 // Short CSV records and blank lines are counted and skipped. Extra columns,
-// referenced duplicate headers, malformed quoting,
-// an invalid encoding, or an unusable key. Quoted CSV uses Rdv3Csv. A control character inside a
-// field is different: refusing a whole input for one old byte is too broad.
+// referenced duplicate headers, malformed quoting and invalid encodings
+// still stop a structurally unusable input. Quoted CSV uses Rdv3Csv.
+// A control character outside a key is reported and sanitized:
 // The first occurrence is reported and each such byte is replaced with '?',
 // keeping both the ledger's tab-separated rows and its XML safe. Bytes that
 // are not valid in the declared encoding cause an error rather than
