@@ -274,7 +274,7 @@ public static class Rdv3Process
             else if (step.Operation == "update")
             {
                 int changed;
-                output = Update((Rdv3Relation)left, (Rdv3RowSelection)right, step,
+                output = Update(data, (Rdv3Relation)left, (Rdv3RowSelection)right, step,
                                 job.OnSourceChange, initialStored, directReset, out changed, result);
                 directUpdated += changed;
             }
@@ -307,6 +307,9 @@ public static class Rdv3Process
                 result.Deleted += update.Deleted;
             }
             else { throw new InvalidOperationException("unknown operation " + step.Operation); }
+            Rdv3Relation outputTable = output as Rdv3Relation;
+            if (outputTable != null && outputTable.Kind != "ledger")
+            { output = ValidResultTypes(data, outputTable, step, result); }
             values[step.Output] = output;
             last = output;
         }
@@ -606,7 +609,7 @@ public static class Rdv3Process
         return output;
     }
 
-    private static Rdv3Relation Update(Rdv3Relation source, Rdv3RowSelection selected,
+    private static Rdv3Relation Update(Rdv3Data data, Rdv3Relation source, Rdv3RowSelection selected,
                                        Rdv3ProcessStepDef step, string onSourceChange,
                                        string initialStored, List<string> resetLines,
                                        out int changed, Rdv3ProcessResult result)
@@ -639,7 +642,13 @@ public static class Rdv3Process
             {
                 for (int i = 0; i < columns.Length; i++)
                 {
-                    try { row[columns[i]] = Evaluate(expressions[i], source.Rows[r]); }
+                    try
+                    {
+                        row[columns[i]] = Evaluate(expressions[i], source.Rows[r]);
+                        Rdv3ColumnTypeDef type = data.TypeOf(source.Columns[columns[i]]);
+                        if (type != null && type.Type != "text" && row[columns[i]].Length > 0)
+                        { CheckTypedResult(type, row[columns[i]], source.Origin(r)); }
+                    }
                     catch (Rdv3RecordError error) { Exclude(result, source, r, step, error.Message); failed = true; break; }
                 }
             }
@@ -996,6 +1005,98 @@ public static class Rdv3Process
         output.Kind = source.Kind;
         output.Columns = (string[])source.Columns.Clone();
         if (source.States != null) { output.States = new List<string>(); }
+        return output;
+    }
+
+    private static string Evaluate(Rdv3Expression expression, string[] row)
+    {
+        try { return expression.Evaluate(row); }
+        catch (OverflowException) { throw new Rdv3RecordError(Rdv3Text.RecordOverflow); }
+        catch (RegexMatchTimeoutException) { throw new Rdv3RecordError(Rdv3Text.RecordRegexTimeout); }
+    }
+
+    private static void Exclude(Rdv3ProcessResult result, Rdv3Relation source, int row,
+                                Rdv3ProcessStepDef step, string reason)
+    {
+        List<string> cells = new List<string>();
+        for (int c = 0; c < source.Columns.Length; c++)
+        { cells.Add(source.Columns[c] + "=" + Rdv3Input.Display(source.Rows[row][c])); }
+        string where = Rdv3Text.Format(Rdv3Text.RecordStep, step.Operation, step.Target1, step.Output, source.Origin(row));
+        result.Warnings.Add(Rdv3Text.Format(Rdv3Text.RecordExcluded, where,
+            reason + " " + Rdv3Text.Format(Rdv3Text.RecordValues, string.Join(" / ", cells.ToArray()))));
+        result.SkippedInvalid++;
+    }
+
+    private static Rdv3Relation ValidResultTypes(Rdv3Data data, Rdv3Relation source,
+                                                 Rdv3ProcessStepDef step, Rdv3ProcessResult result)
+    {
+        List<int> columns = new List<int>();
+        List<Rdv3ColumnTypeDef> types = new List<Rdv3ColumnTypeDef>();
+        for (int c = 0; c < source.Columns.Length; c++)
+        {
+            Rdv3ColumnTypeDef type = data.TypeOf(source.Columns[c]);
+            if (type != null && type.Type != "text") { columns.Add(c); types.Add(type); }
+        }
+        if (columns.Count == 0) { return source; }
+        Rdv3Relation output = NewLike(source);
+        for (int r = 0; r < source.Rows.Count; r++)
+        {
+            List<string> errors = new List<string>();
+            for (int c = 0; c < columns.Count; c++)
+            {
+                string value = source.Rows[r][columns[c]];
+                if (value.Length == 0) { continue; }
+                try { CheckTypedResult(types[c], value, source.Origin(r)); }
+                catch (Rdv3RecordError error) { errors.Add(error.Message); }
+            }
+            if (errors.Count > 0) { Exclude(result, source, r, step, string.Join(" / ", errors.ToArray())); continue; }
+            output.Rows.Add(source.Rows[r]); output.Origins.Add(source.Origin(r));
+            if (output.States != null) { output.States.Add(source.States[r]); }
+        }
+        return output;
+    }
+
+    private static Rdv3Relation ValidSourceIdentity(Rdv3Data data, Rdv3ProcessJobDef job,
+        Rdv3Relation source, int[] identity, Rdv3ProcessStepDef step, Rdv3ProcessResult result)
+    {
+        Dictionary<string, List<int>> groups = new Dictionary<string, List<int>>(StringComparer.Ordinal);
+        HashSet<int> excluded = new HashSet<int>();
+        string column = string.Join(" / ", step.KeySide(0));
+        for (int r = 0; r < source.Rows.Count; r++)
+        {
+            string key = Rdv3Key.FromCells(source.Rows[r], identity);
+            if (key.Length == 0)
+            {
+                Exclude(result, source, r, step, Rdv3Text.ProcessBlankIdentity.Replace("{job}", job.Name).Replace("{column}", column));
+                excluded.Add(r); continue;
+            }
+            List<int> group;
+            if (!groups.TryGetValue(key, out group)) { group = new List<int>(); groups.Add(key, group); }
+            group.Add(r);
+        }
+        foreach (KeyValuePair<string, List<int>> pair in groups)
+        {
+            List<int> group = pair.Value;
+            if (group.Count < 2) { continue; }
+            bool conflict = false;
+            for (int i = 1; i < group.Count; i++)
+            { if (!SameRow(source.Rows[group[0]], source.Rows[group[i]])) { conflict = true; break; } }
+            for (int i = conflict ? 0 : 1; i < group.Count; i++)
+            {
+                Exclude(result, source, group[i], step,
+                    Rdv3Text.ProcessDuplicateIdentity.Replace("{job}", job.Name).Replace("{column}", column).Replace("{value}", Rdv3Input.Display(pair.Key))
+                    + " " + (conflict ? Rdv3Text.RecordConflict : Rdv3Text.RecordIdentical));
+                excluded.Add(group[i]);
+            }
+        }
+        if (excluded.Count == 0) { return source; }
+        Rdv3Relation output = NewLike(source);
+        for (int r = 0; r < source.Rows.Count; r++)
+        {
+            if (excluded.Contains(r)) { continue; }
+            output.Rows.Add(source.Rows[r]); output.Origins.Add(source.Origin(r));
+            if (output.States != null) { output.States.Add(source.States[r]); }
+        }
         return output;
     }
 

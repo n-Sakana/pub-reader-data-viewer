@@ -133,16 +133,18 @@ public static class Rdv3Headless
         StringBuilder sb = new StringBuilder("{\"mode\":");
         sb.Append(Rdv3Json.Quote(execute ? "update" : "validate"));
         sb.Append(",\"job\":").Append(Rdv3Json.Quote(data.UpdateJob.Id));
-        int empty = 0, duplicate = 0, shortRows = 0, blankRows = 0, columns = 0;
+        int empty = 0, duplicate = 0, shortRows = 0, blankRows = 0, columns = 0, invalid = 0;
         foreach (Rdv3InputResult input in inputs)
         {
             empty += input.SkippedEmpty; duplicate += input.SkippedDuplicate;
             shortRows += input.SkippedShort; blankRows += input.SkippedBlank; columns += input.SkippedColumns;
+            invalid += input.SkippedInvalid;
         }
         sb.Append(",\"summary\":{\"rows\":").Append(result == null ? "null" : N(result.Lines.Length));
         sb.Append(",\"skippedEmpty\":").Append(N(empty)).Append(",\"skippedDuplicate\":").Append(N(duplicate));
         sb.Append(",\"skippedShort\":").Append(N(shortRows)).Append(",\"skippedBlank\":").Append(N(blankRows));
         sb.Append(",\"skippedColumns\":").Append(N(columns));
+        sb.Append(",\"skippedInvalid\":").Append(N(invalid + (result == null ? 0 : result.SkippedInvalid)));
         sb.Append(",\"baselineRows\":").Append(N(before.Length));
         sb.Append(",\"resetRows\":").Append(result == null ? "null" : N(reset.Count)).Append('}');
         sb.Append(",\"inputs\":[");
@@ -154,7 +156,8 @@ public static class Rdv3Headless
             sb.Append(",\"rows\":").Append(N(input.Rows)).Append(",\"skippedEmpty\":").Append(N(input.SkippedEmpty));
             sb.Append(",\"skippedDuplicate\":").Append(N(input.SkippedDuplicate));
             sb.Append(",\"skippedShort\":").Append(N(input.SkippedShort)).Append(",\"skippedBlank\":").Append(N(input.SkippedBlank));
-            sb.Append(",\"skippedColumns\":").Append(N(input.SkippedColumns)).Append('}');
+            sb.Append(",\"skippedColumns\":").Append(N(input.SkippedColumns));
+            sb.Append(",\"skippedInvalid\":").Append(N(input.SkippedInvalid)).Append('}');
         }
         sb.Append("],\"warnings\":").Append(Rdv3WebJson.S(new List<string>(new HashSet<string>(warnings)).ToArray()));
         sb.Append(",\"joins\":[");
