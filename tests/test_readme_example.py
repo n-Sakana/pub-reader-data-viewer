@@ -66,7 +66,7 @@ with tempfile.TemporaryDirectory(prefix='rdv-readme-') as scratch:
     passed('complete-json-and-japanese-dates', 'exit 0; four dates include single- and double-digit month/day')
     first_path, first=update('first')
     rows={r[0]:dict(zip(first['columns'],r)) for r in first['rows']}
-    check(first['summary']==dict(rows=4,skippedEmpty=0,skippedDuplicate=0,skippedShort=0,skippedBlank=0,skippedColumns=0,baselineRows=0,resetRows=0), 'first summary')
+    check(first['summary']==dict(rows=4,skippedEmpty=0,skippedDuplicate=0,skippedShort=0,skippedBlank=0,skippedColumns=0,skippedInvalid=0,baselineRows=0,resetRows=0), 'first summary')
     check(rows['R01']['B.amount']=='80' and rows['R03']['B.amount']=='1200', 'aggregate amounts')
     check([r for r in rows if rows[r]['B.id']=='']==['R02','R04'], 'left join missing rows')
     check([j['unmatchedLeft'] for j in first['joins']]==[2,0,4], 'join counts')
