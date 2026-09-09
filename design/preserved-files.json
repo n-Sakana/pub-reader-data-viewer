@@ -1,5 +1,5 @@
 {
-  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained.",
+  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained. Includes selected-record restoration after another PC sends (2026-09-09 VPS verification).",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
@@ -77,7 +77,7 @@
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "bde3fa938e78f3dc9dc3bcb41f2e63c4af759c9ea526f219c140b4eccdd07565",
+      "sha256": "283a257c06370f3d436d081e749e1351385a264003ce3526e9c6ede87e8c16a2",
       "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
     },
     {
@@ -243,7 +243,7 @@
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "98c0919a9301477d6533212efd230ad7110f47db870de6e135bdf74b1f19d525",
+      "sha256": "b5f370dc888ff210c1ae89bf46e538256317fdade35f61878f482fefb585e5b0",
       "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
     },
     {
