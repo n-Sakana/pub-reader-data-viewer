@@ -1,7 +1,7 @@
 {
     "scope":  "PowerShell packaging integration; native only with -Native",
     "powershell":  "5.1.26100.9168",
-    "utc":  "2026-09-09T00:04:12.1546350Z",
+    "utc":  "2026-09-09T00:28:46.7208964Z",
     "tests":  [
                   {
                       "name":  "powershell-parser",
