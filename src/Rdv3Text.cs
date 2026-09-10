@@ -16,6 +16,7 @@
 
 public static class Rdv3Text
 {
+    public const string DeleteStateHint = "\u51E6\u7406\u72B6\u614B\u306F\u5171\u6709\u53F0\u5E33\u306B\u4FDD\u5B58\u6E08\u307F\u306E\u5024\u3067\u5224\u5B9A\u3057\u307E\u3059\u3002\u672A\u9001\u4FE1\u306E\u5909\u66F4\u306F\u9001\u4FE1\u3057\u3066\u304B\u3089\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
     public const string RecordXmlValue = "値「{0}」には XLSX に保存できない文字があります。";
     public static string Format(string text, params object[] values)
     { return string.Format(System.Globalization.CultureInfo.InvariantCulture, text, values); }

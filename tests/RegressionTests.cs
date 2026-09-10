@@ -105,6 +105,37 @@ public static class Rdv3RegressionTests
         try
         {
             Test("json-comments-trailing-comma", delegate { Check(Rdv3Json.Parse("{/*x*/\"a\":[1,],}").Member("a").Count == 1, "JSONC"); });
+            Test("screen-requires-preserves-saved-record", delegate {
+                Rdv3Bind bind = Rdv3Bind.Read(Rdv3Json.Parse("{\"field\":\"A.name\",\"requires\":[\"B.id\",\"C.id\"]}"));
+                Rdv3Fields fields = new Rdv3Fields(new string[] { "A.name", "B.id", "C.id" });
+                Rdv3View view = new Rdv3View(); view.Record = new string[] { "kept", "b", "c" };
+                Check(Rdv3Eval.Evaluate(bind, view, fields, null).Text == "kept", "populated dependencies hid value");
+                view.Record[2] = "";
+                Check(Rdv3Eval.Evaluate(bind, view, fields, null).Text == "", "missing dependency did not blank display");
+                Check(view.Record[0] == "kept", "display condition erased saved data");
+                view.Record = null;
+                Check(Rdv3Eval.Evaluate(bind, view, fields, null).Text == "", "no selection displayed a value");
+            });
+            Test("screen-requires-rejects-unknown-fields", delegate {
+                Rdv3Bind bind = Rdv3Bind.Read(Rdv3Json.Parse("{\"field\":\"A.name\",\"requires\":[\"B.id\",\"missing\"]}"));
+                Rdv3View view = new Rdv3View(); view.Record = new string[] { "kept", "" };
+                Check(Rdv3Eval.Evaluate(bind, view, new Rdv3Fields(new string[] { "A.name", "B.id" }), null).Tone == Rdv3Value.Error,
+                    "an empty dependency concealed an unknown field");
+                Throws<Rdv3LoadError>(delegate { Rdv3Bind.Read(Rdv3Json.Parse("{\"field\":\"A.name\",\"requires\":[\" \" ]}")); });
+                Rdv3Config cfg = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+                foreach (Rdv3Judgment judgment in cfg.Screen.Judgments.Values) { judgment.Source.Requires = new string[] { "missing" }; }
+                Throws<Rdv3LoadError>(delegate { cfg.Screen.Check(cfg.Data); });
+            });
+            Test("judgment-requires-tests-empty-and-unresolved", delegate {
+                Rdv3Judgment judgment = Rdv3Judgment.Read("state", Rdv3Json.Parse("{\"source\":{\"field\":\"B.id\",\"requires\":[\"C.id\"]},\"rules\":[{\"pattern\":\".+\",\"result\":\"yes\"},{\"empty\":true,\"result\":\"none\"}],\"results\":{\"yes\":{\"text\":\"yes\"},\"none\":{\"text\":\"none\"}}}"));
+                Rdv3Fields fields = new Rdv3Fields(new string[] { "B.id", "C.id" });
+                Rdv3View view = new Rdv3View(); view.Record = new string[] { "b", "c" };
+                Check(Rdv3Eval.Judge(judgment, view, fields).Result.Id == "yes", "populated judgment");
+                view.Record[1] = "";
+                Check(Rdv3Eval.Judge(judgment, view, fields).Result.Id == "none", "missing dependency must reach empty rule");
+                judgment.Source.Requires = new string[] { "missing" };
+                Check(Rdv3Eval.Judge(judgment, view, fields).Result.Id == "error", "unknown dependency is not an empty result");
+            });
             Test("json-string-roundtrip", delegate {
                 char[] controls = new char[32];
                 for (int i = 0; i < controls.Length; i++) { controls[i] = (char)i; }

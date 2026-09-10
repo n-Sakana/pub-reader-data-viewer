@@ -20,6 +20,7 @@ public sealed class Rdv3Bind
     public string State = "";                 // or an app value by name
     public Rdv3Format Format;                 // null = as is
     public string Empty = "N/A";              // a record is shown but the value is blank
+    public string[] Requires = new string[0]; // show only when these saved fields are populated
     public int Line;                          // where it is written, for the column check
 
     public bool IsField { get { return Fields.Length > 0; } }
@@ -42,7 +43,7 @@ public sealed class Rdv3Bind
     public static Rdv3Bind Read(Rdv3Json o)
     {
         if (o == null) { throw new Rdv3LoadError("a value is required", 0); }
-        o.Only("field", "fields", "joiner", "state", "format", "empty");
+        o.Only("field", "fields", "joiner", "state", "format", "empty", "requires");
         Rdv3Bind b = new Rdv3Bind();
         b.Line = o.Line;
         string one = o.StrOr("field", "");
@@ -59,6 +60,12 @@ public sealed class Rdv3Bind
         b.Joiner = o.StrOr("joiner", b.Joiner);
         b.State = st;
         b.Empty = o.StrOr("empty", b.Empty);
+        b.Requires = o.Strs("requires", false);
+        for (int i = 0; i < b.Requires.Length; i++)
+        {
+            b.Requires[i] = b.Requires[i].Trim();
+            if (b.Requires[i].Length == 0) { throw o.Member("requires").Fail("must name non-empty saved fields"); }
+        }
         if (b.IsState && !IsStateName(b.State))
         {
             throw o.Member("state").Fail(b.State + " is not a value the program provides (" + string.Join(", ", StateNames) + ")");
@@ -749,6 +756,13 @@ public sealed class Rdv3Screen
         for (int i = 0; i < all.Count; i++)
         {
             Rdv3Bind b = all[i];
+            for (int k = 0; k < b.Requires.Length; k++)
+            {
+                if (data.IndexOf(b.Requires[k]) < 0)
+                {
+                    Report(validation, new Rdv3LoadError("screen.requires: " + b.Requires[k] + " is not one of data.ledger.columns", b.Line));
+                }
+            }
             if (!b.IsField) { continue; }
             for (int k = 0; k < b.Fields.Length; k++)
             {

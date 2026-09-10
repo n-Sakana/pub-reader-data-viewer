@@ -524,12 +524,17 @@ public static class Rdv3Process
         Rdv3Relation right = rightValue as Rdv3Relation;
         if (left != null && step.Where != null)
         {
-            int column = left.NeedColumn(step.Where.Column);
+            bool workState = step.Where.Column == "$work";
+            if (workState && (left.Kind != "ledger" || left.States == null || left.States.Count != left.Rows.Count))
+            {
+                throw new InvalidDataException("$work requires the ledger's application-owned states");
+            }
+            int column = workState ? -1 : left.NeedColumn(step.Where.Column);
             Rdv3RowSelection selected = new Rdv3RowSelection();
             selected.Table = left;
             for (int i = 0; i < left.Rows.Count; i++)
             {
-                try { if (Matches(left.Rows[i][column], step.Where)) { selected.Rows.Add(i); } }
+                try { if (Matches(workState ? (left.States[i] ?? "") : left.Rows[i][column], step.Where)) { selected.Rows.Add(i); } }
                 catch (Rdv3RecordError error) { Exclude(result, left, i, step, error.Message); }
             }
             return selected;

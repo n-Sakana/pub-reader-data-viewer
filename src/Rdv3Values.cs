@@ -112,6 +112,9 @@ public static class Rdv3Eval
     public static Rdv3Value Evaluate(Rdv3Bind b, Rdv3View v, Rdv3Fields f, Rdv3WorkState w)
     {
         if (b == null) { return new Rdv3Value("", Rdv3Value.Muted); }
+        int required = RequiredFields(b, v, f);
+        if (required < 0) { return new Rdv3Value(Rdv3Text.FieldUnresolved, Rdv3Value.Error); }
+        if (required == 0) { return new Rdv3Value("", Rdv3Value.Muted); }
         if (b.IsState) { return StateValue(b.State, v, w); }
         if (!b.IsField) { return new Rdv3Value("", Rdv3Value.Muted); }
         if (v == null || v.Record == null) { return new Rdv3Value("", Rdv3Value.Muted); }
@@ -135,6 +138,20 @@ public static class Rdv3Eval
         }
         if (sb.Length == 0) { return new Rdv3Value(b.Empty, Rdv3Value.Muted); }
         return new Rdv3Value(sb.ToString(), Rdv3Value.Normal);
+    }
+
+    // Validate every dependency before deciding to hide the value: an unknown
+    // field must not disappear behind a different, legitimately empty field.
+    private static int RequiredFields(Rdv3Bind b, Rdv3View v, Rdv3Fields f)
+    {
+        bool missing = false;
+        for (int i = 0; i < b.Requires.Length; i++)
+        {
+            int col = (f == null) ? -1 : f.IndexOf(b.Requires[i]);
+            if (col < 0) { return -1; }
+            if (v == null || v.Record == null || col >= v.Record.Length || string.IsNullOrEmpty(v.Record[col])) { missing = true; }
+        }
+        return missing ? 0 : 1;
     }
 
     private static Rdv3Value StateValue(string name, Rdv3View v, Rdv3WorkState w)
@@ -237,7 +254,10 @@ public static class Rdv3Eval
         Rdv3Verdict out1 = new Rdv3Verdict();
         if (v == null || v.Record == null) { return out1; }          // nothing to judge yet
         if (j == null || j.Source == null) { out1.Result = (j == null) ? ErrorResult() : j.ResultOf(Rdv3Judgment.Error); return out1; }
-        if (j.Source.IsState)
+        int required = RequiredFields(j.Source, v, f);
+        if (required < 0) { out1.Result = j.ResultOf(Rdv3Judgment.Error); return out1; }
+        if (required == 0) { out1.Raw = ""; }
+        else if (j.Source.IsState)
         {
             out1.Raw = StateValue(j.Source.State, v, null).Text;
         }

@@ -736,7 +736,8 @@ public sealed class Rdv3Data
         if (w == null) { return null; }
         w.Only("column", "operator", "value");
         Rdv3ProcessWhereDef result = new Rdv3ProcessWhereDef();
-        result.Column = NeedRef(w.Need("column"), w.Member("column"));
+        string column = w.Need("column");
+        result.Column = column == "$work" ? column : NeedRef(column, w.Member("column"));
         result.Operator = w.Word("operator", "", "equals", "notEquals", "contains", "startsWith",
                                  "endsWith", "empty", "notEmpty", "greater", "atLeast", "less", "atMost");
         result.Value = w.StrOr("value", "");
@@ -925,6 +926,8 @@ public sealed class Rdv3Data
         {
             if (leftTable && step.Where != null && right == null)
             {
+                NeedTypes(step.Where.Column != "$work" || left.Kind == "ledger", at,
+                    "$work is the application-owned state of a ledger, not an input-table column");
                 NeedTypes(step.Keys.Length == 0, at, "a predicate extract does not use keys");
                 NeedEmptyCondition(step, at);
                 ProcessType rows = NewType("rows", token);

@@ -157,8 +157,16 @@ public static class Rdv3ProcessForm
         bool deleting = job.Kind == "delete";
         sb.Append("{\"title\":").Append(Rdv3WebJson.Q(
             deleting ? Rdv3Text.DeleteRecordsTitle : Rdv3Text.UpdateRecordsTitle));
-        sb.Append(",\"hint\":").Append(Rdv3WebJson.Q(
-            deleting ? Rdv3Text.DeleteRecordsHint : Rdv3Text.UpdateRecordsHint));
+        string hint = deleting ? Rdv3Text.DeleteRecordsHint : Rdv3Text.UpdateRecordsHint;
+        if (deleting)
+        {
+            foreach (Rdv3ProcessStepDef step in job.Steps)
+            {
+                if (step.Where != null && step.Where.Column == "$work")
+                { hint += " " + Rdv3Text.DeleteStateHint; break; }
+            }
+        }
+        sb.Append(",\"hint\":").Append(Rdv3WebJson.Q(hint));
         sb.Append(",\"inputTitle\":").Append(Rdv3WebJson.Q(
             Rdv3Text.SecInputs.Replace("{dir}", new DirectoryInfo(dataDir).Name)));
         sb.Append(",\"inputs\":[");

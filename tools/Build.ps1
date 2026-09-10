@@ -136,8 +136,15 @@ function New-Win98Package($Options) {
         $packageName = 'ReaderDataViewer-' + $id
         $package = Join-Path $stage $packageName
         [IO.Directory]::CreateDirectory($package) | Out-Null
-        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'settings.json', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'README.md', 'PAYMENT-GUIDE.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
             Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
+        }
+        # 見本データ一式と同じ形の設定を入れる。sample-v4 に無ければ直下のものを使う。
+        $sampleSettings = Join-Path $script:Root 'tests/fixtures/sample-v4/settings.json'
+        if ($Options.Data -eq 'sample' -and (Test-Path -LiteralPath $sampleSettings -PathType Leaf)) {
+            Copy-SafeFile $sampleSettings (Join-Path $package 'settings.json')
+        } else {
+            Copy-SafeFile (Join-Path $script:Root 'settings.json') (Join-Path $package 'settings.json')
         }
         foreach ($dir in @('src','web','lib')) { Copy-SafeTree (Join-Path $script:Root $dir) (Join-Path $package $dir) }
         [IO.Directory]::CreateDirectory((Join-Path $package 'data')) | Out-Null
@@ -148,16 +155,21 @@ function New-Win98Package($Options) {
             # fixture warns and produces a package without sample data; it never
             # fails the build.
             $missing = @()
-            foreach ($csv in @('tableA.csv','tableB.csv','tableC.csv','delete.csv')) {
-                $fixture = Join-Path $script:Root ('tests/fixtures/data/' + $csv)
+            $sampleDir = Join-Path $script:Root 'tests/fixtures/sample-v4'
+            foreach ($name in @(
+                '①取引データ_100件.csv',
+                '②決済管理データ_100件.csv',
+                '③講習受講データ_100件.xlsx',
+                '④処理済みデータ_100件.xlsx')) {
+                $fixture = Join-Path $sampleDir $name
                 if (Test-Path -LiteralPath $fixture -PathType Leaf) {
-                    Copy-SafeFile $fixture (Join-Path $package ('data/' + $csv))
+                    Copy-SafeFile $fixture (Join-Path $package ('data/' + $name))
                 } else {
-                    $missing += $csv
+                    $missing += $name
                 }
             }
             if ($missing.Count -gt 0) {
-                Write-Warning ('Sample CSVs not found in tests/fixtures/data: ' + ($missing -join ', ') + '. The package is built without them; run build/gen_data2.ps1 to regenerate.')
+                Write-Warning ('Sample data not found in tests/fixtures/sample-v4: ' + ($missing -join ', ') + '. The package is built without it.')
             }
         }
         # docs/ は開発中の記録なので配布しない (先生の指示 2026-09-10)。
@@ -168,7 +180,7 @@ function New-Win98Package($Options) {
             "Theme: win98 / motion: off / input data: $($Options.Data)`r`n" +
             "Native compile: $compileStatus / core tests: $testStatus`r`n" +
             "This is a source-at-startup distribution, NOT a standalone EXE.`r`n" +
-            "The original business settings are copied unchanged. Sample data is not your live data.`r`n" +
+            "The sample uses PAY+MAP pairs, two-status payment checks and processed-only deletion. See PAYMENT-GUIDE.md.`r`n" +
             "No live ledger, log, output or local pending changes were copied.`r`n" +
             "Review paths in settings.json BEFORE running a production copy.`r`n" +
             "Check steps before acceptance: README.md`r`n"

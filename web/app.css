@@ -87,6 +87,11 @@
 .runtime .modal-symbol{flex:none;font-size:26px;line-height:1.1;color:#000080;font-weight:bold;width:34px;text-align:center;}
 .runtime .modal-symbol.warn{color:#800000;}
 .runtime .process-gap{height:var(--card-gap);}
+/* 見出しの高さを通常の fieldset/legend の配置に含める。
+   主画面の狭い間隔でも、前の枠や一覧へ見出しを押し出さない。 */
+.runtime .dlg .gb{border:2px groove #fff;padding-top:.5em;box-shadow:none;}
+.runtime .dlg .gb>legend{position:static;}
+.runtime .dlg .process-gap{height:max(var(--card-gap),.75em);}
 .runtime .picker-values label{width:118px;}
 .runtime .picker-values .kv{min-width:0;}
 .runtime .picker-values .fld{flex:1;min-width:0;text-overflow:ellipsis;}

@@ -1,5 +1,7 @@
 # Reader Data Viewer
 
+今回の①②中心の統合・両方の決済ステータス判定・処理済みだけ削除するサンプルは、[業務サンプルの使い方](PAYMENT-GUIDE.md)を参照してください。公開サンプルは `configs/sample/settings.json` です。個別環境の本番用JSONは公開していません。配布ZIPはサンプル設定を同梱します。下記は汎用設定の説明です。
+
 ## まずこの設定を写して、入力に合わせる
 
 CSV / XLSXを表として読み、結合・集計・抽出等から作った共有台帳を検索し、行ごとに確認状態を付けて送信するWindowsアプリです。業務の流れは設定済みの一般操作を組み合わせて表します。自由なプログラム実行や、あらゆる業務の自動化を約束するものではありません。
@@ -936,6 +938,8 @@ R02,1
 全部品に`margin`を指定できます。padding/marginは数値1つ、またはCSSと同じ1～4要素の配列です。columnsのgap省略は17、stackBelow省略は760 CSS pxです。card.gapとcolumns.gapは別の値です。候補列のwidth省略は自動幅、align省略はleft、render省略はtext。`render:tag`と`looks:{"値":"accent","*":"neutral"}`で値別の見せ方を選べます。
 
 `judgments`はsourceの値に対してrulesを上から試し、最初に当たるresultを採用します。equals配列／pattern正規表現／empty:trueは、同じ規則内ではORです。各resultの`text`と`look:ok/ng/undefined/error`をresultsへ書きます。規則不一致はundefined、読めない値はerror。意味のある「要確認」等の文言を、省略のために成功表示へ置き換えないでください。
+
+表示値の定義には、省略可能な`requires`配列で表示に必要な保存列を指定できます。例：`{"field":"A.name","requires":["B.id"],"empty":""}`は、`B.id`が空なら画面の値を空欄にし、台帳の`A.name`は保持します。複数指定した場合は全列に値があるときだけ表示します。判定の`source`に指定した場合、必要な列が空なら判定元を空として`empty:true`の規則へ進みます。存在しない列は設定エラーになり、欠損値として隠しません。
 
 `paths/search/watch/jobs`の領域全体は省略できます。`screen.card`、judgments、watch.targetsも省略できます。全て省略して画面を自動生成する機能ではありません。schema、dataの入力・ジョブ・台帳、screenのworkState/export/candidates/sectionsは必要です。全項目索引に省略値と制約を載せています。
 

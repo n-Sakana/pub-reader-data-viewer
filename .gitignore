@@ -39,6 +39,7 @@ dist/
 *.xlsx
 *.xlsx.lock
 *.xlsx.version
+!tests/fixtures/sample-v4/*.xlsx
 
 # 退役した Excel / VBA 系のビルド生成物 (archive/vba, archive/comparisons)
 *.xlsm
@@ -75,3 +76,6 @@ dist/
 # Python の生成物 (2026-09-10)
 __pycache__/
 *.pyc
+
+# Environment-specific settings are kept locally.
+/configs/production/
