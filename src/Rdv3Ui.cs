@@ -499,6 +499,8 @@ public sealed class Rdv3Form
             else if (type == "modalResult") { CompleteModal(root); }
             else if (type == "dialogSize")
             {
+                // A delayed size message must not move a closed or newer dialog.
+                if (waitingToken == 0 || Number(root, "token", 0) != waitingToken) { return; }
                 host.SizeDialogSurface(
                     Number(root, "width", 0),
                     Number(root, "height", 0),
