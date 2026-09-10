@@ -14,5 +14,5 @@ if($MarkReviewed) {
     }
 }
 if(Test-Path -LiteralPath $Output) { throw 'The test must not overwrite an existing ledger' }
-[Rdv3Xlsx]::Write($Output,$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$states,'readme-example',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work))
+[Rdv3Xlsx]::Write($Output,$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$states,'readme-example',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work),[Rdv3LedgerProtection]::Create($cfg.Data))
 Write-Output ('WROTE '+$Output)

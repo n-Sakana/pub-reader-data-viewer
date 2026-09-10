@@ -18,9 +18,14 @@ def main():
     # Runtime data changes independently of the delivered source revision.
     details['excludedFingerprints']=[entry['path'] for entry in manifest['files']
                                      if entry['path'].startswith('data/') or entry['path'] not in tracked]
+    def fingerprint(entry):
+        data = (root/entry['path']).read_bytes()
+        if entry.get('normalization') == 'crlf-to-lf':
+            data = data.replace(b'\r\n', b'\n')
+        return hashlib.sha256(data).hexdigest()
     for entry in manifest['files']:
         if entry['path'] in details['excludedFingerprints']: continue
-        test('preserved:'+entry['path'],lambda e=entry:check(hashlib.sha256((root/e['path']).read_bytes()).hexdigest()==e['sha256'],'Uploaded baseline differs'))
+        test('preserved:'+entry['path'],lambda e=entry:check(fingerprint(e)==e['sha256'],'Uploaded baseline differs'))
     def win98_only():
         for name in ('design/themes.json','web/theme.json','web/themes.css','web/theme-motion.js','src/03_Theme.cs'):
             check(not (root/name).exists(),'Retired presentation file remains: '+name)

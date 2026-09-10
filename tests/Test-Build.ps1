@@ -6,8 +6,8 @@ Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $builder = Join-Path $root 'tools/Build.ps1'
-$packageName = 'ReaderDataViewer-win98'
-if (Test-Path -LiteralPath (Join-Path $root 'src/Rdv3FixedScreen.cs')) { $packageName = 'ReaderDataViewer-semifixed' }
+$packageName = 'ReaderDataViewer-json-layout'
+if (Test-Path -LiteralPath (Join-Path $root 'src/Rdv3FixedScreen.cs')) { $packageName = 'ReaderDataViewer-fixed-layout' }
 $hostExe = (Get-Process -Id $PID).Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('rdv-build-tests-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($temp) | Out-Null
@@ -70,12 +70,16 @@ try {
                     Assert ((Get-FileHash -LiteralPath $file.FullName).Hash -eq (Get-FileHash -LiteralPath (Join-Path $package ('samples/' + $dir + '/' + $file.Name))).Hash) ('Sample changed: ' + $file.Name)
                 }
             }
-            foreach ($name in @('Migrate-Ledger.ps1','PAYMENT-GUIDE.md','PROTECTION-GUIDE.md','samples/README.md','samples/expected.json')) {
+            foreach ($name in @('tools/Migrate-Ledger.ps1','tools/ReaderDataViewer.cmd','manual/SETTINGS.md','manual/PAYMENT-GUIDE.md','manual/PROTECTION-GUIDE.md','samples/README.md','samples/expected.json')) {
                 Assert ((Get-FileHash -LiteralPath (Join-Path $package $name)).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root $name)).Hash) ('Missing or changed delivery file: ' + $name)
             }
             Assert (@(Get-ChildItem -LiteralPath (Join-Path $package 'output') -Force).Count -eq 0) 'Runtime output was packaged'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'configs/production'))) 'Production settings were packaged'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'docs'))) 'Developer notes were packaged'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $package 'PACKAGE-README.txt'))) 'Duplicate startup documentation was packaged'
+            $release = Get-Content -LiteralPath (Join-Path $package 'manual/release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            Assert ($release.variant -in @('json-layout','fixed-layout')) 'Missing product variant'
+            Assert ((@((Get-ChildItem -LiteralPath $package -File).Name | Sort-Object) -join ',') -eq 'LICENSE,ReaderDataViewer.vbs,README.md,settings.json') 'Unexpected files in the user entry folder'
             $zipPath = Join-Path $published ($packageName + '.zip')
             $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
             try {
@@ -107,7 +111,7 @@ try {
             Assert ($theme.motion -eq 'off') 'Win98 motion changed'
             Assert (@(Get-ChildItem -LiteralPath (Join-Path $dir 'data')).Count -eq 0) 'Data none ignored'
             Assert (-not (Test-Path -LiteralPath (Join-Path $dir 'samples'))) 'Samples included with Data none'
-            Assert ((Get-FileHash -LiteralPath (Join-Path $dir 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'settings.json')).Hash) 'Non-sample settings changed'
+            Assert ((Get-FileHash -LiteralPath (Join-Path $dir 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'configs/sample/settings.json')).Hash) 'Non-sample settings changed'
         }
     }
     Test 'zip-only-output' {

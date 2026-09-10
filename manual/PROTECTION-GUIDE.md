@@ -1,6 +1,6 @@
 # 台帳の保護・削除・復元
 
-従来版と固定版で同じ台帳保護を使えます。一連の操作は [サンプルの手順](samples/README.md)、①②③の結合と決済条件は [業務設定の説明](PAYMENT-GUIDE.md) を参照してください。
+従来版と固定版で同じ台帳保護を使えます。一連の操作は [サンプルの手順](../samples/README.md)、①②③の結合と決済条件は [業務設定の説明](PAYMENT-GUIDE.md) を参照してください。
 
 ## dataからの更新
 
@@ -54,7 +54,7 @@
 3. 新しいアプリのフォルダで次を実行します。パスは手元のものに直し、出力先は存在しない新しいファイル名にします。
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\Migrate-Ledger.ps1 -OriginalConfig C:\trial\original-settings.json -Config C:\trial\settings.json -DataDir C:\trial\data -Ledger C:\trial\old-ledger.xlsx -Output C:\trial\migrated-ledger.xlsx -ConfirmOriginalDefinition
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\tools\Migrate-Ledger.ps1 -OriginalConfig C:\trial\original-settings.json -Config C:\trial\settings.json -DataDir C:\trial\data -Ledger C:\trial\old-ledger.xlsx -Output C:\trial\migrated-ledger.xlsx -ConfirmOriginalDefinition
 ```
 
 `-ConfirmOriginalDefinition` は「指定したJSONがこの旧台帳を作った設定」と利用者が確認した印です。推測したJSONに付けないでください。定義不一致、使用中のロック、行や状態の読取警告、既存の出力先があれば停止します。元台帳を書き換えず、全内容と保存済み状態を別ファイルへ移します。
@@ -85,9 +85,3 @@ APP基準だった旧世代など、識別キー・保存列が異なる台帳�
 同じ値の連続ポーリング、無効値、手入力の単一検索では、この自動前面化を行いません。監視元が空欄になってから同じ番号が入った場合は新しい読取です。常時最前面にはしません。
 
 Windowsが拒否した場合も検索・監視を続け、ログの `detect` 行に `foreground=refused` を残します。実際に前面を確認できた場合は `foreground=accepted` です。[Windowsの前面化条件](https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-setforegroundwindow)に従うため、すべての環境で成功する保証はありません。
-
-## 確認範囲
-
-架空入力のXLSX更新・保護・削除・復元と、WPF/WebView2の実窓を検査しています。自動前面化は、OSが許可しない条件と、検査用読取元が `AllowSetForegroundWindow` で許可する条件を区別して確認しています。後者の成功を実カードリーダーでの成功とはしていません。
-
-会社配布PCの速度、実カードリーダー、本番データ・本番共有先、実際の複数PC同時操作、異なるDPIは未確認です。開発機の100件サンプルの成功を会社PCの性能合格にはしていません。

@@ -5,7 +5,7 @@ import copy, json, re, subprocess, tempfile
 import json5
 
 root = Path(__file__).resolve().parents[1]
-readme = (root/'README.md').read_text(encoding='utf-8-sig')
+readme = (root/'manual/SETTINGS.md').read_text(encoding='utf-8-sig')
 minimal = json.loads(re.findall(r'```json\n(.*?)\n```', readme, re.S)[0])
 evidence = root/'tests/results'
 evidence.mkdir(exist_ok=True)

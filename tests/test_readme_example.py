@@ -8,7 +8,7 @@ import tempfile
 import json5
 
 root = Path(__file__).resolve().parents[1]
-section = (root/'README.md').read_text(encoding='utf-8-sig').split('<a id="four-tables"></a>')[1].split('<a id="ledger"></a>')[0]
+section = (root/'manual/SETTINGS.md').read_text(encoding='utf-8-sig').split('<a id="four-tables"></a>')[1].split('<a id="ledger"></a>')[0]
 config_text = re.findall(r'```jsonc\n(.*?)\n```', section, re.S)[0]
 csvs = re.findall(r'```csv\n(.*?)\n```', section, re.S)
 assert len(csvs) == 5, 'Four initial CSVs and the replacement D.csv are required'
