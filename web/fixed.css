@@ -43,3 +43,21 @@
 .dialogmode #v-set>.dlg,
 .dialogmode #v-pick>.dlg,
 .dialogmode #v-archive>.dlg{width:750px!important;height:auto;}
+
+/* Browser zoom keeps its normal controls. Scroll the native dialog when the
+   enlarged content exceeds its viewport instead of clipping Save/Cancel. */
+html.dialogmode{height:100%;overflow:auto;}
+.dialogmode body,.dialogmode main,.dialogmode .page{overflow:visible;}
+
+/* A printed page has no fixed screen viewport. Let the complete record flow
+   across pages, including the text areas and the status at the bottom. */
+@media print{
+  html,body,main,.page,.stage.runtime,.runtime .win,.runtime .win .client,
+  .runtime .win .stack,.runtime .win .record-details{
+    height:auto!important;min-height:0!important;max-height:none!important;overflow:visible!important;
+  }
+  .runtime .win,.runtime .win .stack,.runtime .win .record-details{display:block;}
+  .runtime .win .gb{break-inside:avoid;margin-bottom:8px;}
+  .runtime .record-details .fixed-remarks .dynamic-text,
+  .runtime .record-details .fixed-plan .dynamic-text{height:auto;min-height:20px;overflow:visible;}
+}

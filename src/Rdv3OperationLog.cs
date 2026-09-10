@@ -154,9 +154,16 @@ public sealed class Rdv3OperationLog
             string outcome = TryAppend(line, out delivered);
             if (delivered) { return outcome; }
             try { AppendText(spoolPath, line); }
-            catch (Exception ex) { outcome += "; spool: " + ex.Message; }
+            catch (Exception ex) { outcome = "lost: " + outcome + "; spool: " + ex.Message; }
             return outcome;
         }
+    }
+
+    public static string FailureNotice(string outcome)
+    {
+        return outcome != null && outcome.StartsWith("lost: ", StringComparison.Ordinal)
+            ? "台帳への保存は完了しました。操作ログと控えの保存に失敗しました。この操作の再送信・再実行は不要です。\n" + outcome
+            : null;
     }
 
     // Re-sends spooled lines, oldest first. Null when nothing is left to send

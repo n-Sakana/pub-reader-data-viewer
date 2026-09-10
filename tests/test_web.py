@@ -149,6 +149,7 @@ def export_submit(page):
 
 
 def export_filter_reply(page, token=123, **values):
+    values.setdefault('requestId', messages(page, 'validateExportFilter')[-1].get('requestId', 0))
     page.evaluate("m=>window.rdvDeliver(m)",
                   dict(type="exportFilterValidation", token=token, ok=True, **values))
 
@@ -230,7 +231,7 @@ def export_typed_filters(page):
 def export_validation_error(page):
     export_editor(page)
     page.locator(".veil.show .fgrid .btn").filter(has_text="追加").click()
-    page.evaluate("m=>window.rdvDeliver(m)", {"type": "exportFilterValidation", "token": 123, "ok": False, "error": "Need a value"})
+    page.evaluate("m=>window.rdvDeliver(m)", {"type": "exportFilterValidation", "token": 123, "requestId": messages(page, 'validateExportFilter')[-1].get('requestId', 0), "ok": False, "error": "Need a value"})
     error = page.locator(".veil.show .setting-error")
     check(error.is_visible() and error.text_content() == "Need a value", "validation error not shown")
     check(page.locator(".veil.show .f3 table tbody tr[data-index]").count() == 0, "invalid filter added")
@@ -258,6 +259,56 @@ def export_stale_validation(page):
     export_filter_reply(page, token=202, first="new", last="")
     check(export_submit(page)["filters"] == [
         {"field": "T.id", "operator": "contains", "first": "new", "last": ""}], "next dialog lost its request")
+
+
+def export_delayed_multiple(page):
+    export_editor(page)
+    page.locator('[data-field="filterFirst"]').fill('first')
+    page.locator('.veil.show .fgrid .btn').filter(has_text='追加').click()
+    first = messages(page, 'validateExportFilter')[-1]
+    page.locator('.veil.show .fgrid select').nth(0).select_option('$work')
+    page.locator('.veil.show .fgrid select').nth(1).select_option('equals')
+    page.locator('[data-field="filterFirst"]').fill('confirmed')
+    page.locator('.veil.show .fgrid .btn').filter(has_text='追加').click()
+    second = messages(page, 'validateExportFilter')[-1]
+    export_filter_reply(page, requestId=second.get('requestId', 0), first='confirmed', last='')
+    export_filter_reply(page, requestId=first.get('requestId', 0), first='first', last='')
+    export_filter_reply(page, requestId=first.get('requestId', 0), first='duplicate', last='')
+    check(export_submit(page)['filters'] == [
+        {'field': 'T.id', 'operator': 'contains', 'first': 'first', 'last': ''},
+        {'field': '$work', 'operator': 'equals', 'first': 'confirmed', 'last': ''}], 'delayed replies mixed or lost conditions')
+
+
+def export_pending_submit(page):
+    export_editor(page)
+    page.locator('[data-field="filterFirst"]').fill('pending')
+    page.locator('.veil.show .fgrid .btn').filter(has_text='追加').click()
+    page.locator('.veil.show [data-modal-default=true]').click()
+    check(not messages(page, 'modalResult'), 'OK committed while an added condition was pending')
+    export_filter_reply(page, first='pending', last='')
+    check(len(export_submit(page)['filters']) == 1, 'validated condition missing on retry')
+
+
+def settings_picker_draft(page, selected):
+    content = {'title': 'Settings', 'dataDir': 'data', 'ledger': 'data/ledger.xlsx', 'log': 'old.log',
+               'pattern': '[0-9]+', 'candidateRows': 100, 'target': {'summary': 'old', 'read': 'Value'}}
+    modal(page, 'settings', content)
+    draft = {'dataDir': 'draft data', 'ledger': 'draft.xlsx', 'log': 'draft.log', 'pattern': '[A-Z0-9]+', 'candidateRows': '75'}
+    for key, value in draft.items():
+        page.locator('[data-field="'+key+'"]').fill(value)
+    page.locator('#b-pick').click()
+    page.evaluate('m=>window.rdvDeliver(m)', {'type': 'pickerResult', 'token': 123,
+                  'target': {'summary': 'new', 'read': 'Text'} if selected else None})
+    for key, value in draft.items():
+        check(page.locator('[data-field="'+key+'"]').text_content() == value, key+' draft lost after picker')
+    check(page.locator('[data-target-summary]').text_content() == ('new' if selected else 'old'), 'target selection/cancel changed')
+    page.locator('.veil.show [data-command=execute]').click()
+    saved = messages(page, 'settingsSubmit')[-1]
+    check(all(saved[k] == (75 if k == 'candidateRows' else v) for k, v in draft.items()), 'settings submit lost draft')
+    page.keyboard.press('Escape')
+    check(messages(page, 'modalResult')[-1]['result'] == {'ok': False}, 'settings cancel unexpectedly saved')
+    modal(page, 'settings', content)
+    check(page.locator('[data-field=candidateRows]').text_content() == '100', 'canceled edit leaked into reopened settings')
 
 
 def rerender_ids(page):
@@ -290,7 +341,11 @@ def main():
                   ("export-text-filters-and-removal", export_text_filters),
                   ("export-number-and-date-filters", export_typed_filters),
                   ("export-validation-error-and-retry", export_validation_error),
-                  ("export-rejects-stale-validation", export_stale_validation)]
+                  ("export-rejects-stale-validation", export_stale_validation),
+                  ('export-delayed-multiple-conditions', export_delayed_multiple),
+                  ('export-pending-submit', export_pending_submit),
+                  ('settings-picker-selected-draft', lambda p: settings_picker_draft(p, True)),
+                  ('settings-picker-cancelled-draft', lambda p: settings_picker_draft(p, False))]
     output = {"scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
               "baseline_reproduction": args.baseline, "utc": datetime.datetime.now(datetime.timezone.utc).isoformat(),
               "platform": platform.platform(), "tests": []}

@@ -232,8 +232,20 @@ function New-ProductPackage($Options) {
             files = @(Get-PackageHashes $package)
         }
         if ($Options.Format -ne 'folder') {
-            Add-Type -AssemblyName System.IO.Compression.FileSystem
-            [IO.Compression.ZipFile]::CreateFromDirectory($package, (Join-Path $stage ($packageName + '.zip')), [IO.Compression.CompressionLevel]::Optimal, $true)
+            Add-Type -AssemblyName System.IO.Compression,System.IO.Compression.FileSystem
+            $zipPath = Join-Path $stage ($packageName + '.zip')
+            $zip = [IO.Compression.ZipFile]::Open($zipPath, [IO.Compression.ZipArchiveMode]::Create)
+            try {
+                foreach ($directory in (Get-ChildItem -LiteralPath $package -Recurse -Directory)) {
+                    if (@(Get-ChildItem -LiteralPath $directory.FullName -Force).Count -eq 0) {
+                        $zip.CreateEntry($packageName + '/' + $directory.FullName.Substring($package.Length + 1).Replace('\','/') + '/') | Out-Null
+                    }
+                }
+                foreach ($file in (Get-ChildItem -LiteralPath $package -Recurse -File | Sort-Object FullName)) {
+                    $entryName = $packageName + '/' + $file.FullName.Substring($package.Length + 1).Replace('\','/')
+                    [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $file.FullName, $entryName, [IO.Compression.CompressionLevel]::Optimal) | Out-Null
+                }
+            } finally { $zip.Dispose() }
         }
         if ($Options.Format -eq 'zip') { Remove-OwnedDirectory $package $stage }
         $summary = @([ordered]@{theme=$id; variant=$spec.variant; name=$spec.name; motion='off'; package=$packageName; format=$Options.Format})

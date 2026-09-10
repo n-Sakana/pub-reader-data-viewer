@@ -168,6 +168,8 @@ internal sealed class Rdv3LedgerStore
                 string spooled = shared.RecordOperation(latestLines == null ? Rdv3Text.OpCreate : Rdv3Text.OpUpdate,
                     update.Lines.Length, Rdv3OperationLog.UpdateDetail(source.Job, update, work));
                 trace("oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
+                string operationWarning = Rdv3OperationLog.FailureNotice(spooled);
+                if (operationWarning != null) { warnings.Add(operationWarning); }
                 marker = shared.WriteMarker("update", update.Lines.Length, 0, 0);
                 trace("marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }

@@ -304,7 +304,7 @@ public sealed class Rdv3Config
         if (schema != Schema)
         {
             throw root.Member("schema").Fail("this program reads schema " + N(Schema)
-                + "; the file says " + N(schema) + " (docs/settings.md)");
+                + "; the file says " + N(schema) + ". この配布物に対応するsettings.jsonを使用してください。");
         }
         });
 

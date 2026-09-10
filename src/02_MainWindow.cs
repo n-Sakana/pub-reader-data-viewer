@@ -148,7 +148,8 @@ namespace ReaderDataViewer
             get
             {
                 Point p = PointToScreen(new Point(0, 0));
-                return new Rect(p.X, p.Y, ActualWidth, ActualHeight);
+                Point end = PointToScreen(new Point(ActualWidth, ActualHeight));
+                return new Rect(p, end);
             }
         }
 

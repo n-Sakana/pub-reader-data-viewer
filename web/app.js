@@ -748,8 +748,20 @@
   }
 
   function pickerResult(target) {
+    if (!currentModal || currentModal.id !== 'v-pick' || !settingsContent) { return; }
     if (target && settingsContent) { settingsContent.target = target; }
-    openSettings(settingsContent);
+    // The settings body still holds the draft (including raw editor text).
+    // Rebuilding it from the host's original content discards unsaved edits.
+    closeVeils(false);
+    currentModal = document.getElementById('v-set');
+    currentModal.querySelector('[data-target-summary]').textContent = settingsContent.target.summary || '';
+    currentModal.querySelector('[data-target-read]').textContent = settingsContent.target.read || '';
+    currentModal.classList.add('show');
+    currentModal.querySelector('#b-pick').focus();
+    if (dialogMode) {
+      dialogSizePending = true;
+      requestAnimationFrame(function () { requestAnimationFrame(reportDialogSize); });
+    }
   }
 
   function padNumber(value, count) {
@@ -1053,7 +1065,8 @@
   function exportFilterEditor(content, token, isActive, showError) {
     var byRef = {};
     content.fields.forEach(function (field) { byRef[field.ref] = field; });
-    var pendingFilter = null;
+    var pendingFilters = {};
+    var nextRequestId = 0;
     var filters = [];
     var filterSet = document.querySelector('#fixed-filter').content.firstElementChild.cloneNode(true);
     var grid = filterSet.querySelector('.fgrid');
@@ -1104,15 +1117,18 @@
       var field = byRef[fieldSelect.value];
       var firstValue = editorValue(firstHost, 'filterFirst');
       var lastValue = editorValue(lastHost, 'filterLast');
-      pendingFilter = { field: field.ref, operator: operatorSelect.value, first: firstValue,
+      var requestId = ++nextRequestId;
+      var pendingFilter = { field: field.ref, operator: operatorSelect.value, first: firstValue,
         last: field.kind === 'text' ? '' : lastValue };
-      post({ type: 'validateExportFilter', token: token, field: field.ref,
+      pendingFilters[requestId] = pendingFilter;
+      post({ type: 'validateExportFilter', token: token, requestId: requestId, field: field.ref,
         first: pendingFilter.first, last: pendingFilter.last });
     }
     function redrawFilters(selectedIndex, focus) {
       if (selectedIndex === undefined) { selectedIndex = filters.length - 1; }
       var replacement = tableNode([{ header: '項目', width: 180 }, { header: '条件', width: 110 }, { header: '値' }],
-        filters.map(function (entry) {
+        filters.map(function (item) {
+          var entry = item.value;
           return [byRef[entry.field].label, operatorLabels[entry.operator] || entry.operator,
             entry.last ? entry.first + ' ～ ' + entry.last : entry.first];
         }), { readOnly: false, selected: selectedIndex });
@@ -1131,23 +1147,26 @@
       }
     }
     function exportFilterValidation(message) {
+      var requestId = Number(message.requestId);
+      var pendingFilter = pendingFilters[requestId];
       if (!pendingFilter || Number(message.token) !== token || !isActive()) { return; }
+      delete pendingFilters[requestId];
       if (!message.ok) {
         showError(message.error || '');
         var target = firstHost.querySelector('[data-field]');
         if (target) { target.focus(); }
-        pendingFilter = null;
         return;
       }
       pendingFilter.first = message.first === undefined ? pendingFilter.first : message.first;
       pendingFilter.last = message.last === undefined ? pendingFilter.last : message.last;
-      filters.push(pendingFilter);
-      pendingFilter = null;
+      filters.push({ id: requestId, value: pendingFilter });
+      filters.sort(function (a, b) { return a.id - b.id; });
       showError(null);
       redrawFilters(filters.length - 1, true);
     }
     updateOperators();
-    return { node: filterSet, values: function () { return filters.slice(); }, validate: exportFilterValidation };
+    return { node: filterSet, values: function () { return filters.map(function (item) { return item.value; }); },
+      pending: function () { return Object.keys(pendingFilters).length > 0; }, validate: exportFilterValidation };
   }
 
   function exportDestination(content) {
@@ -1178,6 +1197,7 @@
     shell.body.querySelector('[data-slot=filters]').appendChild(filters.node);
     destination.nodes.forEach(function (node) { shell.body.querySelector('[data-slot=destination]').appendChild(node); });
     activate(shell.body.querySelector('[data-command=execute]'), function () {
+      if (filters.pending()) { showError('追加した条件を確認しています。確認が終わってからOKを押してください。'); return; }
       var selected = fields.values();
       if (!selected.length) { showError('出力する項目を 1 つ以上選んでください。'); return; }
       var path = destination.path();

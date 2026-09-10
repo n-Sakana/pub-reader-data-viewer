@@ -136,7 +136,7 @@ public sealed class Rdv3LedgerProtection
 
     internal static Rdv3LedgerProtection Read(ZipArchive zip, string expected)
     {
-        ZipArchiveEntry entry = zip.GetEntry("rdv-protection.xml");
+        ZipArchiveEntry entry = Rdv3Xlsx.MetadataPart(zip, "protection");
         if (entry == null) { return new Rdv3LedgerProtection { Legacy = true }; }
         XmlDocument doc = new XmlDocument();
         doc.XmlResolver = null;

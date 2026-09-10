@@ -60,7 +60,7 @@ try{
         $files=@(Get-ChildItem -LiteralPath $package -Recurse -File)
         Check (@($files|Where-Object {$_.Name -in @('leftover-win32.cs','review-note.md','old.dll','workbench.txt','tableA.csv')}).Count -eq 0) 'Unlisted files leaked'
         Check (-not(Test-Path -LiteralPath (Join-Path $package 'configs'))) 'Private configuration directory leaked'
-        $release=Get-Content -LiteralPath (Join-Path $package 'manual/release.json') -Raw -Encoding UTF8|ConvertFrom-Json
+        $release=Get-Content -LiteralPath (Join-Path $package 'src/release.json') -Raw -Encoding UTF8|ConvertFrom-Json
         Check ($null -eq $release.sourceCommit) 'Exported source tree invented a commit'
     }
     Test 'no-data-also-uses-public-template' {

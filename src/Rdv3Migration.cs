@@ -64,6 +64,9 @@ public static class Rdv3Migration
             Rdv3LedgerSnapshot source = new Rdv3LedgerStore(sourcePath, original.Data, original.Screen.Work, shared).Read(original.Data.Head);
             if (!source.Protection.Legacy) { throw new InvalidDataException(Rdv3Text.MigrationAlreadyBound); }
             if (source.Warning.Length > 0) { throw new InvalidDataException(source.Warning); }
+            string archiveDirectory = Path.Combine(Path.GetDirectoryName(sourcePath), "archived");
+            if (Directory.Exists(archiveDirectory) && Directory.GetFiles(archiveDirectory, "*.xlsx").Length > 0)
+            { throw new InvalidDataException("削除済みの別Excelがあるため、保護情報のない台帳は移行できません。Excelで再保存する前の統合台帳とarchivedを使用してください。元のファイルは変更していません。"); }
             Rdv3LedgerProtection protection = Rdv3LedgerProtection.Create(current.Data);
             protection.Validate(current.Data, current.Screen.Work, source.Lines);
             Rdv3Xlsx.Write(outputPath, current.Data.Head, current.Screen.Work.Column, source.Lines, source.States,

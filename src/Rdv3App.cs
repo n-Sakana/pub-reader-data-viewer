@@ -669,20 +669,20 @@ public sealed class Rdv3App
         if (state != StReady)
         {
             form.Error(Rdv3Text.ErrNotReady);
-            log.Write("-", "search", "ignored key=" + key + " reason=not-ready");
+            log.Write("-", "search", "ignored length=" + key.Length.ToString(CultureInfo.InvariantCulture) + " reason=not-ready");
             return;
         }
         if (Rdv3Config.PatternError(cfg.KeyPattern) != null)
         {
             form.Error(Rdv3Text.ErrBadPattern);
-            log.Write("-", "search", "ignored key=" + key + " reason=bad-pattern");
+            log.Write("-", "search", "ignored length=" + key.Length.ToString(CultureInfo.InvariantCulture) + " reason=bad-pattern");
             return;
         }
         if (!cfg.IsKey(key))
         {
             form.Error(Rdv3Text.ErrBadKeyFmt.Replace("{label}", LabelOrRef(dataDef.SearchRefs[0]))
                 .Replace("{pattern}", cfg.KeyPattern));
-            log.Write("-", "search", "ignored key=" + key + " reason=bad-key");
+            log.Write("-", "search", "ignored length=" + key.Length.ToString(CultureInfo.InvariantCulture) + " reason=bad-key");
             return;
         }
         Search(key, "manual", "", 0, t0);
@@ -1037,6 +1037,7 @@ public sealed class Rdv3App
         string[] latestLines = null;
         string[] latestStates = null;
         Rdv3PendingApply apply = null;
+        string operationWarning = null;
         try
         {
             ledgerLock = WaitForSharedLock(tag, Rdv3Text.StateSending);
@@ -1059,6 +1060,7 @@ public sealed class Rdv3App
                 string spooled = shared.RecordOperation(Rdv3Text.OpSend, latestLines.Length,
                     Rdv3OperationLog.SendDetail(work, latestStates, apply.States));
                 log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
+                operationWarning = Rdv3OperationLog.FailureNotice(spooled);
                 marker = shared.WriteMarker("send", latestLines.Length, apply.FromInitial, apply.ToInitial);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=send");
             }
@@ -1083,6 +1085,7 @@ public sealed class Rdv3App
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
                 }
                 if (keepApply.Unmatched.Count > 0) { HandleUnmatched(keepApply.Unmatched); }
+                if (operationWarning != null) { form.Error(operationWarning); }
             });
         }
         catch (Exception ex)
@@ -1264,6 +1267,7 @@ public sealed class Rdv3App
 
     private void DeleteJob(string tag, Rdv3ProcessJobDef process)
     {
+        string operationWarning = null;
         Rdv3LedgerLock ledgerLock = null;
         bool ledgerWritten = false;
         Rdv3SharedMarker marker = null;
@@ -1305,6 +1309,7 @@ public sealed class Rdv3App
                 string spooled = shared.RecordOperation(Rdv3Text.OpDelete, result.Lines.Length,
                     Rdv3OperationLog.DeleteDetail(process, result.Deleted));
                 log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
+                operationWarning = Rdv3OperationLog.FailureNotice(spooled);
                 marker = shared.WriteMarker("update", result.Lines.Length, 0, 0);
                 log.Write(tag, "marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }
@@ -1322,6 +1327,7 @@ public sealed class Rdv3App
                 string note = Rdv3Text.NoteDeleteDone.Replace("{n}", deleted.ToString("N0", CultureInfo.InvariantCulture));
                 ReadyAfterShared(tag, note);
                 form.Notice(note);
+                if (operationWarning != null) { form.Error(operationWarning); }
                 if (result.Warnings.Count > 0) { form.Error(string.Join(Environment.NewLine, result.Warnings.ToArray())); }
                 if (resetRows.Count > 0) { form.TellResetRows(resetRows); }
             });
@@ -1398,6 +1404,7 @@ public sealed class Rdv3App
             log.Write(tag, "restore", "restored=" + requested.Count.ToString(CultureInfo.InvariantCulture));
             string spooled = shared.RecordOperation(Rdv3Text.OpRestore, lines.Length, Rdv3Text.Format(Rdv3Text.RestoreDone, requested.Count));
             log.Write(tag, "oplog", spooled == null ? "written " + shared.Operations.Path : spooled);
+            string operationWarning = Rdv3OperationLog.FailureNotice(spooled);
             marker = shared.WriteMarker("update", lines.Length, 0, 0);
             lease.Release(); lease = null;
             Install(lines, states, null);
@@ -1406,6 +1413,7 @@ public sealed class Rdv3App
                 RememberMarker(marker); EndWriteGuard(tag, true);
                 ReadyAfterShared(tag, Rdv3Text.Format(Rdv3Text.RestoreDone, requested.Count));
                 form.Notice(Rdv3Text.Format(Rdv3Text.RestoreDone, requested.Count));
+                if (operationWarning != null) { form.Error(operationWarning); }
             });
         }
         catch (Exception error)

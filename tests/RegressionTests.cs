@@ -706,6 +706,21 @@ public static class Rdv3RegressionTests
                 { Check(!f.Apply(f.Source(new string[] { "001\tX", "002\tB" }), new string[] { "001\tNEW", "002\tB" }).Committed, "write failure committed"); }
                 Check(File.ReadAllText(logPath, Encoding.UTF8).Split(new string[] { "\r\n" }, StringSplitOptions.RemoveEmptyEntries).Length == 3, "failed write recorded");
             });
+            Test("operation-log-total-failure-reports-committed-ledger-without-retry", delegate {
+                ApplyFixture f = new ApplyFixture();
+                Directory.CreateDirectory(f.Shared.Operations.Path);
+                string spool = f.Shared.Operations.SpoolPath;
+                Directory.CreateDirectory(spool);
+                try {
+                    Rdv3ApplyOutcome outcome = f.Apply(f.Source(Lines()), null);
+                    Check(outcome.Committed && outcome.Error == null && outcome.CanAdopt, "logging failure undid successful apply");
+                    Check(outcome.Warnings.Length == 1 && outcome.Warnings[0].Contains("台帳への保存は完了")
+                        && outcome.Warnings[0].Contains("再送信・再実行は不要"), "missing distinct log-loss notification");
+                    Check(Rdv3Ledger.SameLedger(Lines(), States(), f.Store.Read(f.Head).Lines, f.Store.Read(f.Head).States), "saved ledger lost");
+                    Check(!f.Apply(f.Source(Lines()), Lines()).Committed, "log loss caused a repeated ledger write");
+                    Check(Rdv3OperationLog.FailureNotice("spooled: temporarily locked") == null, "durable spool reported as lost");
+                } finally { Directory.Delete(spool); }
+            });
             Test("xlsx-date-key-joins-on-fast-path-and-rechecks-key-rules", delegate {
                 string dir = NewPath("-datekey"); Directory.CreateDirectory(dir);
                 File.WriteAllText(Path.Combine(dir, "rows.csv"), "id,name,day\n001,Plain,20260812\n", new UTF8Encoding(false));
@@ -1400,7 +1415,8 @@ public static class Rdv3RegressionTests
         });
         Test("migration-preserves-all-content-and-states-in-new-file", delegate {
             CompositeFixture f = new CompositeFixture(); Rdv3MergeResult first = Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir);
-            string oldPath = NewPath(".xlsx"), newPath = NewPath(".xlsx"); string[] states = { "TRUE", "HOLD", "FALSE" };
+            string migrationDir = NewPath("-migration"); Directory.CreateDirectory(migrationDir);
+            string oldPath = Path.Combine(migrationDir, "old.xlsx"), newPath = Path.Combine(migrationDir, "new.xlsx"); string[] states = { "TRUE", "HOLD", "FALSE" };
             Rdv3Xlsx.Write(oldPath, first.Head, f.Config.Screen.Work.Column, first.Lines, states, "legacy", Rdv3Files.LegacyStorageContract(f.Config.Data, f.Config.Screen.Work));
             byte[] oldBytes = File.ReadAllBytes(oldPath);
             Rdv3Config current = Rdv3Config.Load(f.Config.SourcePath);
@@ -1412,6 +1428,12 @@ public static class Rdv3RegressionTests
             string badPath = NewPath(".xlsx"); current.Data.LegacyDefinition += "changed";
             Throws<InvalidDataException>(delegate { Rdv3Migration.Migrate(f.Config, current, f.Dir, f.Dir, oldPath, badPath); });
             Check(!File.Exists(badPath), "mismatched definition created output");
+            current = Rdv3Config.Load(f.Config.SourcePath);
+            string archiveDir = Path.Combine(migrationDir, "archived"); Directory.CreateDirectory(archiveDir);
+            File.WriteAllBytes(Path.Combine(archiveDir, "deleted.xlsx"), oldBytes);
+            string blockedPath = Path.Combine(migrationDir, "blocked.xlsx");
+            Throws<InvalidDataException>(delegate { Rdv3Migration.Migrate(f.Config, current, f.Dir, f.Dir, oldPath, blockedPath); });
+            Check(!File.Exists(blockedPath) && Convert.ToBase64String(oldBytes) == Convert.ToBase64String(File.ReadAllBytes(oldPath)), "migration discarded unbound deletion protection or changed source");
         });
     }
 

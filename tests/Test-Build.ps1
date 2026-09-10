@@ -56,7 +56,7 @@ try {
             Assert ((Get-FileHash -LiteralPath (Join-Path $package 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'configs/sample/settings.json')).Hash) 'Sample settings changed'
             Assert ((Get-FileHash -LiteralPath (Join-Path $package 'web/app.js')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'web/app.js')).Hash) 'Business browser logic changed'
             $dataFiles = @(Get-ChildItem -LiteralPath (Join-Path $package 'data') -File)
-            Assert ($dataFiles.Count -eq 4 -and @($dataFiles | Where-Object { $_.Extension -eq '.csv' }).Count -eq 3 -and @($dataFiles | Where-Object { $_.Extension -eq '.xlsx' }).Count -eq 1) 'Expected three CSV and one XLSX five-record inputs only'
+            Assert ($dataFiles.Count -eq 4 -and @($dataFiles | Where-Object { $_.Extension -eq '.csv' }).Count -eq 4) 'Expected four CSV five-record inputs only'
             foreach ($file in $dataFiles) {
                 $expected = (Get-FileHash -LiteralPath (Join-Path $root ('samples/current/data/' + $file.Name))).Hash
                 Assert ((Get-FileHash -LiteralPath $file.FullName).Hash -eq $expected) ('Initial data changed: ' + $file.Name)
@@ -64,14 +64,14 @@ try {
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'samples'))) 'Legacy 100-row samples were packaged'
             $sampleConfig = Get-Content -LiteralPath (Join-Path $package 'settings.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             if (($sampleConfig.screen.PSObject.Properties.Name -contains 'sections')) { Assert (@($sampleConfig.screen.sections | Where-Object { $_.PSObject.Properties.Name -contains 'buttons' } | ForEach-Object { $_.buttons } | Where-Object { $_.action -eq 'restoreRecords' }).Count -eq 1) 'The restore action must remain available' }
-            foreach ($name in @('tools/Migrate-Ledger.ps1','tools/ReaderDataViewer.cmd','manual/SETTINGS.md','manual/PAYMENT-GUIDE.md','manual/PROTECTION-GUIDE.md','manual/SAMPLE-GUIDE.md','manual/REQUIREMENTS.md')) {
+            foreach ($name in @('tools/Migrate-Ledger.ps1','tools/ReaderDataViewer.cmd')) {
                 Assert ((Get-FileHash -LiteralPath (Join-Path $package $name)).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root $name)).Hash) ('Missing or changed delivery file: ' + $name)
             }
-            Assert (@(Get-ChildItem -LiteralPath (Join-Path $package 'output') -Force).Count -eq 0) 'Runtime output was packaged'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $package 'output'))) 'Runtime output was packaged; export creates it on demand'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'configs/production'))) 'Production settings were packaged'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'docs'))) 'Developer notes were packaged'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'PACKAGE-README.txt'))) 'Duplicate startup documentation was packaged'
-            $release = Get-Content -LiteralPath (Join-Path $package 'manual/release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $release = Get-Content -LiteralPath (Join-Path $package 'src/release.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             Assert ($release.variant -in @('json-layout','fixed-layout')) 'Missing product variant'
             Assert ((@((Get-ChildItem -LiteralPath $package -File).Name | Sort-Object) -join ',') -eq 'LICENSE,ReaderDataViewer.vbs,README.md,settings.json') 'Unexpected files in the user entry folder'
             $zipPath = Join-Path $published ($packageName + '.zip')
@@ -79,6 +79,7 @@ try {
             try {
                 Assert ($archive.Entries.Count -gt 20) 'Empty or incomplete ZIP'
                 foreach ($entry in $archive.Entries) {
+                    Assert (-not $entry.FullName.Contains('\')) 'ZIP paths must use standard slashes'
                     $entryName = $entry.FullName.Replace('\','/')
                     Assert ($entryName.StartsWith($packageName + '/')) 'ZIP must contain one application root'
                     Assert (-not $entryName.Contains('../')) 'Unsafe ZIP entry'

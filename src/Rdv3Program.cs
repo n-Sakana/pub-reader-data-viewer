@@ -36,7 +36,7 @@ public static class Rdv3Program
             cfg = Rdv3Config.Load(configPath);
             if (cfg.Screen.Bindings == null)
             {
-                throw new Rdv3LoadError("This GUI needs compact settings with screen.bindings. Convert the original settings first (tools/Convert-Semifixed.py).", 0);
+                throw new Rdv3LoadError("固定版の設定形式ではありません。この配布物に対応するsettings.jsonを使用してください。既存の設定は変更していません。", 0);
             }
         }
         catch (Rdv3LoadError ex)

@@ -424,7 +424,7 @@ public sealed class Rdv3SharedFiles
     public string RecordOperation(string operation, int rows, string detail)
     {
         try { return operations.Record(operation, rows, detail); }
-        catch (Exception ex) { return ex.Message; }
+        catch (Exception ex) { return "lost: " + ex.Message; }
     }
 
     public Rdv3LedgerLock TryAcquire(out Rdv3LockInfo owner)

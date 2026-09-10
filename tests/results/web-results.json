@@ -1,7 +1,7 @@
 {
   "scope": "Browser JS/DOM with synthetic WebView bridge; NOT C#/WPF/SMB",
   "baseline_reproduction": false,
-  "utc": "2026-09-09T04:21:47.814994+00:00",
+  "utc": "2026-09-10T23:09:56.343624+00:00",
   "platform": "Windows-11-10.0.26200-SP0",
   "tests": [
     {
@@ -13,7 +13,7 @@
       "status": "PASS"
     },
     {
-      "name": "duplicate-actions-unique-id-and-routing",
+      "name": "fixed-actions-unique-id-and-routing",
       "status": "PASS"
     },
     {
@@ -57,7 +57,7 @@
       "status": "PASS"
     },
     {
-      "name": "rerender-resets-action-ids",
+      "name": "rerender-keeps-one-action-handler",
       "status": "PASS"
     },
     {
@@ -83,9 +83,25 @@
     {
       "name": "export-rejects-stale-validation",
       "status": "PASS"
+    },
+    {
+      "name": "export-delayed-multiple-conditions",
+      "status": "PASS"
+    },
+    {
+      "name": "export-pending-submit",
+      "status": "PASS"
+    },
+    {
+      "name": "settings-picker-selected-draft",
+      "status": "PASS"
+    },
+    {
+      "name": "settings-picker-cancelled-draft",
+      "status": "PASS"
     }
   ],
   "browser": "145.0.7632.6",
-  "passed": 20,
+  "passed": 24,
   "failed": 0
 }

@@ -615,6 +615,7 @@ public sealed class Rdv3Form
         }
         host.PostSurfaceJson("{\"type\":\"exportFilterValidation\",\"token\":" +
             token.ToString(CultureInfo.InvariantCulture) +
+            ",\"requestId\":" + Number(root, "requestId", 0).ToString(CultureInfo.InvariantCulture) +
             ",\"ok\":" + Rdv3WebJson.B(error.Length == 0) +
             ",\"error\":" + Rdv3WebJson.Q(error) +
             ",\"first\":" + Rdv3WebJson.Q(firstText) +
