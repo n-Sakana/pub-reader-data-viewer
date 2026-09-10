@@ -1,0 +1,89 @@
+{
+  "cases": {
+    "sent": "ORD-KI10002740WM-0020",
+    "deleted": "ORD-AA10000000AA-0000",
+    "pending": "ORD-RL10002877BX-0021",
+    "blank": "ORD-YO10003014GI-0022",
+    "absent": "ORD-FR10003151LT-0023",
+    "new": "ORD-ZZ19999999ZZ-0100"
+  },
+  "sendRows": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7,
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15,
+    16,
+    17,
+    18,
+    19,
+    20
+  ],
+  "initial": 100,
+  "afterDelete": 80,
+  "archive": 20,
+  "afterNext": 81,
+  "afterPartial": 81,
+  "afterRestoreFirst": 82,
+  "afterRestoreAll": 101,
+  "automaticWhen": {
+    "judgment": "paymentStatus",
+    "result": "paid"
+  },
+  "initialSummary": {
+    "inputRowsEach": 100,
+    "joined": 100,
+    "paid": 80,
+    "unpaid": 20,
+    "withoutApplication": 20
+  },
+  "expectedRecords": {
+    "sent": {
+      "name": "佐藤 一郎",
+      "amount": "4100",
+      "state": "TRUE",
+      "wholeRow": "initial"
+    },
+    "deleted": {
+      "name": "佐藤 一郎",
+      "amount": "3000",
+      "state": "TRUE",
+      "wholeRow": "initial",
+      "locationUntilExplicitRestore": "archive"
+    },
+    "pending": {
+      "nameAfterNext": "未送信の訂正名",
+      "amountAfterNext": "7300",
+      "savedState": "FALSE",
+      "pendingAfterNext": "content-conflict-retained"
+    },
+    "blank": {
+      "nameAfterNext": "",
+      "remarksAfterNext": "",
+      "changeAfterNext": "",
+      "nameAfterPartial": "部分差替 新名",
+      "amountAfterPartial": "3333",
+      "savedState": "FALSE"
+    },
+    "absent": {
+      "wholeRow": "initial",
+      "savedState": "FALSE"
+    },
+    "new": {
+      "name": "新規 五郎",
+      "amount": "5000",
+      "savedState": "FALSE"
+    }
+  }
+}

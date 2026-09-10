@@ -18,6 +18,7 @@ $utf8=New-Object Text.UTF8Encoding($false)
 . (Join-Path $Root 'build/test_support.ps1')
 Import-RdvProduct -Root $Root
 $cfg=[Rdv3Config]::Load($settings)
+[Rdv3Ledger]::BuildFromCsv($cfg.Data,(Join-Path $scratch 'data'))|Out-Null
 $result=[Rdv3Process]::Run($cfg.Data,$cfg.Data.UpdateJob,(Join-Path $scratch 'data'),[string[]]@(),[string[]]@(),$cfg.Screen.Work.InitialStored)
 $fields=[Rdv3Fields]::new($result.Columns)
 $card=$fields.IndexOf('PAY.会員番号照合用')
@@ -25,7 +26,7 @@ $first=$result.Lines[0].Split([char]9)
 $lines=[string[]]$result.Lines.Clone()
 $second=$lines[1].Split([char]9);$second[$card]=$first[$card];$lines[1]=[string]::Join("`t",$second)
 $ledger=Join-Path $scratch $cfg.Ledger
-[Rdv3Xlsx]::Write($ledger,$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$result.States,'fixed-screen-test',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work))
+[Rdv3Xlsx]::Write($ledger,$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$result.States,'fixed-screen-test',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work),[Rdv3LedgerProtection]::Create($cfg.Data))
 $pay=$fields.IndexOf('PAYMAP.決済確認済')
 $missingKey=@($result.Lines | Where-Object { $_.Split([char]9)[$pay] -eq '' })[0].Split([char]9)[$card]
 $appColumn=$fields.IndexOf('APP.申請番号')

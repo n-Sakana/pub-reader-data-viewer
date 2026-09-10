@@ -4,6 +4,9 @@ param(
     [switch]$TestCore,
     [switch]$ValidateOnly,
     [switch]$RunUpdate,
+    [switch]$MigrateLedger,
+    [string]$OriginalConfig,
+    [switch]$ConfirmOriginalDefinition,
     [string]$Config,
     [string]$DataDir,
     [string]$Output,
@@ -84,8 +87,8 @@ try {
     # This script lives in src\; the application root -- the folder holding
     # settings.json, src\, web\, lib\ and data\ -- is its parent.
     $baseDirectory = Split-Path -Parent $PSScriptRoot
-    $headless = $ValidateOnly -or $RunUpdate
-    if (($ValidateOnly -and $RunUpdate) -or ($headless -and ($TestCore -or $CompileOnly))) {
+    $headless = $ValidateOnly -or $RunUpdate -or $MigrateLedger
+    if (($ValidateOnly -and $RunUpdate) -or ($MigrateLedger -and ($ValidateOnly -or $RunUpdate)) -or ($headless -and ($TestCore -or $CompileOnly))) {
         throw 'Choose one mode: -ValidateOnly, -RunUpdate, -CompileOnly or -TestCore.'
     }
     if (-not $headless -and ($Config -or $DataDir -or $Output -or $BaselineLedger)) {
@@ -93,6 +96,8 @@ try {
     }
     if ($RunUpdate -and -not $Output) { throw '-RunUpdate requires -Output <new.json>.' }
     if ($ValidateOnly -and ($Output -or $BaselineLedger)) { throw '-Output and -BaselineLedger require -RunUpdate.' }
+    if (($OriginalConfig -or $ConfirmOriginalDefinition) -and -not $MigrateLedger) { throw '-OriginalConfig and -ConfirmOriginalDefinition require -MigrateLedger.' }
+    if ($MigrateLedger -and (-not $OriginalConfig -or -not $Config -or -not $Output -or -not $BaselineLedger)) { throw '-MigrateLedger requires -OriginalConfig, -Config, -BaselineLedger and -Output <new.xlsx>.' }
     $sourceDirectory = Join-Path $baseDirectory 'src'
     $libraryDirectory = Join-Path $baseDirectory 'lib'
     Write-ReaderLauncherLog 'PHASE' 'loading assemblies and compiling application sources'
@@ -177,7 +182,11 @@ try {
         if ($DataDir) { $DataDir = [IO.Path]::GetFullPath($DataDir) }
         if ($Output) { $Output = [IO.Path]::GetFullPath($Output) }
         if ($BaselineLedger) { $BaselineLedger = [IO.Path]::GetFullPath($BaselineLedger) }
-        $exitCode = [Rdv3Headless]::Run($baseDirectory, $Config, $DataDir, $RunUpdate.IsPresent, $Output, $BaselineLedger)
+        if ($MigrateLedger) {
+            $exitCode = [Rdv3Migration]::Run($baseDirectory, $OriginalConfig, $Config, $DataDir, $BaselineLedger, $Output, $ConfirmOriginalDefinition.IsPresent)
+        } else {
+            $exitCode = [Rdv3Headless]::Run($baseDirectory, $Config, $DataDir, $RunUpdate.IsPresent, $Output, $BaselineLedger)
+        }
         exit $exitCode
     }
     $exitCode = [ReaderDataViewer.App]::Run($baseDirectory)

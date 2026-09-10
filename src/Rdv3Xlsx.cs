@@ -182,9 +182,14 @@ public static class Rdv3Xlsx
     }
 
     // ---- write -------------------------------------------------------------
-    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId, string contract = null)
+    public static void Write(string path, string[] head, string stateHead, string[] lines, string[] states, string runId, string contract = null, Rdv3LedgerProtection protection = null, bool allowReplace = true)
     {
         ValidateWrite(head, stateHead, lines, states);
+        if (protection != null)
+        {
+            for (int i = 0; i < protection.Deleted.Count; i++)
+            { ValidateRow(head.Length, protection.Deleted[i].Line, protection.Deleted[i].State, i + 2); }
+        }
         string dir = Path.GetDirectoryName(Path.GetFullPath(path));
         string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + Guid.NewGuid().ToString("N"));
         try
@@ -194,6 +199,7 @@ public static class Rdv3Xlsx
             {
                 if (!string.IsNullOrEmpty(contract))
                 { AddEntry(z, "rdv-contract.xml", "<contract>" + contract + "</contract>"); }
+                if (protection != null) { protection.Write(z); }
                 AddEntry(z, "[Content_Types].xml",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
@@ -262,7 +268,7 @@ public static class Rdv3Xlsx
                 }
             }
 
-            if (File.Exists(path))
+            if (allowReplace && File.Exists(path))
             {
                 File.Replace(tmp, path, null);
             }
@@ -328,6 +334,14 @@ public static class Rdv3Xlsx
     public static void Read(string path, string[] head, string stateHead, out string[] lines, out string[] states,
                             out string warning, string expectedContract = null)
     {
+        Rdv3LedgerProtection ignored;
+        ReadProtected(path, head, stateHead, out lines, out states, out warning, expectedContract, null, null, out ignored);
+    }
+
+    public static void ReadProtected(string path, string[] head, string stateHead, out string[] lines, out string[] states,
+                                    out string warning, string expectedContract, string legacyContract,
+                                    string expectedDefinition, out Rdv3LedgerProtection protection)
+    {
         warning = "";
         // ReadWrite | Delete: another copy of the app may replace the file
         // (write-temp-then-replace) while this one is still reading it. The
@@ -338,7 +352,8 @@ public static class Rdv3Xlsx
         using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Read))
         {
             string[] shared = ReadSharedStrings(z);
-            CheckContract(z, expectedContract);
+            protection = Rdv3LedgerProtection.Read(z, expectedDefinition);
+            CheckContract(z, protection.Legacy && legacyContract != null ? legacyContract : expectedContract);
             ZipArchiveEntry sheet = FindSheet(z, true);
             if (sheet == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNoSheetPart, path)); }
 
@@ -663,13 +678,16 @@ public static class Rdv3Xlsx
         ValidateCell(stateHead, 0, 1);
         for (int c = 0; c < head.Length; c++) { ValidateCell(head[c], c + 1, 1); }
         for (int r = 0; r < lines.Length; r++)
-        {
-            ValidateCell(states[r], 0, r + 2);
-            if (lines[r] == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNullRow, r + 2)); }
-            string[] cells = lines[r].Split('\t');
-            if (cells.Length != head.Length) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerRowColumns, r + 2, head.Length, cells.Length)); }
-            for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c], c + 1, r + 2); }
-        }
+        { ValidateRow(head.Length, lines[r], states[r], r + 2); }
+    }
+
+    private static void ValidateRow(int width, string line, string state, int row)
+    {
+        ValidateCell(state, 0, row);
+        if (line == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNullRow, row)); }
+        string[] cells = line.Split('\t');
+        if (cells.Length != width) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.LedgerRowColumns, row, width, cells.Length)); }
+        for (int c = 0; c < cells.Length; c++) { ValidateCell(cells[c], c + 1, row); }
     }
 
     // "D5" -> 3. Letters only matter; the row digits are ignored.

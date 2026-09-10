@@ -114,6 +114,7 @@ public sealed class Rdv3ProcessSetDef
 
 public sealed class Rdv3ProcessInputDef
 {
+    public string[] Head;
     public Encoding Enc = new UTF8Encoding(false);
     public string EncodingSetting = "data.encoding";
     public string Id = "";
@@ -179,6 +180,9 @@ public sealed class Rdv3ProcessJobDef
 
 public sealed class Rdv3Data
 {
+    public string Definition = "{}";
+    public string LegacyDefinition = "{}";
+    public string[] ProtectedStates = new string[0];
     public string EncodingName = "utf-8";
     public Encoding Enc = new UTF8Encoding(false);
     public List<Rdv3TableDef> Tables = new List<Rdv3TableDef>();
@@ -412,7 +416,8 @@ public sealed class Rdv3Data
         }
 
         Rdv3Json ledger = o.Obj("ledger", true);
-        ledger.Only("identity", "search", "columns");
+        ledger.Only("identity", "search", "columns", "protectStates");
+        d.ProtectedStates = ledger.Strs("protectStates", false);
         Rdv3Json columnGroups = ledger.Obj("columns", true);
         columnGroups.Only("source", "application");
         string[] cols = columnGroups.Strs("source", true);
@@ -504,6 +509,8 @@ public sealed class Rdv3Data
         d.SearchCols = searchCols.ToArray();
 
         ValidateJobRefs(d, jobs);
+        d.Definition = Rdv3BusinessDefinition.Normalize(o, true);
+        d.LegacyDefinition = Rdv3BusinessDefinition.Normalize(o, false);
         return d;
     }
 

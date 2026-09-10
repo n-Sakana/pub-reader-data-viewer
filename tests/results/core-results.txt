@@ -1,6 +1,22 @@
-UTC 2026-09-09T20:50:29.8079942Z
+UTC 2026-09-10T12:24:26.0647073Z
 OS Microsoft Windows NT 10.0.26200.0; CLR 4.0.30319.42000
+PASS protection-preserves-saved-done-content-and-updates-blanks
+PASS protection-rechecks-state-at-lease-and-allows-sent-reset
+PASS protection-does-not-use-pending-overlay
+PASS archive-roundtrip-reimport-and-explicit-full-restore
+PASS archive-rejects-active-and-stale-restore-without-mutation
+PASS archive-write-failure-retains-live-and-archive-together
+PASS definition-rejects-changes-and-missing-metadata
+PASS definition-normalizes-json-and-permits-presentation-location
+PASS legacy-ledger-readable-but-no-writes-without-migration
+PASS migration-preserves-all-content-and-states-in-new-file
+PASS automatic-condition-uses-result-id-and-requires-a-record
+PASS automatic-condition-parsing-and-invalid-references
+PASS automatic-without-condition-keeps-existing-behavior
 PASS json-comments-trailing-comma
+PASS screen-requires-preserves-saved-record
+PASS screen-requires-rejects-unknown-fields
+PASS judgment-requires-tests-empty-and-unresolved
 PASS json-string-roundtrip
 PASS json-invalid-number-forms
 PASS json-unclosed-comment
@@ -104,4 +120,4 @@ PASS validation-independent-input-files
 PASS validation-reports-each-invalid-typed-cell
 PASS validation-syntax-failure-count-and-exit
 PASS validation-valid-config-and-results-remain-equivalent
-TOTAL passed=104 failed=0
+TOTAL passed=120 failed=0

@@ -69,6 +69,17 @@ namespace ReaderDataViewer
         private CoreWebView2Environment webViewEnvironment;
         private DialogWindow dialogWindow;
         private DispatcherFrame dialogFrame;
+        private WindowState restoredState = WindowState.Normal;
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        public bool BringToFrontForRead()
+        {
+            if (WindowState == WindowState.Minimized) { WindowState = restoredState; }
+            Activate();
+            return GetForegroundWindow() == new WindowInteropHelper(this).Handle;
+        }
 
         public event EventHandler PageLoaded;
         public event Action<string> WebMessage;
@@ -81,6 +92,7 @@ namespace ReaderDataViewer
             targetClientWidth = Math.Max(480.0, screen.StartWidth);
             targetClientHeight = Math.Max(300.0, screen.StartHeight);
             Title = "Reader Data Viewer";
+            StateChanged += delegate { if (WindowState != WindowState.Minimized) { restoredState = WindowState; } };
             Width = targetClientWidth;
             Height = targetClientHeight;
             MinWidth = 480;

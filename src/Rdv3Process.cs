@@ -159,6 +159,8 @@ public static class Rdv3Process
                 table.AddWarnings(prepared.Warnings);
             }
             prepared.InputResults.Add(new Rdv3InputResult(input.Id, table));
+            if (input.IsTable) { data.Tables[input.TableOrd].Head = table.Head; }
+            else { input.Head = table.Head; }
             prepared.Inputs.Add(input.Id, input.IsTable
                 ? RelationOfTable(input, table) : RelationOfValues(input, table));
         }

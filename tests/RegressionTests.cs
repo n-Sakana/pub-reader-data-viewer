@@ -104,6 +104,8 @@ public static class Rdv3RegressionTests
         results.Add("OS " + Environment.OSVersion + "; CLR " + Environment.Version);
         try
         {
+            ProtectionCases();
+            AutomaticCases();
             Test("json-comments-trailing-comma", delegate { Check(Rdv3Json.Parse("{/*x*/\"a\":[1,],}").Member("a").Count == 1, "JSONC"); });
             Test("screen-requires-preserves-saved-record", delegate {
                 Rdv3Bind bind = Rdv3Bind.Read(Rdv3Json.Parse("{\"field\":\"A.name\",\"requires\":[\"B.id\",\"C.id\"]}"));
@@ -737,7 +739,8 @@ public static class Rdv3RegressionTests
                 File.WriteAllText(Path.Combine(dir, "rows.csv"), "id,name\n001,Old\n002,Other\n", new UTF8Encoding(false));
                 Rdv3Config cfg = ConfigOf(dir, SingleTableData("rows.csv", "", "", MergeStep("A"), "\"A.id\",\"A.name\""));
                 string ledger = Path.Combine(dir, "ledger.xlsx");
-                Rdv3Xlsx.Write(ledger, cfg.Data.Head, cfg.Screen.Work.Column, new string[] { "001\tNew", "002\tOther" }, new string[] { "FALSE", "TRUE" }, "test", Rdv3Files.StorageContract(cfg.Data, cfg.Screen.Work));
+                Rdv3Ledger.BuildFromCsv(cfg.Data, dir);
+                Rdv3Xlsx.Write(ledger, cfg.Data.Head, cfg.Screen.Work.Column, new string[] { "001\tNew", "002\tOther" }, new string[] { "FALSE", "TRUE" }, "test", Rdv3Files.StorageContract(cfg.Data, cfg.Screen.Work), Rdv3LedgerProtection.Create(cfg.Data));
                 new Rdv3SharedFiles(ledger, "A", "a", "A", Path.Combine(dir, "sa.csv")).WriteMarker("update", 2, 0, 0);
                 new Rdv3SharedFiles(ledger, "B", "b", "B", Path.Combine(dir, "sb.csv")).WriteMarker("send", 2, 1, 0);
                 Rdv3SharedFiles reader = new Rdv3SharedFiles(ledger, "C", "c", "C", Path.Combine(dir, "sc.csv"));
@@ -1124,9 +1127,10 @@ public static class Rdv3RegressionTests
         });
         Test("composite-update-reset-and-contract-readback", delegate {
             CompositeFixture f = new CompositeFixture();
+            Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir);
             Rdv3ProcessResult first = Rdv3Process.Run(f.Config.Data, f.Config.Data.UpdateJob, f.Dir, new string[0], new string[0], "FALSE");
             string path = NewPath(".xlsx"); string[] states = { "TRUE", "HOLD", "FALSE" };
-            Rdv3Xlsx.Write(path, f.Config.Data.Head, f.Config.Screen.Work.Column, first.Lines, states, "baseline", Rdv3Files.StorageContract(f.Config.Data, f.Config.Screen.Work));
+            Rdv3Xlsx.Write(path, f.Config.Data.Head, f.Config.Screen.Work.Column, first.Lines, states, "baseline", Rdv3Files.StorageContract(f.Config.Data, f.Config.Screen.Work), Rdv3LedgerProtection.Create(f.Config.Data));
             byte[] before = File.ReadAllBytes(path);
             string u = Path.Combine(f.Dir, "U.csv"); File.WriteAllText(u, File.ReadAllText(u).Replace("first", "changed"), new UTF8Encoding(true));
             Rdv3Json report = Rdv3Json.Parse(Rdv3Headless.Evaluate(f.Config, f.Dir, f.Dir, true, path));
@@ -1249,6 +1253,168 @@ public static class Rdv3RegressionTests
         }
     }
 
+    private static void AutomaticCases()
+    {
+        Test("automatic-condition-uses-result-id-and-requires-a-record", delegate {
+            Rdv3Config config = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+            Rdv3WorkState work = config.Screen.Work;
+            work.Trigger = "automatic"; work.AutomaticJudgment = "settlementCheck"; work.AutomaticResult = "eligible";
+            Rdv3Judgment judgment = new Rdv3Judgment { Id = "settlementCheck", Source = new Rdv3Bind { Fields = new string[] { "arbitrary.flag" } } };
+            judgment.Results.Add("eligible", new Rdv3Result { Id = "eligible", Text = "same display" });
+            judgment.Results.Add("hold", new Rdv3Result { Id = "hold", Text = "same display" });
+            judgment.Rules.Add(new Rdv3Rule { EqualsAny = new string[] { "yes" }, Result = "eligible" });
+            judgment.Rules.Add(new Rdv3Rule { Empty = true, Result = "hold" });
+            config.Screen.Judgments.Add(judgment.Id, judgment);
+            Rdv3Fields fields = new Rdv3Fields(new string[] { "arbitrary.flag" });
+            Rdv3View view = new Rdv3View();
+            Check(!work.AllowsAutomatic(config.Screen, view, fields), "no selection was completed");
+            view.Record = new string[] { "" };
+            Check(!work.AllowsAutomatic(config.Screen, view, fields), "same display text allowed an ineligible result");
+            view.Record[0] = "other";
+            Check(!work.AllowsAutomatic(config.Screen, view, fields), "undefined result was completed");
+            view.Record[0] = "yes";
+            Check(!work.AllowsAutomatic(config.Screen, view, Rdv3Fields.Empty), "unresolved field was completed");
+            Check(work.AllowsAutomatic(config.Screen, view, fields), "named eligible result was not completed");
+            work.Trigger = "manual";
+            Check(!work.AllowsAutomatic(config.Screen, view, fields), "manual setting completed automatically");
+        });
+        Test("automatic-condition-parsing-and-invalid-references", delegate {
+            Rdv3Config config = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+            string reference = config.Data.ColumnRefs[0];
+            Rdv3Judgment judgment = new Rdv3Judgment { Id = "generic", Source = new Rdv3Bind { Fields = new string[] { reference } } };
+            judgment.Results.Add("allow", new Rdv3Result { Id = "allow" });
+            config.Screen.Judgments.Add(judgment.Id, judgment);
+            string definition = "{\"store\":{\"column\":\"state\"},\"states\":[{\"id\":\"new\"}],\"initial\":\"new\",\"trigger\":\"automatic\",\"automaticWhen\":{\"judgment\":\"generic\",\"result\":\"allow\"}}";
+            Rdv3WorkState work = Rdv3WorkState.Read(Rdv3Json.Parse(definition));
+            work.CheckAutomatic(config.Screen);
+            Check(work.AutomaticJudgment == "generic" && work.AutomaticResult == "allow", "condition not parsed");
+            foreach (string result in new string[] { "missing", "undefined", "error" })
+            { work.AutomaticResult = result; Throws<Rdv3LoadError>(delegate { work.CheckAutomatic(config.Screen); }); }
+            work.AutomaticResult = "allow"; work.AutomaticJudgment = "missing";
+            Throws<Rdv3LoadError>(delegate { work.CheckAutomatic(config.Screen); });
+            config.Screen.Work.AutomaticJudgment = "missing"; config.Screen.Work.AutomaticResult = "allow";
+            Throws<Rdv3LoadError>(delegate { config.Screen.Check(config.Data); });
+            Throws<Rdv3LoadError>(delegate { Rdv3WorkState.Read(Rdv3Json.Parse(definition.Replace("\"result\":\"allow\"", "\"typo\":\"allow\""))); });
+        });
+        Test("automatic-without-condition-keeps-existing-behavior", delegate {
+            Rdv3Config config = Rdv3Config.Load(Path.Combine(root, "settings.json"));
+            config.Screen.Work.Trigger = "automatic";
+            Check(config.Screen.Work.AllowsAutomatic(config.Screen, new Rdv3View { Record = new string[] { "" } }, Rdv3Fields.Empty), "legacy automatic mode changed");
+        });
+    }
+
+    private static void ProtectionCases()
+    {
+        Test("protection-preserves-saved-done-content-and-updates-blanks", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Data.ProtectedStates = new string[] { "1" };
+            f.Save(Lines(), new string[] { "1", "0" });
+            Rdv3ApplyOutcome result = f.Apply(f.Source(new string[] { "001\tNEW", "002\t", "003\tC" }), Lines());
+            Check(result.Error == null && result.Committed, "protected update failed");
+            Rdv3LedgerSnapshot saved = f.Store.Read(f.Head);
+            Check(saved.Lines.Length == 3 && saved.Lines[0] == "001\tA" && saved.States[0] == "1", "sent row overwritten");
+            Check(saved.Lines[1] == "002\t" && saved.States[1] == "0" && saved.Lines[2] == "003\tC", "blank/new values lost");
+            Check(result.Update.Protected == 1 && result.Update.Updated == 1 && result.Update.Added == 1, "counts wrong");
+        });
+        Test("protection-rechecks-state-at-lease-and-allows-sent-reset", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Data.ProtectedStates = new string[] { "1" }; f.Save(Lines(), States());
+            Rdv3LockInfo owner;
+            Rdv3ApplyOutcome result = f.Store.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines(), "race",
+                delegate { Rdv3LedgerLock lease = f.Shared.TryAcquire(out owner); f.Save(Lines(), new string[] { "1", "0" }); return lease; }, f.Trace, f.Warn);
+            Check(result.Error == null && f.Store.Read(f.Head).Lines[0] == "001\tA", "state sent before lease read ignored");
+            f.Save(Lines(), States());
+            result = f.Apply(f.Source(new string[] { "001\tNEW", "002\tB" }), Lines());
+            Check(result.Error == null && f.Store.Read(f.Head).Lines[0] == "001\tNEW", "sent reset stayed permanently locked");
+        });
+        Test("protection-does-not-use-pending-overlay", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Data.ProtectedStates = new string[] { "1" }; f.Save(Lines(), States());
+            Rdv3PendingStore pending = Pending(); pending.Set("001", "1", Lines()[0], "0");
+            Check(pending.Overlay(Lines(), States(), f.Data.IdentityCols)[0] == "1", "fixture pending");
+            Rdv3ApplyOutcome result = f.Apply(f.Source(new string[] { "001\tNEW" }), Lines());
+            Rdv3LedgerSnapshot saved = f.Store.Read(f.Head);
+            Check(result.Error == null && saved.Lines[0] == "001\tNEW" && saved.Lines[1] == "002\tB", "pending protected or absent row lost");
+            Check(pending.PrepareSend(saved.Lines, saved.States, f.Data.IdentityCols, "0").Unmatched.Count == 1, "pending content conflict lost");
+        });
+        Test("archive-roundtrip-reimport-and-explicit-full-restore", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Data.ProtectedStates = new string[] { "1" };
+            string[] original = { "001\tA & <tag> \r\n", "002\tB" }; f.Save(original, new string[] { "1", "0" });
+            Rdv3LedgerSnapshot snapshot = f.Store.Read(f.Head);
+            snapshot.Protection.ArchiveRemoved(f.Data, snapshot.Lines, snapshot.States, new string[] { original[1] });
+            f.Store.Write(f.Head, new string[] { original[1] }, new string[] { "0" }, "delete", snapshot.Protection);
+            Rdv3ApplyOutcome result = f.Apply(f.Source(new string[] { "001\tREPLACEMENT", "002\tUPDATED" }), new string[] { original[1] });
+            Rdv3LedgerSnapshot saved = f.Store.Read(f.Head);
+            Check(result.Error == null && saved.Lines.Length == 1 && saved.Protection.Deleted.Count == 1, "deleted row resurrected");
+            Check(saved.Protection.Deleted[0].Line == original[0] && saved.Protection.Deleted[0].State == "1", "archive changed");
+            string[] lines = saved.Lines, states = saved.States;
+            saved.Protection.Restore(f.Data, new Rdv3DeletedRecord[] { saved.Protection.Deleted[0] }, ref lines, ref states);
+            f.Store.Write(f.Head, lines, states, "restore", saved.Protection);
+            saved = f.Store.Read(f.Head);
+            Check(saved.Lines.Length == 2 && saved.Lines[1] == original[0] && saved.States[1] == "1" && saved.Protection.Deleted.Count == 0, "full restore failed");
+        });
+        Test("archive-rejects-active-and-stale-restore-without-mutation", delegate {
+            ApplyFixture f = new ApplyFixture(); Rdv3LedgerProtection p = Rdv3LedgerProtection.Create(f.Data);
+            p.ArchiveRemoved(f.Data, Lines(), States(), new string[] { Lines()[1] });
+            string[] lines = Lines(), states = States();
+            Throws<InvalidDataException>(delegate { p.Restore(f.Data, new Rdv3DeletedRecord[] { p.Deleted[0] }, ref lines, ref states); });
+            Check(lines.Length == 2 && p.Deleted.Count == 1, "conflict mutated archive");
+            lines = new string[] { Lines()[1] }; states = new string[] { "0" };
+            Rdv3DeletedRecord stale = new Rdv3DeletedRecord { Line = "001\tSTALE", State = "0", DeletedAt = p.Deleted[0].DeletedAt };
+            Throws<InvalidDataException>(delegate { p.Restore(f.Data, new Rdv3DeletedRecord[] { stale }, ref lines, ref states); });
+            Check(lines.Length == 1 && p.Deleted.Count == 1, "stale restore mutated archive");
+        });
+        Test("archive-write-failure-retains-live-and-archive-together", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Save(Lines(), States()); byte[] before = File.ReadAllBytes(f.Path);
+            Rdv3LedgerSnapshot s = f.Store.Read(f.Head); s.Protection.ArchiveRemoved(f.Data, s.Lines, s.States, new string[] { s.Lines[1] });
+            using (FileStream held = new FileStream(f.Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+            { Throws<IOException>(delegate { f.Store.Write(f.Head, new string[] { s.Lines[1] }, new string[] { "0" }, "blocked", s.Protection); }); }
+            Check(Convert.ToBase64String(before) == Convert.ToBase64String(File.ReadAllBytes(f.Path)), "half deletion committed");
+            Check(f.Store.Read(f.Head).Protection.Deleted.Count == 0, "archive committed despite failure");
+        });
+        Test("definition-rejects-changes-and-missing-metadata", delegate {
+            ApplyFixture f = new ApplyFixture(); f.Save(Lines(), States()); byte[] before = File.ReadAllBytes(f.Path);
+            f.Data.Definition = "{\"changed\":true}";
+            Check(f.Apply(f.Source(Lines()), Lines()).Error is InvalidDataException, "changed definition accepted");
+            Check(Convert.ToBase64String(before) == Convert.ToBase64String(File.ReadAllBytes(f.Path)), "definition failure changed file");
+            f.Data.Definition = "{}";
+            using (FileStream file = new FileStream(f.Path, FileMode.Open, FileAccess.ReadWrite))
+            using (ZipArchive zip = new ZipArchive(file, ZipArchiveMode.Update)) { zip.GetEntry("rdv-protection.xml").Delete(); }
+            Throws<InvalidDataException>(delegate { f.Store.Read(f.Head); });
+        });
+        Test("definition-normalizes-json-and-permits-presentation-location", delegate {
+            string text = File.ReadAllText(Path.Combine(root, "settings.json"), Encoding.UTF8);
+            Rdv3Config a = Rdv3Config.Parse(text);
+            Rdv3Config b = Rdv3Config.Parse(text.Replace("\"file\": \"tableA.csv\"", "\"file\": \"elsewhere/tableA.csv\""));
+            Check(a.Data.Definition == b.Data.Definition, "location changed definition");
+            string x = "{\"tables\":{\"T\":{\"label\":\"A\",\"file\":\"one.csv\",\"key\":\"id\"}},\"labels\":{\"a\":\"A\"}}";
+            string y = "{ /* comment */ \"labels\":{},\"tables\":{\"T\":{\"key\":[\"id\"],\"file\":\"sub/two.CSV\",\"label\":\"B\"}}}";
+            Check(Rdv3BusinessDefinition.Normalize(Rdv3Json.Parse(x), true) == Rdv3BusinessDefinition.Normalize(Rdv3Json.Parse(y), true), "JSON representation rejected");
+            Check(Rdv3BusinessDefinition.Normalize(Rdv3Json.Parse(y.Replace(".CSV", ".xlsx")), true) != Rdv3BusinessDefinition.Normalize(Rdv3Json.Parse(x), true), "input format change accepted");
+        });
+        Test("legacy-ledger-readable-but-no-writes-without-migration", delegate {
+            ApplyFixture f = new ApplyFixture();
+            Rdv3Xlsx.Write(f.Path, f.Head, f.Work.Column, Lines(), States(), "legacy", Rdv3Files.LegacyStorageContract(f.Data, f.Work));
+            Check(f.Store.Read(f.Head).Protection.Legacy, "legacy not recognized");
+            byte[] before = File.ReadAllBytes(f.Path);
+            Rdv3ApplyOutcome result = f.Apply(f.Source(new string[] { "001\tNEW" }), Lines());
+            Check(result.Error is InvalidDataException && !result.Committed, "legacy overwritten");
+            Check(Convert.ToBase64String(before) == Convert.ToBase64String(File.ReadAllBytes(f.Path)), "legacy file changed");
+        });
+        Test("migration-preserves-all-content-and-states-in-new-file", delegate {
+            CompositeFixture f = new CompositeFixture(); Rdv3MergeResult first = Rdv3Ledger.BuildFromCsv(f.Config.Data, f.Dir);
+            string oldPath = NewPath(".xlsx"), newPath = NewPath(".xlsx"); string[] states = { "TRUE", "HOLD", "FALSE" };
+            Rdv3Xlsx.Write(oldPath, first.Head, f.Config.Screen.Work.Column, first.Lines, states, "legacy", Rdv3Files.LegacyStorageContract(f.Config.Data, f.Config.Screen.Work));
+            byte[] oldBytes = File.ReadAllBytes(oldPath);
+            Rdv3Config current = Rdv3Config.Load(f.Config.SourcePath);
+            Rdv3Migration.Migrate(f.Config, current, f.Dir, f.Dir, oldPath, newPath);
+            Rdv3LedgerSnapshot saved = new Rdv3LedgerStore(newPath, current.Data, current.Screen.Work, null).Read(first.Head);
+            Check(!saved.Protection.Legacy && Rdv3Ledger.SameLedger(first.Lines, states, saved.Lines, saved.States), "migration changed rows or states");
+            Check(Convert.ToBase64String(oldBytes) == Convert.ToBase64String(File.ReadAllBytes(oldPath)), "migration touched old file");
+            Throws<IOException>(delegate { Rdv3Migration.Migrate(f.Config, current, f.Dir, f.Dir, oldPath, newPath); });
+            string badPath = NewPath(".xlsx"); current.Data.LegacyDefinition += "changed";
+            Throws<InvalidDataException>(delegate { Rdv3Migration.Migrate(f.Config, current, f.Dir, f.Dir, oldPath, badPath); });
+            Check(!File.Exists(badPath), "mismatched definition created output");
+        });
+    }
+
     private sealed class ApplyFixture
     {
         public readonly string Path = NewPath(".xlsx");
@@ -1270,7 +1436,7 @@ public static class Rdv3RegressionTests
             Store = new Rdv3LedgerStore(Path, Data, Work, Shared);
         }
         public void Save(string[] lines, string[] states)
-        { Rdv3Xlsx.Write(Path, Head, Work.Column, lines, states, "fixture", Rdv3Files.StorageContract(Data, Work)); }
+        { Rdv3Xlsx.Write(Path, Head, Work.Column, lines, states, "fixture", Rdv3Files.StorageContract(Data, Work), Rdv3LedgerProtection.Create(Data)); }
         public Rdv3MergeResult Source(string[] lines)
         {
             Rdv3MergeResult source = new Rdv3MergeResult();

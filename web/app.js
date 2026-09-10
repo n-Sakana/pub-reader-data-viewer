@@ -492,6 +492,61 @@
     activate(shell.body.querySelector('[data-command=cancel]'), function () { finishModal({ ok: false }); });
   }
 
+  function openArchive(content) {
+    var shell = modalShell('v-archive', content.title);
+    shell.body.appendChild(element('div', 'hint', content.hint));
+    var selected = {};
+    (content.selected || []).forEach(function (index) { selected[index] = true; });
+    function indices() { return Object.keys(selected).map(Number); }
+    var summary = element('div', 'hint');
+    shell.body.appendChild(summary);
+    var list = element('div', 'lv archive-list');
+    var table = element('table'), thead = element('thead'), head = element('tr');
+    ['復元', '識別キー', '処理状態', '削除日時'].forEach(function (title) { head.appendChild(element('th', '', title)); });
+    thead.appendChild(head); table.appendChild(thead);
+    var body = element('tbody'); table.appendChild(body); list.appendChild(table); shell.body.appendChild(list);
+    var details = fieldset('削除時の全内容'); details.classList.add('archive-details');
+    var detailTable = element('table'); details.appendChild(detailTable); shell.body.appendChild(details);
+    function detail(row) {
+      detailTable.textContent = '';
+      content.labels.forEach(function (label, index) {
+        var tr = element('tr'); tr.appendChild(element('th', '', label)); tr.appendChild(element('td', '', row.values[index])); detailTable.appendChild(tr);
+      });
+    }
+    var restoreButton;
+    function update() {
+      var count = indices().length;
+      summary.textContent = '保管 ' + content.total + ' 件 / 選択 ' + count + ' 件 / ' + (content.page + 1) + ' ページ';
+      if (restoreButton) { setDisabled(restoreButton, count === 0); }
+    }
+    content.rows.forEach(function (row) {
+      var tr = element('tr'); tr.setAttribute('data-archive-index', row.index);
+      var choice = element('input'); choice.type = 'checkbox'; choice.checked = !!selected[row.index];
+      choice.setAttribute('aria-label', row.identity + ' を復元対象にする');
+      choice.onchange = function () { if (choice.checked) { selected[row.index] = true; } else { delete selected[row.index]; } detail(row); update(); };
+      var td = element('td'); td.appendChild(choice); tr.appendChild(td);
+      var identity = element('td');
+      var show = modalButton(row.identity, false, function () { detail(row); }); show.classList.add('archive-detail-button'); identity.appendChild(show); tr.appendChild(identity);
+      tr.appendChild(element('td', '', row.state));
+      tr.appendChild(element('td', '', new Date(row.deletedAt).toLocaleString('ja-JP')));
+      body.appendChild(tr);
+    });
+    if (content.rows.length) { detail(content.rows[0]); }
+    else { details.appendChild(element('div', 'hint', '保管中のレコードはありません。')); }
+    var foot = element('div', 'foot');
+    foot.appendChild(modalButton('このページを選択', false, function () {
+      content.rows.forEach(function (row) { selected[row.index] = true; });
+      Array.prototype.forEach.call(body.querySelectorAll('input[type=checkbox]'), function (box) { box.checked = true; });
+      update();
+    }, !content.rows.length));
+    foot.appendChild(modalButton('前へ', false, function () { finishModal({ page: content.page - 1, selected: indices() }); }, content.page === 0));
+    foot.appendChild(modalButton('次へ', false, function () { finishModal({ page: content.page + 1, selected: indices() }); }, (content.page + 1) * content.pageSize >= content.total));
+    restoreButton = modalButton('選択したレコードを復元', true, function () { finishModal({ ok: true, selected: indices() }); });
+    foot.appendChild(restoreButton);
+    foot.appendChild(modalButton('閉じる', false, function () { finishModal({ ok: false }); }));
+    shell.body.appendChild(foot); update();
+  }
+
   function openProcess(content, deleting) {
     var shell = modalShell(deleting ? 'v-del' : 'v-upd', content.title);
     installFixedBody(shell, 'process', content);
@@ -1173,6 +1228,7 @@
     else if (modal === 'shared') { openCandidates(content, true, false); }
     else if (modal === 'sharedTell') { openCandidates(content, true, true); }
     else if (modal === 'unmatched') { openUnmatched(content); }
+    else if (modal === 'archive') { openArchive(content); }
     else if (modal === 'update') { openProcess(content, false); }
     else if (modal === 'delete') { openProcess(content, true); }
     else if (modal === 'settings') { openSettings(content); }

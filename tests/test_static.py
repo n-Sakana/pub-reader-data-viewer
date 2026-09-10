@@ -94,7 +94,9 @@ def main():
         details["node_version"] = subprocess.check_output(["node", "--version"], text=True).strip()
     test("javascript-node-syntax", javascript)
 
-    cfg = json5.loads((root / "settings.json").read_text(encoding="utf-8-sig"))
+    # Public, isolated generic fixture; root settings may be site-specific.
+    fixture = root / "tests" / "fixtures"
+    cfg = json5.loads((fixture / "settings.json").read_text(encoding="utf-8-sig"))
     def sample_config():
         check(cfg["schema"] == 3 and cfg["screen"]["workState"]["trigger"] == "manual", "schema/trigger")
         check(cfg["data"]["ledger"]["identity"] in cfg["data"]["ledger"]["columns"]["source"], "identity not persisted")
@@ -105,7 +107,7 @@ def main():
 
     def sample_data():
         data = cfg["data"]
-        directory = root / cfg["paths"]["dataDir"]
+        directory = fixture / cfg["paths"]["dataDir"]
         tables = {}
         info = {}
         for name, spec in data["tables"].items():

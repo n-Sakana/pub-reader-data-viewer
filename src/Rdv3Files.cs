@@ -84,12 +84,16 @@ public static class Rdv3Files
                                      string logPath, string configPath, Rdv3Data data)
     { return NewOutputPath(value, appDir, dataDir, ledgerPath, logPath, configPath, data, ".json"); }
 
+    public static string MigrationPath(string value, string appDir, string dataDir, string ledgerPath,
+                                       string logPath, string configPath, Rdv3Data data)
+    { return NewOutputPath(value, appDir, dataDir, ledgerPath, logPath, configPath, data, ".xlsx"); }
+
     private static string NewOutputPath(string value, string appDir, string dataDir, string ledgerPath,
                                          string logPath, string configPath, Rdv3Data data, string extension)
     {
         string path = Full(value, appDir);
         if (!string.Equals(Path.GetExtension(path), extension, StringComparison.OrdinalIgnoreCase))
-        { throw new IOException(extension == ".csv" ? Rdv3Text.ExportCsvOnly : "-Output: use a new .json file"); }
+        { throw new IOException(extension == ".csv" ? Rdv3Text.ExportCsvOnly : "-Output: use a new " + extension + " file"); }
         if (ProgramFile(path, appDir, configPath) || Same(path, ledgerPath) || Same(path, logPath)
             || Same(path, ledgerPath + ".lock") || Same(path, ledgerPath + ".version")
             || Rdv3OperationLog.IsOperationLog(path, ledgerPath))
@@ -170,6 +174,13 @@ public static class Rdv3Files
     }
 
     public static string StorageContract(Rdv3Data data, Rdv3WorkState work)
+    {
+        // Old clients must reject the new ledger rather than drop its archive.
+        return Rdv3PendingStore.DigestOf("RDV-STORAGE-2:" + LegacyStorageContract(data, work)
+            + ":" + Rdv3BusinessDefinition.Bound(data));
+    }
+
+    public static string LegacyStorageContract(Rdv3Data data, Rdv3WorkState work)
     {
         List<string> entries = new List<string>();
         entries.Add("RDV-STORAGE-1");

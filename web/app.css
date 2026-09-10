@@ -166,3 +166,12 @@
 .dialogmode .dlg>.tb{display:none;}
 .dialogmode .dlg>.body{padding:12px;max-height:none;overflow:visible;}
 .dialogmode .veil{background:transparent;}
+.runtime .archive-list{max-height:220px;overflow:auto;}
+.runtime .archive-list th:first-child{width:46px;}
+.runtime .archive-list th:nth-child(3){width:90px;}
+.runtime .archive-list th:nth-child(4){width:170px;}
+.runtime .archive-details{height:180px;overflow:auto;margin-top:8px;}
+.runtime .archive-details table{width:100%;border-collapse:collapse;}
+.runtime .archive-details th{width:180px;text-align:left;vertical-align:top;font-weight:normal;color:#606060;}
+.runtime .archive-details td{white-space:pre-wrap;overflow-wrap:anywhere;}
+.runtime .archive-detail-button{min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;}

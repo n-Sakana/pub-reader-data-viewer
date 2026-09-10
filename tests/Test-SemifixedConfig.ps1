@@ -8,7 +8,14 @@ $scratch=Join-Path $Root ('work/semifixed/config-'+[Guid]::NewGuid().ToString('N
 $utf8=New-Object Text.UTF8Encoding($false)
 $legacy=[Rdv3Config]::Load((Join-Path $Root 'tests/fixtures/legacy-payment-settings.json'))
 $after=[Rdv3Config]::Load((Join-Path $Root 'configs/sample/settings.json'))
-if([Rdv3Files]::StorageContract($legacy.Data,$legacy.Screen.Work) -ne [Rdv3Files]::StorageContract($after.Data,$after.Screen.Work)){throw 'The two versions disagree on storage'}
+if([Rdv3Files]::LegacyStorageContract($legacy.Data,$legacy.Screen.Work) -ne [Rdv3Files]::LegacyStorageContract($after.Data,$after.Screen.Work)){throw 'The two versions disagree on row/state storage'}
+if([Rdv3Files]::StorageContract($legacy.Data,$legacy.Screen.Work) -eq [Rdv3Files]::StorageContract($after.Data,$after.Screen.Work)){throw 'Protection format was not separated from legacy'}
+$matching=Get-Content -LiteralPath (Join-Path $Root 'tests/fixtures/legacy-payment-settings.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+$matching.data.ledger | Add-Member NoteProperty protectStates @('TRUE')
+$matchingPath=Join-Path $scratch 'matching-main-settings.json'
+[IO.File]::WriteAllText($matchingPath,($matching|ConvertTo-Json -Depth 50),$utf8)
+$main=[Rdv3Config]::Load($matchingPath)
+if([Rdv3Files]::StorageContract($main.Data,$main.Screen.Work) -ne [Rdv3Files]::StorageContract($after.Data,$after.Screen.Work)){throw 'Protected main and fixed variants disagree on storage'}
 $old=[Rdv3Config]::Load((Join-Path $Root 'tests/fixtures/legacy-app-settings.json'))
 if([Rdv3Files]::StorageContract($old.Data,$old.Screen.Work) -eq [Rdv3Files]::StorageContract($after.Data,$after.Screen.Work)){throw 'Old APP contract was reused'}
 if($old.Ledger -eq $after.Ledger){throw 'Old APP ledger path was reused'}
