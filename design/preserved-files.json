@@ -1,23 +1,36 @@
 {
-  "scope": "Expected sources after approved 2026-09-09 record exclusions, Japanese diagnostics, retained send selection, disabled sample watch and resizing; original baseline hashes retained. Includes selected-record restoration after another PC sends (2026-09-09 VPS verification). Includes the search input label placed above its field to match the display fields, and the search key cleared after a successful send (2026-09-10).",
+  "scope": "Current source content against the previously published branch and the reviewed release packaging/documentation changes. Text fingerprints normalize CRLF to LF; original byte fingerprints remain in baselineSha256. Binary files stay byte-exact.",
   "sourceArchive": "ReaderDataViewer_fixed(1).zip",
   "sourceArchiveSha256": "7e44cf30173335deeb03a145ff4e80a964d02a15a0efb8503b097c8f4d50733d",
   "files": [
     {
       "path": "LICENSE",
-      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499"
+      "sha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "baselineSha256": "a2010f343487d3f7618affe54f789f5487602331c0a8d03f49e9a7c547cf0499",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
-      "path": "ReaderDataViewer.cmd",
-      "sha256": "91e06473ec77a2ee5b648f39cf3a7c54551f0038aa35430c994de8736857951a"
+      "path": "tools/ReaderDataViewer.cmd",
+      "sha256": "143dab36207b97ae5cd0810e1098eba48b3c55584f90152ccdd64e35819b7d66",
+      "baselineSha256": "91e06473ec77a2ee5b648f39cf3a7c54551f0038aa35430c994de8736857951a",
+      "originalPath": "ReaderDataViewer.cmd",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "ReaderDataViewer.vbs",
-      "sha256": "b9c1a415f1416b449e1c5ba85ca4297838af80ab3147e10d8a7fe99c7f746fcc"
+      "sha256": "b72f038edbf519bb34d239465436c971a7ccea994f9eace0ea657343dea27d0f",
+      "baselineSha256": "b9c1a415f1416b449e1c5ba85ca4297838af80ab3147e10d8a7fe99c7f746fcc",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "THIRD-PARTY-NOTICES.md",
-      "sha256": "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2"
+      "sha256": "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2",
+      "baselineSha256": "19629361a95fbb07c679ceeffd99111c16c8779c2033e5cfd0f0230bbedcf2d2",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "data/ReaderDataViewer.log",
@@ -42,299 +55,448 @@
     },
     {
       "path": "lib/LICENSE-Microsoft.Web.WebView2.txt",
-      "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55"
+      "sha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "baselineSha256": "0af8f1b807512aae39c2ac1aa4d0cae65cabecb6fd554b8439a5162a0d6eca55",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "lib/Microsoft.Web.WebView2.Core.dll",
-      "sha256": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2"
+      "sha256": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2",
+      "baselineSha256": "8219a3135436c147f8eb02fb831e99596103eebc18b6d7b794ca93f4c67018a2",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "lib/Microsoft.Web.WebView2.Wpf.dll",
-      "sha256": "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33"
+      "sha256": "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33",
+      "baselineSha256": "3c0bdf5f395bb665d3074fadaeb2594cd2b266663ed668491e40096c95031b33",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "lib/NOTICE-Microsoft.Web.WebView2.txt",
-      "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90"
+      "sha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
+      "baselineSha256": "106423785c5b7eba0a8e61d1837f2132e9c828e20ad530f565d981c1df60dd90",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "lib/WebView2Loader.dll",
-      "sha256": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7"
+      "sha256": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7",
+      "baselineSha256": "eb5335edeaa6f2122c044e82aab2351dc8c9b4e0fe5e578c71922fb61be285e7",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "settings.json",
-      "sha256": "3d7723ef0ec592ad5340aba00e550f2c1ea5f6bd9def1c72fc5183be6f7207b2",
-      "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
+      "sha256": "6e2c4599cab95448e68ccae4029954963fd21de0038206617c6b975beab59c0d",
+      "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/01_App.cs",
       "sha256": "a313445f7edb7c0758da4ae520908a8caa0d7672c1fe07e7a9bb9818f9351860",
-      "baselineSha256": "6988620e9a9a1f7d6284d173eb81d53bfbb14bbcc2b312648ca31d9f82914a3e"
+      "baselineSha256": "6988620e9a9a1f7d6284d173eb81d53bfbb14bbcc2b312648ca31d9f82914a3e",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/02_MainWindow.cs",
-      "sha256": "7596260d9c5db3f37ddc211025cd4863355cd07d6420e7ce2afbd9bee0d69e76",
-      "baselineSha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0"
+      "sha256": "5c575a80f07b3e3b044f43c81b987d8fe49e91b67bab6eac2929480df338a68e",
+      "baselineSha256": "1331d04df206a01da17c47c354d4ab7e9e184d6e29169ce4f34ee8e16f0396f0",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3App.cs",
-      "sha256": "b7e2ee6e752c117c129dba3c7d4fec696fb322548a9e2216192b5c7ce1463add",
-      "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df"
+      "sha256": "a0b1da589de19ee038ed7554bbc3792e192b5e5a38c7c9a66cdc1e228e9bb5c4",
+      "baselineSha256": "803c7e42d5cd1bb90cdf2f6491e8e780602279058ece2a7ecdfe6a97916829df",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Config.cs",
-      "sha256": "cbc0ac0fe9fcf19911552474afa392123dc6e85983e2cdbf01d378cac3e51034",
-      "baselineSha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f"
+      "sha256": "dd8efce677d2eefaf4f13e5a2e50c6fea62d62e999a422111d36fc8025fa64c4",
+      "baselineSha256": "0d7f50f99cfa24757aecd2f1e80c5655609ce2e615152a9a1fb690be9b512e2f",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Core.cs",
-      "sha256": "aedbf81c54faa3f69f65f75ac181b91cd0e4d7f7b584c91448c63e28dc791259",
-      "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e"
+      "sha256": "4ba3af39b760823063f4d1964614b22455d3c2bbe90718acd110aa6e3fe146d5",
+      "baselineSha256": "10044dd7183ea0d2d2e9e2cdcc7d06eefc1d4e3a816536f4323fbd25b3da431e",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Csv.cs",
       "sha256": "bff8d40494bf7154588383ffb0bb4649e9481572883760b2eae65d1a8e63d69e",
-      "baselineSha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df"
+      "baselineSha256": "72ae4d41a09278de0c1b2c824910f7b0b1bc5bfad9ba6c2b22e98413cfbae3df",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Data.cs",
-      "sha256": "e790167b9d1336bb6e1667c9e638e47f7f6a76f583e0372aba862a591f97f395",
-      "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542"
+      "sha256": "9a5305770df624fb73edb6e08a1feb0dbb9337d0c16e672bfe20787ae2d111d8",
+      "baselineSha256": "0f487594e499ad3fe496bcfbb0373c2fa865f5f4d6b43b0764d3b48268959542",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Expression.cs",
-      "sha256": "fa1753ab82eb9dfe8e2163cd329e10ee53db07bcb9fa9f80a5a047b49b51b97c",
-      "baselineSha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44"
+      "sha256": "752223b16608896f9a96ebc4f0100f3bf371af8dcf2609faf9a39e6b3d8048f5",
+      "baselineSha256": "4118c54523d27cf7a4cc713f493ee8354129433ebee51272afb854a91309ad44",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Files.cs",
-      "sha256": "ebbd6188bcd493723c0600393f50992650882137e64ae059ed76bcf5d32b20d9",
-      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+      "sha256": "a3772d30ac7f137523b4a305a4af4c008c5f4dc7f7113ada3d93938fa244f723",
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3FolderDialog.cs",
       "sha256": "adaed5c639798240db85f2b90bd8567443b28b64f802b431c6ba41e3e4950e22",
-      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Headless.cs",
-      "sha256": "881ebc38fcf45e50187b9ae0bd0e4ed1949d0b791e2dff3ff97f5d7c521a0a61",
-      "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42"
+      "sha256": "4a7a8e64646ee6e65d3e7bb6f912c0fc1427d804ffce3984b69fbd5745daedf8",
+      "baselineSha256": "cb8e3b3ba19a98effae290ea6d61ac545fa1c252c006f90f1929a671a6321c42",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Index.cs",
       "sha256": "e49d4e6e888046cee2104f40c539a9f94ce7824804996c703c7039a604a5a033",
-      "baselineSha256": "98a9a9c174ce1c4f6935c42b9be65c72397fe9a7f339527137225d917c8b9e3f"
+      "baselineSha256": "98a9a9c174ce1c4f6935c42b9be65c72397fe9a7f339527137225d917c8b9e3f",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Input.cs",
-      "sha256": "e8dd5ebe9de95f9f7e96f823e0ba809a97c37b29ba7599daa67fc6d8f5a38527",
-      "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8"
+      "sha256": "1839c3b150478d8f4e0ba1ac872650086f4c007bf050e7101748a2bdc6c6abe4",
+      "baselineSha256": "b2399b5fa7a7f66f8e97a8c7e4614f72608c30e759ea0dc3d05b1464c9717ca8",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Jobs.cs",
-      "sha256": "1a390d92e5282cd2480b8f02bd889861aa8a6d2b37271991f683ce0e9ad2e722",
-      "baselineSha256": "e2e05288b14abfb7af3a489723ac26989660670eebabb2f3636ec9d2c849ae53"
+      "sha256": "270fc74cb08792725717d6702cb7812985594ca410b40519b1869736e025f07d",
+      "baselineSha256": "e2e05288b14abfb7af3a489723ac26989660670eebabb2f3636ec9d2c849ae53",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Json.cs",
-      "sha256": "e7226c1aea63813b5f557aab583d7843920671b700a2268f576f04f730cbba16",
-      "baselineSha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8"
+      "sha256": "fca1d7eac192c8416274415eb3893d8dba4473003503c8850226c955322d0dd4",
+      "baselineSha256": "a36ed72d78f91f0fe0697f1892035c58884438d7c889367e250026dcdadc51f8",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Key.cs",
-      "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa"
+      "sha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa",
+      "baselineSha256": "0b9da0dcf80d5010e451216aef68cc7c91a307ee5cdeafe3a385497b1e84d4aa",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Ledger.cs",
-      "sha256": "1a944a006dd6316dcd16962462cda63f3d3a1f0fb077043a0d07565cbdbf8eef",
-      "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465"
+      "sha256": "292c7714f10386aa68a5d398f38f412a74de17d7003554523281c989fef612f5",
+      "baselineSha256": "3c74934be8b1268002ec9e66b13530860e88026f2f37f0af91b987900e7ea465",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3LedgerStore.cs",
-      "sha256": "b0ac0704819806a2530ed7524848fb5e6bc76c0b4cece1876e588ee2b1588b39",
-      "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c"
+      "sha256": "2c2859d9660ea2d6c729cff39993956d041e16729af5273ec33b121e9262ddca",
+      "baselineSha256": "1dbda0abd0f73a66fdaed5cc307b4d07a5a09c28460e6ac38623578a1e8b336c",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Log.cs",
-      "sha256": "e255779cb9c272484c1895338016d43aa778e1d483e1c7964dfd1a2a3e5616b0",
-      "baselineSha256": "6f2d8e96cc359fad00f498a1519f2905f38f6dece47395d1abb7ae9491784e04"
+      "sha256": "5e503d4730f4c445e6c38fff14264245665d27c5d03e6300d81332601fbe351d",
+      "baselineSha256": "6f2d8e96cc359fad00f498a1519f2905f38f6dece47395d1abb7ae9491784e04",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Modals.cs",
-      "sha256": "30bdfc00badee291ab375a9e9c50b0da98e3ee5ae1ae14fc18b0d3a8f18ff243",
-      "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184"
+      "sha256": "0a1fcf0f74cb737d74aed23f2dc0bcc5d23e57d80c94afec111182d142a2916a",
+      "baselineSha256": "00d619be510c56cde20ca433442644ae43ed4eebc2e679284c99cccd80423184",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3OperationLog.cs",
       "sha256": "e0bdd5d408cd28877d70cae1b453aac55f7e719c1fe0b6756576160fe12c1b53",
-      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf"
+      "baselineSha256": "09eb7ce752dc607606b3f7439547ba54002f30c72a86f266e629cc19e90431bf",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Process.cs",
-      "sha256": "0e4ad055af3b276b2fd9244b693d69ba0ac6322c527a8c3ef81f42f60da46ded",
-      "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720"
+      "sha256": "337b2ec120dd1937070eb54d77e5e858ba9369e02bfd4da3ca129596767bb6dd",
+      "baselineSha256": "6ddd872e02c71347809f2e1e5aec6b37fa4c13d545c1bb45c3c06d881d1ae720",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Program.cs",
-      "sha256": "d5affed2d37a8231f11814af8855451fbff9e90f99db212874452d34ddf5ce20",
-      "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6"
+      "sha256": "22748f8a5810c4a0c88cbe6233f87b44597409923be3bfb85fcbbab6376b74e5",
+      "baselineSha256": "de6577d63a5730f1f2c350d46e3e5f933c1712d0e9c946641b3d336137ce37c6",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3ResetNotice.cs",
-      "sha256": "9558c3d1197048e7353a65f84e352101f9789897a6aa6c8998aeb980515ddb6a",
-      "baselineSha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f"
+      "sha256": "2e3398bf25863ab8187435153ccd8e92a1b022cdd036153c0ada86dcd37e82a7",
+      "baselineSha256": "3b1b8ce6338efcc4a8a569b6310f27d3f843ffe80e806a79d7144405b4590b9f",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Screen.cs",
-      "sha256": "890d7e66096161785f55daa077ce4bba58223099141b7134bb3ed3dc2873b109",
-      "baselineSha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce"
+      "sha256": "fef84419863bc0a413f98f2ed08fd8164e17306fddeffc6728530af487105c55",
+      "baselineSha256": "a229737ff6865756d9976014b5db725360e1ddb260045d3d96c3e371767644ce",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Settings.cs",
       "sha256": "8596244ecb19e810e337800b7a120521bc742f4e3906c3a7d2065ead21e4982c",
-      "baselineSha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f"
+      "baselineSha256": "d1e379616911cb1ab4860feaa2a2d6fe900c3ef219d3b36355ed70f09a98c98f",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Shared.cs",
-      "sha256": "19910462d02413248a2e1ba65f199658564c51afd4b732adae84a7e458ffa017",
-      "baselineSha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99"
+      "sha256": "1238d2f17e4ad7046075031b9a2b1068c2c337d190a06bed5073366574df16b9",
+      "baselineSha256": "80de48b4e11ff64a33adc6efe795a84b8ea50d8895a6ff8813ff8b91f5450f99",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Text.cs",
-      "sha256": "64798ea63d11b282538acb1e2af0078f47710ba8fc4c63fcaa349d958900bec8",
-      "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86"
+      "sha256": "ee889e0b005fd199a0c0e516fe726b3db42ccb6f2682d27e8e6f17a9e4b88a8d",
+      "baselineSha256": "ccc3146066afd697b989d0fa66b80a48161df61a16ad1e45755ea6beeb3b9c86",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Ui.cs",
-      "sha256": "057c6b421ffc2dbb8618ae9e7647b1d0e8e8c235cfe9ada5fc3ceb66cfd704fa",
-      "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084"
+      "sha256": "b16bb49a95968fd806a029bae87250440b28806abdaeb6ec6a888509344a1c74",
+      "baselineSha256": "5fccd6b1019d48b47b4a85493617963dfc77d9a2670d1e11121de84b05fbd084",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Uia.cs",
-      "sha256": "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e"
+      "sha256": "ab61121c684c0dbbb07effbaa1e34b2ce9380af82a01dbef6827205d0309e248",
+      "baselineSha256": "e96369ea1565fdd114fbb744e218f9cb249434c516eddbd997daf18a6f28445e",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Validation.cs",
-      "sha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901"
+      "sha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901",
+      "baselineSha256": "6052e344c866fe1851acfe190bc05e17b7b29c8cedf63ac5c1b3e38691d69901",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Values.cs",
-      "sha256": "153dda5de3377e09a0721b5f570b79497ce213a64b1eb218fabe8a22e2325177",
-      "baselineSha256": "77de912564e5527f23fb9fc4689f8b7bcf8c06131ef6ce0d07d552ab9a971774"
+      "sha256": "6f1cb2ebaa706a6f3136c4b635f7d33f19259fe783c617743a76c2b77647927a",
+      "baselineSha256": "77de912564e5527f23fb9fc4689f8b7bcf8c06131ef6ce0d07d552ab9a971774",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Watch.cs",
       "sha256": "7ac394ca6b0f5996cccbdc119c10bfc05cebd0086441d350e1a235c6b7ed45c0",
-      "baselineSha256": "f87fdd10c93faf0677216c820410f2194ef95a3f7292e0935982de9f8a9977b6"
+      "baselineSha256": "f87fdd10c93faf0677216c820410f2194ef95a3f7292e0935982de9f8a9977b6",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3WriteGuard.cs",
-      "sha256": "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96"
+      "sha256": "1c0126844ea760b9b738622aa7ef1a597cf21e3b2985bdbf1b10cfdd2176d24d",
+      "baselineSha256": "a1a198a42bf20ff5b01aa18f32aa6611a42303027b8c67cbbe2f57062ced2b96",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/Rdv3Xlsx.cs",
-      "sha256": "cceab91729271d9d946e4c38eab93da6f526fb2758cf19c091acbda5477be2d9",
-      "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0"
+      "sha256": "50a416bf898e90b826eee063e3520a58acafddf760b845eda60d9bee4f88dd7e",
+      "baselineSha256": "4edb8892d4c93d06a6b4ad1fbd4221fc5daefce4e0fef2cbb29c57f9eb29fdc0",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "src/ReaderDataViewer.ps1",
-      "sha256": "70dc383ba053d1be3f8f2bc23d1448f844fb5b2499f272eb435c88ac00ec9a25",
-      "baselineSha256": "d2bacb39efb7ddca7bff3f65e5bc9a97eacd5fd929a0dd7011e291f04a3283af"
+      "sha256": "d4234a995a13b6ba854261a5134c12966f520829b57de89026ab71d794a85e84",
+      "baselineSha256": "d2bacb39efb7ddca7bff3f65e5bc9a97eacd5fd929a0dd7011e291f04a3283af",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/RegressionTests.cs",
-      "sha256": "b5f370dc888ff210c1ae89bf46e538256317fdade35f61878f482fefb585e5b0",
-      "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30"
+      "sha256": "717085c4ea9e27f30f9247f785de9003dc613b0fd588325d05fa29960a046a5a",
+      "baselineSha256": "4ddae82e7a9811dbeb265e8cf406ab73b617d09383f38c1e7bd45186ed96bb30",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/fixtures/data/delete.csv",
-      "sha256": "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520"
+      "sha256": "657bab15b455c98d2124b9a49183dcb10cd6f4da13a613360a389fc109402f1e",
+      "baselineSha256": "2f513365423c6564c0c064ed42b5e2412c60ebe7d6d636c102e0476819aa2520",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/fixtures/data/tableA.csv",
-      "sha256": "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe"
+      "sha256": "f56b57b32b47e2070b069bfa0105be511d62fca07af02eb47cab17d036b4d02d",
+      "baselineSha256": "6aa5236b97a2c7837a26a81f6ed05540b31062018397df7a547509cda5dfd7fe",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/fixtures/data/tableB.csv",
-      "sha256": "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383"
+      "sha256": "8e02f21b8d86f2c5e16667fe11fc3e6c483386c77fbddad1a76740600e64c745",
+      "baselineSha256": "734b4b0b4c7cdf05a7b1156dd8e3623d547a050090663a36e42e19d8f1479383",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/fixtures/data/tableC.csv",
-      "sha256": "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6"
+      "sha256": "45a47fd01a637dfb8ed06cf2c4c2eaa841f72b0b0067ef4abbc54cd3c7b9e714",
+      "baselineSha256": "cfe5318659fc1ed9e7316e54b697c73bd089c3c57cf5a21968837b2ba2e99de6",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/fixtures/settings.json",
-      "sha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd"
+      "sha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd",
+      "baselineSha256": "e73220440e7a1ea9cd48bbe622d8cff1e6604974cf7ace09f3d2c23277693fcd",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_static.py",
-      "sha256": "7d195e7f1067dac94dac03774d049f4beabada66b3567db195f372b76be93c81"
+      "sha256": "2734dd0384615f23ddaabbb33546107d9ad9a764aa1d0c0943bd8d96394ef571",
+      "baselineSha256": "7d195e7f1067dac94dac03774d049f4beabada66b3567db195f372b76be93c81",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_web.py",
-      "sha256": "e15d1be7d95d6ac0ec0c622dd9353d4b9e16d6ee0de4efdd18c368c946432af9"
+      "sha256": "423afca85af25d0a3567b8d79d537491be3eea49d0d143c60570d091a41cabdd",
+      "baselineSha256": "e15d1be7d95d6ac0ec0c622dd9353d4b9e16d6ee0de4efdd18c368c946432af9",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "web/app.css",
-      "sha256": "50dd51f9776739ee701b4aedc926dae782345192ee7c58c6651cb405a285643c",
-      "baselineSha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d"
+      "sha256": "11e742b362a47c404b69a30154e657a0204efaf42f5c698c9d95a97f23fe4f32",
+      "baselineSha256": "5cd32847016e0c4f58c18e6e4829f83b1e1ab652a6990d8a438eb0541a8b6f7d",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "web/app.js",
-      "sha256": "15aee6050a0f756b2d1b8da8762b58c09bec5093d68ee0ccf26a7fb50692484e",
-      "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50"
+      "sha256": "9a71f8aba7a65eb7e35c1a9a7e1bdab26604ea7ea0d1ce3dcf3b900c6f5ea637",
+      "baselineSha256": "4d61aa55b7730037c2984d1111577ee10edea269bea3abe08d38673e3b86ce50",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/Test-ModalPicker.ps1",
-      "sha256": "ef361324fc9098264d3701c659e1b4ff0b6dfe434e95352ee08f38757cba69cb"
+      "sha256": "cf5a574ced67aa6de64d0cbad5ba73df5e2070b663697b6d062c7459224625c3",
+      "baselineSha256": "ef361324fc9098264d3701c659e1b4ff0b6dfe434e95352ee08f38757cba69cb",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/LoggingFaults.cs",
-      "sha256": "238c633a2cedcce421e84f7f58a3ba1f966848d0ac4a4c1467bfbe67fee82511"
+      "sha256": "238c633a2cedcce421e84f7f58a3ba1f966848d0ac4a4c1467bfbe67fee82511",
+      "baselineSha256": "238c633a2cedcce421e84f7f58a3ba1f966848d0ac4a4c1467bfbe67fee82511",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/Test-LoggingFaults.ps1",
-      "sha256": "194e9c821fca2d1fd8bbfd474c7e647e0782a27113864071b648008823231200"
+      "sha256": "f819e428453617fa5ca4638655235e42d75cc6179200ad790aad8af248b8397e",
+      "baselineSha256": "194e9c821fca2d1fd8bbfd474c7e647e0782a27113864071b648008823231200",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/Test-ReadmeBaseline.ps1",
-      "sha256": "b885906cbe3f2039b5f397ff6d483fdbdfce9bed602e3f2e026fcde597ffa76b"
+      "sha256": "7e385c692c80553412390ebe242bda9b77c97632035e5cc5657e88450fc1adb5",
+      "baselineSha256": "b885906cbe3f2039b5f397ff6d483fdbdfce9bed602e3f2e026fcde597ffa76b",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_logging.py",
-      "sha256": "84b7d8183fe428dadcaffde7664861650ae8b5ff3714ac401e46c03af0c3b364"
+      "sha256": "84b7d8183fe428dadcaffde7664861650ae8b5ff3714ac401e46c03af0c3b364",
+      "baselineSha256": "84b7d8183fe428dadcaffde7664861650ae8b5ff3714ac401e46c03af0c3b364",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_logging_faults.py",
-      "sha256": "a8a13c3b47af26dd0d0210d56aa656f6b50b57c66eacf736fdebfe839f7bf7f5"
+      "sha256": "a8a13c3b47af26dd0d0210d56aa656f6b50b57c66eacf736fdebfe839f7bf7f5",
+      "baselineSha256": "a8a13c3b47af26dd0d0210d56aa656f6b50b57c66eacf736fdebfe839f7bf7f5",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_readme_example.py",
-      "sha256": "023def8b0c1bc44792a4c1bb9f6c3eba99eb29b32fbf20c68532b16c8c571477",
-      "baselineSha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce"
+      "sha256": "58d67954564239e1fef8d845acb5feed8a796ec0caaf3315cc5cc36a0982d9c7",
+      "baselineSha256": "648ef317f6506f431994ee203407811933177ef4cb6180a40e732c0a1010a6ce",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_feedback_hints.py",
-      "sha256": "b993f42da7de4f56167d90ffa191ac81b2365a15ffd6e2839fd5b91bd83d35da",
-      "baselineSha256": "0f0f7ebf4a3c6641bfdbe231a6eee8cddf349876eda2958697dd65af4da9d58c"
+      "sha256": "67c80b8d22f363c7544209d688157890fd5fb6e4662ff9fb3e00459ecb0a8ad9",
+      "baselineSha256": "0f0f7ebf4a3c6641bfdbe231a6eee8cddf349876eda2958697dd65af4da9d58c",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_input_boundaries.py",
-      "sha256": "be7de2c14a3d7e07f7117d1b85c19c09590b8240b3227d4dccb622604b0f1f68",
-      "baselineSha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9"
+      "sha256": "0daf26357f616dd2f36869f3ffc99e3bc520ba8aa7fd1d8954d92ba5b31a13eb",
+      "baselineSha256": "9c7f30d0c519922f7b3689bbfbe7a64395987655c81e11645e191e05f153d8c9",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_relaxations.py",
-      "sha256": "ce49bb88d815574ad66471b6e2f966cb8d9ad029b1c682fa9661cbcb8134d141"
+      "sha256": "0bdbe3e303bb071c7e15b3e06cf8b638df12ef90d729082ce40f0c3114b6ff61",
+      "baselineSha256": "ce49bb88d815574ad66471b6e2f966cb8d9ad029b1c682fa9661cbcb8134d141",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_readme_derived.py",
-      "sha256": "75c21b973ff8e213defae5496b112b4ab9de872ab5e900b062dcc2bbb9a9c2f6",
-      "baselineSha256": "dfeab1d047583db29751fb4df38da7ea3ea059c660319c66f3c605489c780c81"
+      "sha256": "e8e3648536fe2c86894b5fd8e94aabaac8f56c945b8e3cdc89c4013fad60fe7c",
+      "baselineSha256": "dfeab1d047583db29751fb4df38da7ea3ea059c660319c66f3c605489c780c81",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     },
     {
       "path": "tests/test_delimiter.py",
-      "sha256": "828135e4d850f4463e134a6010e4ee90df8efafaaae86bbb866e015d3dff01ee"
+      "sha256": "f0ebbf2442131c0a5f4a72c1b077e560e4c0f8d48e834c5feb883e86d81ddef5",
+      "baselineSha256": "828135e4d850f4463e134a6010e4ee90df8efafaaae86bbb866e015d3dff01ee",
+      "normalization": "crlf-to-lf",
+      "reviewedBaseCommit": "79ccc393589df1ba0b412158a5910ca1521a2167"
     }
   ]
 }

@@ -84,3 +84,6 @@ __pycache__/
 
 # Environment-specific settings are kept locally.
 /configs/production/
+
+# Generated build candidates, separate from published releases.
+/build/packages/

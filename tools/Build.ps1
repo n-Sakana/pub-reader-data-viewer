@@ -26,17 +26,17 @@ function Write-Json([string]$Path, $Object) {
 }
 function Show-Usage {
     Write-Host (@(
-        'Reader Data Viewer - Win98 build'
+        'Reader Data Viewer - build'
         ''
         '  build.bat                         Choose format, sample data and tests'
         '  build.bat compile                 Compile the C# application'
         '  build.bat test                    Run isolated C# regression tests'
-        '  build.bat package -Theme win98     Create a new folder and ZIP'
+        '  build.bat package                  Create a new folder and ZIP'
         '  build.bat package -Format zip -Data none -OutputRoot "C:\RDV releases"'
         ''
         'Options: -Format both|folder|zip, -Data sample|none, -OutputRoot PATH'
         '         -RunTests, -SkipValidation (explicit compile skip, never a pass)'
-        'Win98 is the only design. -Theme win98 and -All are optional aliases.'
+        'The branch selects the product. -Theme win98 and -All are compatibility aliases.'
         'Each build creates a NEW folder. Existing packages and input files stay intact.'
         'This is a source-at-startup application, not a standalone EXE.'
         'See docs/design-build.md for Japanese instructions.'
@@ -60,7 +60,7 @@ function Show-BuildMenu($Options) {
         throw 'Interactive input requires a console. Use: build.bat package -Theme win98'
     }
     while ($true) {
-        Write-Host ('Win98 / Format: {0} / Data: {1} / Core tests: {2}' -f $Options.Format, $Options.Data, $Options.Tests)
+        Write-Host ('Format: {0} / Data: {1} / Core tests: {2}' -f $Options.Format, $Options.Data, $Options.Tests)
         Write-Host 'F: format  D: sample data  T: core tests  Enter: build  Esc/Q: cancel'
         if ($SkipValidation) { Write-Warning 'Native compile verification will be explicitly skipped.' }
         switch ([Console]::ReadKey($true).Key.ToString()) {
@@ -79,20 +79,15 @@ function Show-BuildMenu($Options) {
         }
     }
 }
-function Copy-SafeTree([string]$Source, [string]$Destination) {
-    if (-not (Test-Path -LiteralPath $Source -PathType Container)) { throw ('Missing directory: ' + $Source) }
-    $items = @(Get-Item -LiteralPath $Source) + @(Get-ChildItem -LiteralPath $Source -Force -Recurse)
-    foreach ($item in $items) {
-        if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Refusing linked/reparse-point input: ' + $item.FullName) }
-    }
-    [IO.Directory]::CreateDirectory($Destination) | Out-Null
-    foreach ($item in (Get-ChildItem -LiteralPath $Source -Force)) {
-        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
-    }
-}
 function Copy-SafeFile([string]$Source, [string]$Destination) {
     $file = Get-Item -LiteralPath $Source -ErrorAction Stop
     if ($file.PSIsContainer -or ($file.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Invalid source file: ' + $Source) }
+    $parent = $file.Directory
+    while ($null -ne $parent) {
+        if (($parent.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw ('Refusing linked input directory: ' + $parent.FullName) }
+        if ($parent.FullName.Equals($script:Root, [StringComparison]::OrdinalIgnoreCase)) { break }
+        $parent = $parent.Parent
+    }
     Copy-Item -LiteralPath $Source -Destination $Destination
 }
 function Get-PackageHashes([string]$Directory) {
@@ -118,13 +113,18 @@ function Copy-ProtectionSamples([string]$Package) {
         Copy-SafeFile (Join-Path $script:Root ('tests/fixtures/sample-v4/' + $name)) (Join-Path $examples ('initial/' + $name))
     }
     foreach ($dir in @('next-period','partial-pay')) {
-        Copy-SafeTree (Join-Path $script:Root ('samples/' + $dir)) (Join-Path $examples $dir)
+        [IO.Directory]::CreateDirectory((Join-Path $examples $dir)) | Out-Null
+        $names = @('②決済管理データ_100件.csv')
+        if ($dir -eq 'next-period') { $names = @('①取引データ_100件.csv','②決済管理データ_100件.csv','③講習受講データ_100件.xlsx','④処理済みデータ_100件.xlsx') }
+        foreach ($name in $names) {
+            Copy-SafeFile (Join-Path $script:Root ('samples/' + $dir + '/' + $name)) (Join-Path $examples ($dir + '/' + $name))
+        }
     }
     foreach ($file in @('expected.json','README.md')) {
         Copy-SafeFile (Join-Path $script:Root ('samples/' + $file)) (Join-Path $examples $file)
     }
 }
-function New-Win98Package($Options) {
+function New-ProductPackage($Options) {
     $compileStatus = 'not_run_explicit_skip'; $testStatus = 'not_requested'
     if ($SkipValidation -and $Options.Tests) { throw '-SkipValidation and -RunTests are mutually exclusive.' }
     if (-not $SkipValidation) {
@@ -132,14 +132,14 @@ function New-Win98Package($Options) {
         if ($Options.Tests) { Invoke-NativeCheck 'test'; $testStatus = 'passed' }
     } else { Write-Host 'WARNING: Native Windows verification SKIPPED. These packages are NOT runtime-verified.' -ForegroundColor Yellow }
     $destination = $OutputRoot
-    if ([string]::IsNullOrWhiteSpace($destination)) { $destination = Join-Path $script:Root 'releases' }
+    if ([string]::IsNullOrWhiteSpace($destination)) { $destination = Join-Path $script:Root 'build/packages' }
     $destination = [IO.Path]::GetFullPath($destination)
     $volumeRoot = [IO.Path]::GetPathRoot($destination)
     if ($destination.Length -gt $volumeRoot.Length) {
         $destination = $destination.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar)
     }
     # Never write generated output into an input tree. No existing build is removed.
-    foreach ($name in @('', 'src', 'web', 'lib', 'data', 'tests', 'tools', 'design', 'docs')) {
+    foreach ($name in @('', 'src', 'web', 'lib', 'data', 'tests', 'tools', 'design', 'docs', 'manual', 'configs', 'samples', 'archive')) {
         $protected = $script:Root
         if ($name) { $protected = Join-Path $protected $name }
         if ($destination.Equals($protected, [StringComparison]::OrdinalIgnoreCase) -or
@@ -153,21 +153,24 @@ function New-Win98Package($Options) {
     $published = Join-Path $destination ('build-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + $key.Substring(0,8))
     [IO.Directory]::CreateDirectory($stage) | Out-Null
     try {
+        $spec = Get-Content -LiteralPath (Join-Path $script:Root 'tools/package-files.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($spec.schema -ne 1 -or $spec.variant -notin @('json-layout','fixed-layout') -or
+            $spec.packageName -ne ('ReaderDataViewer-' + $spec.variant)) { throw 'Invalid package product definition.' }
         $id = 'win98'
-        $packageName = 'ReaderDataViewer-' + $id
+        $packageName = $spec.packageName
         $package = Join-Path $stage $packageName
         [IO.Directory]::CreateDirectory($package) | Out-Null
-        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'Migrate-Ledger.ps1', 'README.md', 'PAYMENT-GUIDE.md', 'PROTECTION-GUIDE.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
-            Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
+        $seen = @{}
+        foreach ($file in $spec.files) {
+            if ($file -notmatch '^[A-Za-z0-9_./-]+$' -or $file -match '(^/|(^|/)\.\.(/|$))' -or $seen.ContainsKey($file)) {
+                throw ('Invalid or duplicate package path: ' + $file)
+            }
+            $seen[$file] = $true
+            $target = Join-Path $package $file
+            [IO.Directory]::CreateDirectory((Split-Path -Parent $target)) | Out-Null
+            Copy-SafeFile (Join-Path $script:Root $file) $target
         }
-        # 見本データ一式と同じ形の設定を入れる。sample-v4 に無ければ直下のものを使う。
-        $sampleSettings = Join-Path $script:Root 'tests/fixtures/sample-v4/settings.json'
-        if ($Options.Data -eq 'sample' -and (Test-Path -LiteralPath $sampleSettings -PathType Leaf)) {
-            Copy-SafeFile $sampleSettings (Join-Path $package 'settings.json')
-        } else {
-            Copy-SafeFile (Join-Path $script:Root 'settings.json') (Join-Path $package 'settings.json')
-        }
-        foreach ($dir in @('src','web','lib')) { Copy-SafeTree (Join-Path $script:Root $dir) (Join-Path $package $dir) }
+        Copy-SafeFile (Join-Path $script:Root 'configs/sample/settings.json') (Join-Path $package 'settings.json')
         [IO.Directory]::CreateDirectory((Join-Path $package 'data')) | Out-Null
         [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
         if ($Options.Data -eq 'sample') {
@@ -192,21 +195,22 @@ function New-Win98Package($Options) {
             }
         }
         if ($Options.Data -eq 'sample') { Copy-ProtectionSamples $package }
-        # docs/ は開発中の記録なので配布しない (先生の指示 2026-09-10)。
-        # 実機名や検証の経緯が入っていて、受け取る人には要らない。
-        $readme = "Reader Data Viewer - Windows 98 Classic`r`n`r`n" +
-            "Start: ReaderDataViewer.vbs (or .cmd for console diagnostics).`r`n" +
-            "Extract the entire ZIP first. Requires 64-bit Windows, Windows PowerShell 5.1, WPF and WebView2 Runtime.`r`n" +
-            "Theme: win98 / motion: off / input data: $($Options.Data)`r`n" +
-            "Native compile: $compileStatus / core tests: $testStatus`r`n" +
-            "This is a source-at-startup distribution, NOT a standalone EXE.`r`n" +
-            "The sample uses PAY+MAP pairs, two-status payment checks and processed-only deletion. See PAYMENT-GUIDE.md.`r`n" +
-            "No live ledger, log, output or local pending changes were copied.`r`n" +
-            "Review paths in settings.json BEFORE running a production copy.`r`n" +
-            "Check steps before acceptance: README.md`r`n"
-        Write-Utf8 (Join-Path $package 'PACKAGE-README.txt') $readme
+        $sourceCommit = $null; $sourceDirty = $null
+        if ((Test-Path -LiteralPath (Join-Path $script:Root '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
+            $revision = & git -C $script:Root rev-parse HEAD 2>$null
+            if ($LASTEXITCODE -eq 0) {
+                $sourceCommit = [string]$revision
+                $status = & git -C $script:Root status --porcelain --untracked-files=normal 2>$null
+                if ($LASTEXITCODE -eq 0) { $sourceDirty = [bool]$status }
+            }
+        }
+        $release = [ordered]@{
+            schema=1; application='ReaderDataViewer'; variant=$spec.variant; name=$spec.name
+            createdUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$sourceCommit; sourceDirty=$sourceDirty; data=$Options.Data
+        }
+        Write-Json (Join-Path $package 'manual/release.json') $release
         $manifest = [ordered]@{
-            schema = 1; application = 'ReaderDataViewer'; theme = $id; motion = 'off'
+            schema = 1; application = 'ReaderDataViewer'; variant = $spec.variant; name = $spec.name; sourceCommit = $sourceCommit; sourceDirty = $sourceDirty; theme = $id; motion = 'off'
             createdUtc = [DateTime]::UtcNow.ToString('o'); data = $Options.Data
             validation = [ordered]@{ nativeCompile = $compileStatus; coreTests = $testStatus; windowsUI = 'not_run_by_packager'; sharedLedger = 'not_run_by_packager' }
             files = @(Get-PackageHashes $package)
@@ -216,8 +220,8 @@ function New-Win98Package($Options) {
             [IO.Compression.ZipFile]::CreateFromDirectory($package, (Join-Path $stage ($packageName + '.zip')), [IO.Compression.CompressionLevel]::Optimal, $true)
         }
         if ($Options.Format -eq 'zip') { Remove-OwnedDirectory $package $stage }
-        $summary = @([ordered]@{theme=$id; name='Windows 98 Classic'; motion='off'; package=$packageName; format=$Options.Format})
-        Write-Host '  Prepared: Windows 98 Classic' -ForegroundColor Green
+        $summary = @([ordered]@{theme=$id; variant=$spec.variant; name=$spec.name; motion='off'; package=$packageName; format=$Options.Format})
+        Write-Host ('  Prepared: ' + $packageName) -ForegroundColor Green
         Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
         [IO.Directory]::Move($stage, $published)
@@ -242,7 +246,8 @@ try {
     if ($All -and $Theme) { throw '-All and -Theme are mutually exclusive.' }
     if ($Theme -and $Theme.Trim() -ne 'win98') { throw 'Win98 is the only supported theme.' }
     if ($Command -eq 'list') {
-        [pscustomobject]@{id='win98'; name='Windows 98 Classic'; modern=$false} | Format-Table -AutoSize
+        $spec = Get-Content -LiteralPath (Join-Path $script:Root 'tools/package-files.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+        [pscustomobject]@{id=$spec.variant; name=$spec.name; package=$spec.packageName} | Format-Table -AutoSize
         exit 0
     }
     $options = [pscustomobject]@{Format = $Format; Data = $Data; Tests = [bool]$RunTests}
@@ -250,7 +255,7 @@ try {
         $options = Show-BuildMenu $options
         if ($null -eq $options) { Write-Host 'Cancelled. No files were written.'; exit 0 }
     }
-    New-Win98Package $options
+    New-ProductPackage $options
     exit 0
 }
 catch {

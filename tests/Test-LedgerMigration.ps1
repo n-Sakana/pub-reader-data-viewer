@@ -23,7 +23,7 @@ $oldPath=Join-Path $Evidence 'legacy.xlsx';$output=Join-Path $Evidence 'migrated
 [Rdv3Xlsx]::Write($oldPath,$oldCfg.Data.Head,$oldCfg.Screen.Work.Column,$source.Lines,$states,'legacy-fixture',[Rdv3Files]::LegacyStorageContract($oldCfg.Data,$oldCfg.Screen.Work))
 $oldHash=(Get-FileHash -LiteralPath $oldPath).Hash
 function Invoke-Migration([string]$Name,[string]$Origin,[string]$Destination,[bool]$Confirm,[int]$Expected) {
-    $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'Migrate-Ledger.ps1'),'-OriginalConfig',$Origin,'-Config',$config,'-DataDir',$dataDir,'-Ledger',$oldPath,'-Output',$Destination)
+    $args=@('-NoProfile','-ExecutionPolicy','Bypass','-File',(Join-Path $Root 'tools/Migrate-Ledger.ps1'),'-OriginalConfig',$Origin,'-Config',$config,'-DataDir',$dataDir,'-Ledger',$oldPath,'-Output',$Destination)
     if($Confirm){$args+='-ConfirmOriginalDefinition'}
     $start=New-Object Diagnostics.ProcessStartInfo
     $start.FileName='powershell.exe';$start.Arguments=($args|ForEach-Object {'"'+$_+'"'}) -join ' '
