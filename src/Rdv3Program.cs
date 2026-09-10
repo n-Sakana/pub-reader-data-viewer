@@ -78,6 +78,7 @@ public static class Rdv3Program
                     cfg.Data.Tables[t].Sheet);
             }
             cfg.Data.Bind(heads);
+            Rdv3BusinessDefinition.BindFileInputs(cfg.Data, dataDir);
             if (cfg.Data.TypeOrder.Count > 0)
             {
                 Rdv3Table[] typedTables = new Rdv3Table[cfg.Data.Tables.Count];

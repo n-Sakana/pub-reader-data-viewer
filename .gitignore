@@ -23,7 +23,11 @@ dist/
 /data-1k/
 /data-100k/
 /data-tiny/
-/samples/
+/samples/*
+!/samples/next-period/
+!/samples/partial-pay/
+!/samples/expected.json
+!/samples/README.md
 /work/
 /showcase/
 /build/fixtures/
@@ -40,6 +44,7 @@ dist/
 *.xlsx.lock
 *.xlsx.version
 !tests/fixtures/sample-v4/*.xlsx
+!samples/next-period/*.xlsx
 
 # 退役した Excel / VBA 系のビルド生成物 (archive/vba, archive/comparisons)
 *.xlsm

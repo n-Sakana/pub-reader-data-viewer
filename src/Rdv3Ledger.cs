@@ -50,6 +50,8 @@ public sealed class Rdv3MergeResult
 
 public sealed class Rdv3UpdateResult
 {
+    public int Protected;
+    public int SkippedDeleted;
     public string[] Lines;
     public string[] States;
     public readonly List<string> ResetLines = new List<string>();
@@ -108,6 +110,7 @@ public static class Rdv3Ledger
         }
         // the definition's names against the headers actually read
         d.Bind(heads);
+        Rdv3BusinessDefinition.BindFileInputs(d, dataDir);
         d.ConvertWorkbookDates(tables);
         d.ValidateTypes(tables);
         for (int t = 0; t < nt; t++)

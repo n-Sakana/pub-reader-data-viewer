@@ -369,7 +369,12 @@ public sealed class Rdv3Config
         root.Check(delegate { c.Data = Rdv3Data.Read(root.Obj("data", true)); });
         root.Check(delegate { c.Screen = Rdv3Screen.Read(root.Obj("screen", true)); });
         // the screen names ledger columns; they have to be the data's
-        if (c.Data != null && c.Screen != null) { c.Screen.Check(c.Data, root.Validation); }
+        if (c.Data != null && c.Screen != null)
+        {
+            c.Screen.Check(c.Data, root.Validation);
+            foreach (string state in c.Data.ProtectedStates)
+            { root.Check(delegate { if (c.Screen.Work.ByStored(state) == null) { throw root.Fail("data.ledger.protectStates: unknown stored state " + state); } }); }
+        }
         else if (root.Validation != null) { root.Validation.Skip("screen references to data (incomplete data or screen definition)"); }
         if (root.Validation != null) { root.Validation.Finish("settings", "input files, input columns/types and job preparation"); }
         c.sourceDigest = Rdv3PendingStore.DigestOf(text);

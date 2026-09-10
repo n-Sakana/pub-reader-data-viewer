@@ -360,7 +360,10 @@
             "onSourceChange": "reset"
           }
         ]
-      }
+      },
+      "protectStates": [
+        "TRUE"
+      ]
     }
   },
   "screen": {
@@ -454,7 +457,11 @@
           "confirm": "表示中の案件を未処理に戻します。よろしいですか。",
           "done": "未処理に戻しました"
         }
-      ]
+      ],
+      "automaticWhen": {
+        "judgment": "paymentStatus",
+        "result": "paid"
+      }
     },
     "export": {
       "defaultFields": [
@@ -849,6 +856,10 @@
             "action": "deleteRecords",
             "job": "delete-processed-records",
             "text": "データ削除"
+          },
+          {
+            "action": "restoreRecords",
+            "text": "削除済み"
           },
           {
             "action": "settings",

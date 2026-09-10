@@ -231,6 +231,28 @@ public sealed class Rdv3WorkState
     // automatic: a single hit from the watched application advances the
     // state; manual: only the work-state button can advance it.
     public string Trigger = "manual";
+    public string AutomaticJudgment = "";
+    public string AutomaticResult = "";
+    private int automaticLine;
+
+    public bool AllowsAutomatic(Rdv3Screen screen, Rdv3View view, Rdv3Fields fields)
+    {
+        if (Trigger != "automatic" || view == null || view.Record == null) { return false; }
+        if (AutomaticJudgment.Length == 0) { return true; }
+        Rdv3Verdict verdict = Rdv3Eval.Judge(screen.JudgmentOf(AutomaticJudgment), view, fields);
+        return verdict.Result != null && verdict.Result.Id == AutomaticResult;
+    }
+
+    public void CheckAutomatic(Rdv3Screen screen)
+    {
+        if (AutomaticJudgment.Length == 0) { return; }
+        Rdv3Judgment judgment = screen.JudgmentOf(AutomaticJudgment);
+        if (judgment == null)
+        { throw new Rdv3LoadError("screen.workState.automaticWhen.judgment: " + AutomaticJudgment + " is not defined under judgments", automaticLine); }
+        if (AutomaticResult == Rdv3Judgment.Error || AutomaticResult == Rdv3Judgment.Undefined
+            || !judgment.Results.ContainsKey(AutomaticResult))
+        { throw new Rdv3LoadError("screen.workState.automaticWhen.result: " + AutomaticResult + " must name a defined non-error result", automaticLine); }
+    }
 
     public Rdv3StateDef ById(string id)
     {
@@ -266,9 +288,17 @@ public sealed class Rdv3WorkState
 
     public static Rdv3WorkState Read(Rdv3Json o)
     {
-        o.Only("store", "states", "initial", "transitions", "button", "trigger");
+        o.Only("store", "states", "initial", "transitions", "button", "trigger", "automaticWhen");
         Rdv3WorkState w = new Rdv3WorkState();
         w.Trigger = o.Word("trigger", w.Trigger, "automatic", "manual");
+        Rdv3Json automatic = o.Obj("automaticWhen", false);
+        if (automatic != null)
+        {
+            automatic.Only("judgment", "result");
+            w.AutomaticJudgment = automatic.Need("judgment");
+            w.AutomaticResult = automatic.Need("result");
+            w.automaticLine = automatic.Line;
+        }
         Rdv3Json store = o.Obj("store", true);
         store.Only("column");
         w.Column = store.Need("column");
@@ -339,7 +369,7 @@ public sealed class Rdv3ButtonDef
     public bool Primary;
 
     public static readonly string[] Actions =
-    { "search", "clear", "workState", "tableExport", "updateRecords", "deleteRecords", "sendChanges", "refreshLedger", "settings" };
+    { "search", "clear", "workState", "tableExport", "updateRecords", "deleteRecords", "restoreRecords", "sendChanges", "refreshLedger", "settings" };
 }
 
 public sealed class Rdv3RowDef
@@ -752,6 +782,8 @@ public sealed class Rdv3Screen
     // a confirm text -- must be one of data.ledger.columns.
     public void Check(Rdv3Data data, Rdv3Validation validation = null)
     {
+        try { Work.CheckAutomatic(this); }
+        catch (Rdv3LoadError error) { Report(validation, error); }
         List<Rdv3Bind> all = AllBindings();
         for (int i = 0; i < all.Count; i++)
         {

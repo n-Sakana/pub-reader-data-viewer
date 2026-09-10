@@ -16,6 +16,20 @@
 
 public static class Rdv3Text
 {
+    public const string MigrationNeedsConfirmation = "旧台帳の作成時設定であることを確認し、-ConfirmOriginalDefinition を指定してください。旧台帳には結合定義の履歴がなく、アプリだけでは証明できません。";
+    public const string MigrationDefinitionMismatch = "作成時設定と移行先設定の入力・結合・保存・削除定義が一致しません。旧台帳と移行先は変更していません。";
+    public const string MigrationBusy = "旧台帳をほかの端末が処理中です。全端末の処理と未送信変更を終えてから移行してください。";
+    public const string MigrationAlreadyBound = "この台帳は既に定義と削除保管情報を持っています。旧台帳の移行対象ではありません。";
+    public const string MigrationDone = "旧台帳の全内容・状態を保持して別ファイルへ移しました。移行先: ";
+    public const string LegacyLedgerNeedsMigration = "この旧台帳には業務定義の記録がありません。自動で現在の設定を登録せず、書込みを停止しました。作成時の設定を用意し、Migrate-Ledger.ps1 で別名の台帳へ移行してください。元の台帳と状態は保持しています。";
+    public const string BusinessDefinitionMismatch = "台帳作成時と入力形式・結合・保存・削除の定義が違います。同じ台帳への書込みはできません。作成時の設定へ戻すか、別の台帳を指定してください。";
+    public const string ProtectionInvalid = "台帳の定義または削除保管データが不正です。書込みを停止しました。正常な控えから台帳を復旧してください。";
+    public const string ArchiveIdentityConflict = "復元対象が変更されたか、同じ識別キーが既に通常台帳にあります。上書きせず停止しました。台帳を読み直して確認してください。";
+    public const string ArchiveTitle = "削除済みレコード";
+    public const string OpRestore = "復元";
+    public const string ArchiveHint = "削除時の内容と処理状態を保管しています。選択したレコードだけを復元します。";
+    public const string RestoreDone = "{0} 件を削除時の内容と状態で復元しました。";
+    public const string RestoreConfirm = "選択した {0} 件を、削除時の内容と処理状態で共有台帳へ復元します。よろしいですか。";
     public const string DeleteStateHint = "\u51E6\u7406\u72B6\u614B\u306F\u5171\u6709\u53F0\u5E33\u306B\u4FDD\u5B58\u6E08\u307F\u306E\u5024\u3067\u5224\u5B9A\u3057\u307E\u3059\u3002\u672A\u9001\u4FE1\u306E\u5909\u66F4\u306F\u9001\u4FE1\u3057\u3066\u304B\u3089\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
     public const string RecordXmlValue = "値「{0}」には XLSX に保存できない文字があります。";
     public static string Format(string text, params object[] values)

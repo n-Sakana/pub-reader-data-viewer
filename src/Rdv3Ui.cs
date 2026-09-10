@@ -97,6 +97,9 @@ public sealed class Rdv3Form
     public Action OnTableExport;
     public Action<string> OnUpdateRecords;
     public Action<string> OnDeleteRecords;
+    public Action OnRestoreRecords;
+
+    public bool BringToFrontForRead() { return host.BringToFrontForRead(); }
     public Action OnSendChanges;
     public Action OnSettings;
 
@@ -389,6 +392,7 @@ public sealed class Rdv3Form
         else if (action == "sendChanges" && OnSendChanges != null) { OnSendChanges(); }
         else if (action == "updateRecords" && OnUpdateRecords != null) { OnUpdateRecords(JobOf(action)); }
         else if (action == "deleteRecords" && OnDeleteRecords != null) { OnDeleteRecords(JobOf(action)); }
+        else if (action == "restoreRecords" && OnRestoreRecords != null) { OnRestoreRecords(); }
     }
 
     private string JobOf(string action)
@@ -629,6 +633,7 @@ public sealed class Rdv3Form
         else if (action == "tableExport" && OnTableExport != null) { OnTableExport(); }
         else if (action == "updateRecords" && OnUpdateRecords != null) { OnUpdateRecords(job); }
         else if (action == "deleteRecords" && OnDeleteRecords != null) { OnDeleteRecords(job); }
+        else if (action == "restoreRecords" && OnRestoreRecords != null) { OnRestoreRecords(); }
         else if (action == "sendChanges" && OnSendChanges != null) { OnSendChanges(); }
         else if (action == "settings" && OnSettings != null) { OnSettings(); }
     }

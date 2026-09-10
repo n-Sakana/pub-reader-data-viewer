@@ -6,6 +6,8 @@ Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 $builder = Join-Path $root 'tools/Build.ps1'
+$packageName = 'ReaderDataViewer-win98'
+if (Test-Path -LiteralPath (Join-Path $root 'src/Rdv3FixedScreen.cs')) { $packageName = 'ReaderDataViewer-semifixed' }
 $hostExe = (Get-Process -Id $PID).Path
 $temp = Join-Path ([IO.Path]::GetTempPath()) ('rdv-build-tests-' + [Guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($temp) | Out-Null
@@ -40,8 +42,8 @@ try {
         $ids = @('win98')
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         foreach ($id in $ids) {
-            $package = Join-Path $published ('ReaderDataViewer-' + $id)
-            $manifest = Get-Content -LiteralPath (Join-Path $package 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $package = Join-Path $published $packageName
+            $manifest = Get-Content -LiteralPath (Join-Path $published 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             Assert ($manifest.theme -eq $id -and $manifest.motion -eq 'off') 'Wrong Win98 metadata'
             Assert (-not (Test-Path -LiteralPath (Join-Path $package 'web/theme.json'))) 'Retired theme config was packaged'
             Assert ($manifest.validation.nativeCompile -eq 'not_run_explicit_skip') 'Skip must not be reported as a pass'
@@ -51,17 +53,36 @@ try {
                 $actual = Get-FileHash -LiteralPath (Join-Path $package $file.path) -Algorithm SHA256
                 Assert ($actual.Hash.ToLowerInvariant() -eq $file.sha256) ('Hash mismatch: ' + $file.path)
             }
-            Assert ((Get-FileHash -LiteralPath (Join-Path $package 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'settings.json')).Hash) 'Business settings changed'
+            Assert ((Get-FileHash -LiteralPath (Join-Path $package 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'tests/fixtures/sample-v4/settings.json')).Hash) 'Sample settings changed'
             Assert ((Get-FileHash -LiteralPath (Join-Path $package 'web/app.js')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'web/app.js')).Hash) 'Business browser logic changed'
             $dataFiles = @(Get-ChildItem -LiteralPath (Join-Path $package 'data') -File)
-            Assert ($dataFiles.Count -eq 4 -and @($dataFiles | Where-Object { $_.Extension -ne '.csv' }).Count -eq 0) 'Unexpected operational data was included'
-            $zipPath = Join-Path $published ('ReaderDataViewer-' + $id + '.zip')
+            Assert ($dataFiles.Count -eq 4 -and @($dataFiles | Where-Object { $_.Extension -eq '.csv' }).Count -eq 2 -and @($dataFiles | Where-Object { $_.Extension -eq '.xlsx' }).Count -eq 2) 'Expected two CSV and two XLSX samples only'
+            foreach ($file in $dataFiles) {
+                $expected = (Get-FileHash -LiteralPath (Join-Path $root ('tests/fixtures/sample-v4/' + $file.Name))).Hash
+                Assert ((Get-FileHash -LiteralPath $file.FullName).Hash -eq $expected) ('Initial data changed: ' + $file.Name)
+                Assert ((Get-FileHash -LiteralPath (Join-Path $package ('samples/initial/' + $file.Name))).Hash -eq $expected) ('Initial reset copy changed: ' + $file.Name)
+            }
+            foreach ($dir in @('next-period','partial-pay')) {
+                $inputs = @(Get-ChildItem -LiteralPath (Join-Path $root ('samples/' + $dir)) -File)
+                $included = @(Get-ChildItem -LiteralPath (Join-Path $package ('samples/' + $dir)) -File)
+                Assert ($inputs.Count -eq $included.Count) ('Incomplete sample directory: ' + $dir)
+                foreach ($file in $inputs) {
+                    Assert ((Get-FileHash -LiteralPath $file.FullName).Hash -eq (Get-FileHash -LiteralPath (Join-Path $package ('samples/' + $dir + '/' + $file.Name))).Hash) ('Sample changed: ' + $file.Name)
+                }
+            }
+            foreach ($name in @('Migrate-Ledger.ps1','PAYMENT-GUIDE.md','PROTECTION-GUIDE.md','samples/README.md','samples/expected.json')) {
+                Assert ((Get-FileHash -LiteralPath (Join-Path $package $name)).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root $name)).Hash) ('Missing or changed delivery file: ' + $name)
+            }
+            Assert (@(Get-ChildItem -LiteralPath (Join-Path $package 'output') -Force).Count -eq 0) 'Runtime output was packaged'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $package 'configs/production'))) 'Production settings were packaged'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $package 'docs'))) 'Developer notes were packaged'
+            $zipPath = Join-Path $published ($packageName + '.zip')
             $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
             try {
                 Assert ($archive.Entries.Count -gt 20) 'Empty or incomplete ZIP'
                 foreach ($entry in $archive.Entries) {
                     $entryName = $entry.FullName.Replace('\','/')
-                    Assert ($entryName.StartsWith('ReaderDataViewer-' + $id + '/')) 'ZIP must contain one application root'
+                    Assert ($entryName.StartsWith($packageName + '/')) 'ZIP must contain one application root'
                     Assert (-not $entryName.Contains('../')) 'Unsafe ZIP entry'
                 }
             } finally { $archive.Dispose() }
@@ -81,10 +102,12 @@ try {
         Assert (@(Get-ChildItem -LiteralPath $published -Directory).Count -eq 1) 'Incorrect package count'
         Assert (@(Get-ChildItem -LiteralPath $published -Filter '*.zip').Count -eq 0) 'ZIP created for folder-only output'
         foreach ($id in @('win98')) {
-            $dir=Join-Path $published ('ReaderDataViewer-'+$id)
-            $theme=Get-Content -LiteralPath (Join-Path $dir 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            $dir=Join-Path $published $packageName
+            $theme=Get-Content -LiteralPath (Join-Path $published 'package-manifest.json') -Raw -Encoding UTF8 | ConvertFrom-Json
             Assert ($theme.motion -eq 'off') 'Win98 motion changed'
             Assert (@(Get-ChildItem -LiteralPath (Join-Path $dir 'data')).Count -eq 0) 'Data none ignored'
+            Assert (-not (Test-Path -LiteralPath (Join-Path $dir 'samples'))) 'Samples included with Data none'
+            Assert ((Get-FileHash -LiteralPath (Join-Path $dir 'settings.json')).Hash -eq (Get-FileHash -LiteralPath (Join-Path $root 'settings.json')).Hash) 'Non-sample settings changed'
         }
     }
     Test 'zip-only-output' {
@@ -92,13 +115,13 @@ try {
         Build @('package','-Theme','win98','-Format','zip','-SkipValidation','-OutputRoot',$output)
         $published=OnlyBuild $output
         Assert (@(Get-ChildItem -LiteralPath $published -Directory).Count -eq 0) 'ZIP-only left an application directory'
-        Assert ((Test-Path -LiteralPath (Join-Path $published 'ReaderDataViewer-win98.zip'))) 'ZIP missing'
+        Assert ((Test-Path -LiteralPath (Join-Path $published ($packageName + '.zip')))) 'ZIP missing'
     }
     Test 'reject-unknown-theme' { Build @('package','-Theme','../invalid','-SkipValidation') 1 }
     Test 'default-win98' {
         $output = Join-Path $temp 'default'
         Build @('package','-SkipValidation','-Data','none','-Format','folder','-OutputRoot',$output)
-        Assert (Test-Path -LiteralPath (Join-Path (OnlyBuild $output) 'ReaderDataViewer-win98')) 'Default Win98 package missing'
+        Assert (Test-Path -LiteralPath (Join-Path (OnlyBuild $output) $packageName)) 'Default variant package missing'
     }
     Test 'reject-retired-theme' { Build @('package','-Theme','apple','-SkipValidation') 1 }
     Test 'reject-all-plus-theme' { Build @('package','-All','-Theme','win98','-SkipValidation') 1 }
@@ -112,7 +135,10 @@ try {
         Test 'native-core-regression' { Build @('test') }
     }
 } finally {
-    if (Test-Path -LiteralPath $temp) { Remove-Item -LiteralPath $temp -Recurse -Force }
+    $resolved = [IO.Path]::GetFullPath($temp)
+    $owner = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    if (-not $resolved.StartsWith($owner + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or [IO.Path]::GetFileName($resolved) -notlike 'rdv-build-tests-*') { throw ('Refusing unsafe cleanup: ' + $resolved) }
+    if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
 $failed = @($results | Where-Object { $_.status -eq 'FAIL' }).Count
 $report = [ordered]@{scope='PowerShell packaging integration; native only with -Native'; powershell=$PSVersionTable.PSVersion.ToString(); utc=[DateTime]::UtcNow.ToString('o'); tests=@($results.ToArray()); failed=$failed; nativeRequested=[bool]$Native}

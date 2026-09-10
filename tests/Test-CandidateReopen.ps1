@@ -19,12 +19,17 @@ $json.watch.targets=@()
 . (Join-Path $Root 'build/test_support.ps1')
 Import-RdvProduct -Root $Root
 $cfg=[Rdv3Config]::Load($settings)
+[Rdv3Ledger]::BuildFromCsv($cfg.Data,(Join-Path $scratch 'data'))|Out-Null
 $result=[Rdv3Process]::Run($cfg.Data,$cfg.Data.UpdateJob,(Join-Path $scratch 'data'),[string[]]@(),[string[]]@(),$cfg.Screen.Work.InitialStored)
 $fields=[Rdv3Fields]::new($result.Columns)
 $card=$fields.IndexOf('PAY.会員番号照合用')
 $lines=[string[]]$result.Lines.Clone()
 foreach($i in @(0,2)){$cells=$lines[$i+1].Split([char]9);$cells[$card]=$lines[$i].Split([char]9)[$card];$lines[$i+1]=[string]::Join("`t",$cells)}
-[Rdv3Xlsx]::Write((Join-Path $scratch $cfg.Ledger),$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$result.States,'candidate-reopen-test',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work))
+if ('Rdv3LedgerProtection' -as [type]) {
+    [Rdv3Xlsx]::Write((Join-Path $scratch $cfg.Ledger),$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$result.States,'candidate-reopen-test',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work),[Rdv3LedgerProtection]::Create($cfg.Data))
+} else {
+    [Rdv3Xlsx]::Write((Join-Path $scratch $cfg.Ledger),$cfg.Data.Head,$cfg.Screen.Work.Column,$lines,$result.States,'candidate-reopen-test',[Rdv3Files]::StorageContract($cfg.Data,$cfg.Screen.Work))
+}
 $listener=New-Object Net.Sockets.TcpListener([Net.IPAddress]::Loopback,0)
 $listener.Start();$port=$listener.LocalEndpoint.Port;$listener.Stop()
 [IO.File]::WriteAllText((Join-Path $Evidence 'case.json'),(@{port=$port;paidKey=$lines[0].Split([char]9)[$card];otherKey=$lines[2].Split([char]9)[$card]}|ConvertTo-Json),$utf8)

@@ -122,16 +122,23 @@ public static class Rdv3Headless
         }
         if (validation != null) { validation.Finish("job preparation", "job execution (use -RunUpdate after fixing the errors)"); }
         string[] before = new string[0], states = new string[0];
+        Rdv3LedgerProtection protection = Rdv3LedgerProtection.Create(data);
         if (execute && !string.IsNullOrEmpty(baselinePath))
         {
             Rdv3Log.Phase("reading baseline " + baselinePath);
             Rdv3LedgerSnapshot snapshot = new Rdv3LedgerStore(baselinePath, data, cfg.Screen.Work, null).Read(data.Head);
             before = snapshot.Lines; states = snapshot.States;
+            protection = snapshot.Protection;
             if (snapshot.Warning.Length > 0) { warnings.Add(snapshot.Warning); }
         }
         Rdv3Log.Phase(execute ? "executing update job " + data.UpdateJob.Id : "validation finished");
         Rdv3ProcessResult result = execute
             ? Rdv3Process.Execute(update, before, states, cfg.Screen.Work.InitialStored, true) : null;
+        if (result != null && result.Update != null)
+        {
+            protection.ProtectUpdate(data, cfg.Screen.Work.InitialStored, before, states, result.Lines, result.Update);
+            result.Lines = result.Update.Lines; result.States = result.Update.States;
+        }
         if (result != null) { warnings.AddRange(result.Warnings); }
         List<string> reset = result == null ? new List<string>()
             : new Rdv3ResetNotice(data.IdentityCols, cfg.Screen.Work.InitialStored).ChangedRows(before, states, result.Lines, result.States);

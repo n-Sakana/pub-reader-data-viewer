@@ -8,12 +8,14 @@ internal sealed class Rdv3LedgerSnapshot
     public readonly string[] Lines;
     public readonly string[] States;
     public readonly string Warning;
+    public readonly Rdv3LedgerProtection Protection;
 
-    public Rdv3LedgerSnapshot(string[] lines, string[] states, string warning)
+    public Rdv3LedgerSnapshot(string[] lines, string[] states, string warning, Rdv3LedgerProtection protection)
     {
         Lines = lines;
         States = states;
         Warning = warning;
+        Protection = protection;
     }
 }
 
@@ -45,21 +47,25 @@ internal sealed class Rdv3LedgerStore
     private readonly Rdv3WorkState work;
     private readonly Rdv3SharedFiles shared;
     private readonly string contract;
+    private readonly Action checkDefinition;
 
-    public Rdv3LedgerStore(string ledgerPath, Rdv3Data definition, Rdv3WorkState state, Rdv3SharedFiles sharedFiles)
+    public Rdv3LedgerStore(string ledgerPath, Rdv3Data definition, Rdv3WorkState state, Rdv3SharedFiles sharedFiles, Action checkCurrentDefinition = null)
     {
         path = ledgerPath;
         data = definition;
         work = state;
         shared = sharedFiles;
         contract = Rdv3Files.StorageContract(data, work);
+        checkDefinition = checkCurrentDefinition;
     }
 
     public Rdv3LedgerSnapshot Read(string[] head)
     {
         string[] lines, states;
         string warning;
-        Rdv3Xlsx.Read(path, head, work.Column, out lines, out states, out warning, contract);
+        Rdv3LedgerProtection protection;
+        Rdv3Xlsx.ReadProtected(path, head, work.Column, out lines, out states, out warning, contract,
+            Rdv3Files.LegacyStorageContract(data, work), Rdv3BusinessDefinition.Bound(data), out protection);
         string reference = string.Join(" / ", data.IdentityRefs);
         string label = string.Join(" / ", Array.ConvertAll(data.IdentityRefs, data.LabelOf));
         Rdv3Ledger.CheckIdentities(lines, data.IdentityCols, Path.GetFileName(path), label.Length == 0 ? reference : label);
@@ -68,7 +74,21 @@ internal sealed class Rdv3LedgerStore
             if (work.ByStored(states[i]) == null)
             { throw new InvalidDataException(Rdv3Text.LedgerStateInvalid + (i + 2).ToString(CultureInfo.InvariantCulture)); }
         }
-        return new Rdv3LedgerSnapshot(lines, states, warning);
+        protection.Validate(data, work, lines);
+        return new Rdv3LedgerSnapshot(lines, states, warning, protection);
+    }
+
+    public void CheckWritable(Rdv3LedgerProtection protection)
+    {
+        if (checkDefinition != null) { checkDefinition(); }
+        protection.RequireWritable(data);
+    }
+
+    public void Write(string[] head, string[] lines, string[] states, string tag, Rdv3LedgerProtection protection)
+    {
+        CheckWritable(protection);
+        protection.Validate(data, work, lines);
+        Rdv3Xlsx.Write(path, head, work.Column, lines, states, tag, contract, protection);
     }
 
     public Rdv3ApplyOutcome Apply(Rdv3MergeResult source, string[] checkedLines, string tag,
@@ -85,11 +105,14 @@ internal sealed class Rdv3LedgerStore
             if (lease == null) { throw new InvalidOperationException("shared lease was not acquired"); }
             long t = Rdv3Clock.Now();
             string[] latestLines = null, latestStates = null;
+            Rdv3LedgerProtection protection = Rdv3LedgerProtection.Create(data);
             if (Rdv3Files.Exists(path))
             {
                 Rdv3LedgerSnapshot latest = Read(source.Head);
                 latestLines = latest.Lines;
                 latestStates = latest.States;
+                protection = latest.Protection;
+                protection.RequireWritable(data);
                 if (latest.Warning.Length > 0) { warn(latest.Warning); }
                 trace("load", "under_lock rows=" + latestLines.Length.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
@@ -118,6 +141,8 @@ internal sealed class Rdv3LedgerStore
                 // block every other operator until all warnings were read.
             }
             string operation = source.Job.ApplyStep == null ? "pipeline" : source.Job.ApplyStep.Operation;
+            protection.ProtectUpdate(data, work.InitialStored, latestLines, latestStates, source.Lines, update);
+            if (latestLines != null) { protection.ArchiveRemoved(data, latestLines, latestStates, update.Lines); }
             trace("apply", "operation=" + operation
                 + " source=" + source.Lines.Length.ToString(CultureInfo.InvariantCulture)
                 + " result=" + update.Lines.Length.ToString(CultureInfo.InvariantCulture)
@@ -126,12 +151,14 @@ internal sealed class Rdv3LedgerStore
                 + " unchanged=" + update.Unchanged.ToString(CultureInfo.InvariantCulture)
                 + " kept=" + update.Kept.ToString(CultureInfo.InvariantCulture)
                 + " deleted=" + update.Deleted.ToString(CultureInfo.InvariantCulture)
+                + " protected=" + update.Protected.ToString(CultureInfo.InvariantCulture)
+                + " skipped_deleted=" + update.SkippedDeleted.ToString(CultureInfo.InvariantCulture)
                 + " reset=" + update.ResetLines.Count.ToString(CultureInfo.InvariantCulture)
                 + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
             if (latestLines == null || !Rdv3Ledger.SameLedger(latestLines, latestStates, update.Lines, update.States))
             {
                 t = Rdv3Clock.Now();
-                Rdv3Xlsx.Write(path, source.Head, work.Column, update.Lines, update.States, tag, contract);
+                Write(source.Head, update.Lines, update.States, tag, protection);
                 committed = true;
                 trace("persist", "target=xlsx rows=" + update.Lines.Length.ToString(CultureInfo.InvariantCulture)
                     + " ms=" + Rdv3Log.F(Rdv3Clock.MsSince(t)));
@@ -144,7 +171,7 @@ internal sealed class Rdv3LedgerStore
                 marker = shared.WriteMarker("update", update.Lines.Length, 0, 0);
                 trace("marker", "version=" + marker.Version.ToString(CultureInfo.InvariantCulture) + " kind=update");
             }
-            else { trace("persist", "skipped (latest ledger already has this result)"); }
+            else { CheckWritable(protection); trace("persist", "skipped (latest ledger already has this result)"); }
             lease.Release();
             return new Rdv3ApplyOutcome(update, marker, committed, null, warnings.ToArray());
         }

@@ -1,5 +1,7 @@
 # Reader Data Viewer
 
+台帳の保護・削除済み一覧・復元・定義固定・旧台帳移行は [PROTECTION-GUIDE.md](PROTECTION-GUIDE.md)、初回から期間混在データへ進む手順は [samples/README.md](samples/README.md) を参照してください。
+
 今回の①②中心の統合・両方の決済ステータス判定・処理済みだけ削除するサンプルは、[業務サンプルの使い方](PAYMENT-GUIDE.md)を参照してください。公開サンプルは `configs/sample/settings.json` です。個別環境の本番用JSONは公開していません。配布ZIPはサンプル設定を同梱します。下記は汎用設定の説明です。
 
 ## まずこの設定を写して、入力に合わせる
@@ -1204,7 +1206,7 @@ OSがPowerShellの開始を拒む場合、スクリプト自体の構文・引�
 | <a id="k213"></a>K213 `screen.judgments.status1.results.error.text` | この結果を人に伝える文言。未定義・要確認等の意味を保ち、長くする際は判定帯の収まりを確認。 |
 | <a id="k214"></a>K214 `screen.judgments.status1.results.error.look` | 判定の見せ方ok/ng/undefined/error。文言や状態変更の可否とは独立。色だけでなくtextにも意味を書きます。 |
 | <a id="k215"></a>K215 `screen.workState` | 人が行ごとに付ける状態の保存値・表示名・遷移。2状態に限定せず3状態以上も指定できます。必須。 |
-| <a id="k216"></a>K216 `screen.workState.trigger` | manual（省略時）はボタンで状態変更。automaticは監視入力の検索で対象を確定したとき初期状態を進めます。手入力検索を自動確定する指定ではありません。 |
+| <a id="k216"></a>K216 `screen.workState.trigger` | manual（省略時）はボタンで状態変更。automaticは監視入力の検索で対象を確定したとき初期状態を進めます。automaticWhenを指定すると、指定した判定IDの結果IDが一致した案件だけが対象です。構文は[台帳保護の説明](PROTECTION-GUIDE.md#自動読取と前面化)を参照します。手入力検索を自動確定する指定ではありません。 |
 | <a id="k217"></a>K217 `screen.workState.store` | 状態の保存先見出し。台帳に既にある場合は変更前に移行が必要。 |
 | <a id="k218"></a>K218 `screen.workState.store.column` | Excel台帳で状態を保存する見出し。必須。source列の見出しと同じにしません。 |
 | <a id="k219"></a>K219 `screen.workState.states` | 状態を列挙。idとstoredはそれぞれ一意。どちらも運用途中で意味を変えると既存台帳・未送信変更に影響します。 |

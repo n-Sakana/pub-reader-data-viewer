@@ -103,6 +103,27 @@ function Get-PackageHashes([string]$Directory) {
     }
     return $entries
 }
+function Remove-OwnedDirectory([string]$Path, [string]$Parent) {
+    $resolved = [IO.Path]::GetFullPath($Path)
+    $owner = [IO.Path]::GetFullPath($Parent).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    if (-not $resolved.StartsWith($owner + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+        throw ('Cleanup escaped the owned build directory: ' + $resolved)
+    }
+    if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
+}
+function Copy-ProtectionSamples([string]$Package) {
+    $examples = Join-Path $Package 'samples'
+    [IO.Directory]::CreateDirectory((Join-Path $examples 'initial')) | Out-Null
+    foreach ($name in @('①取引データ_100件.csv','②決済管理データ_100件.csv','③講習受講データ_100件.xlsx','④処理済みデータ_100件.xlsx')) {
+        Copy-SafeFile (Join-Path $script:Root ('tests/fixtures/sample-v4/' + $name)) (Join-Path $examples ('initial/' + $name))
+    }
+    foreach ($dir in @('next-period','partial-pay')) {
+        Copy-SafeTree (Join-Path $script:Root ('samples/' + $dir)) (Join-Path $examples $dir)
+    }
+    foreach ($file in @('expected.json','README.md')) {
+        Copy-SafeFile (Join-Path $script:Root ('samples/' + $file)) (Join-Path $examples $file)
+    }
+}
 function New-Win98Package($Options) {
     $compileStatus = 'not_run_explicit_skip'; $testStatus = 'not_requested'
     if ($SkipValidation -and $Options.Tests) { throw '-SkipValidation and -RunTests are mutually exclusive.' }
@@ -136,7 +157,7 @@ function New-Win98Package($Options) {
         $packageName = 'ReaderDataViewer-' + $id
         $package = Join-Path $stage $packageName
         [IO.Directory]::CreateDirectory($package) | Out-Null
-        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'README.md', 'PAYMENT-GUIDE.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'Migrate-Ledger.ps1', 'README.md', 'PAYMENT-GUIDE.md', 'PROTECTION-GUIDE.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
             Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
         }
         # 見本データ一式と同じ形の設定を入れる。sample-v4 に無ければ直下のものを使う。
@@ -151,9 +172,7 @@ function New-Win98Package($Options) {
         [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
         if ($Options.Data -eq 'sample') {
             # Deliberate allow-list: NEVER copy the active data/ directory.
-            # Sample CSVs are a convenience, not a build requirement. A missing
-            # fixture warns and produces a package without sample data; it never
-            # fails the build.
+            # A requested sample package must contain the complete workflow.
             $missing = @()
             $sampleDir = Join-Path $script:Root 'tests/fixtures/sample-v4'
             foreach ($name in @(
@@ -169,9 +188,10 @@ function New-Win98Package($Options) {
                 }
             }
             if ($missing.Count -gt 0) {
-                Write-Warning ('Sample data not found in tests/fixtures/sample-v4: ' + ($missing -join ', ') + '. The package is built without it.')
+                throw ('Sample data not found in tests/fixtures/sample-v4: ' + ($missing -join ', '))
             }
         }
+        if ($Options.Data -eq 'sample') { Copy-ProtectionSamples $package }
         # docs/ は開発中の記録なので配布しない (先生の指示 2026-09-10)。
         # 実機名や検証の経緯が入っていて、受け取る人には要らない。
         $readme = "Reader Data Viewer - Windows 98 Classic`r`n`r`n" +
@@ -195,10 +215,9 @@ function New-Win98Package($Options) {
             Add-Type -AssemblyName System.IO.Compression.FileSystem
             [IO.Compression.ZipFile]::CreateFromDirectory($package, (Join-Path $stage ($packageName + '.zip')), [IO.Compression.CompressionLevel]::Optimal, $true)
         }
-        if ($Options.Format -eq 'zip') { Remove-Item -LiteralPath $package -Recurse -Force }
+        if ($Options.Format -eq 'zip') { Remove-OwnedDirectory $package $stage }
         $summary = @([ordered]@{theme=$id; name='Windows 98 Classic'; motion='off'; package=$packageName; format=$Options.Format})
         Write-Host '  Prepared: Windows 98 Classic' -ForegroundColor Green
-        Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
         [IO.Directory]::Move($stage, $published)
@@ -208,7 +227,7 @@ function New-Win98Package($Options) {
     }
     finally {
         # This path is an owned GUID staging directory, never a supplied destination.
-        if (Test-Path -LiteralPath $stage) { Remove-Item -LiteralPath $stage -Recurse -Force }
+        Remove-OwnedDirectory $stage $destination
     }
 }
 try {
