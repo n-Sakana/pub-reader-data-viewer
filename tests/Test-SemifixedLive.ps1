@@ -3,10 +3,10 @@ $ErrorActionPreference='Stop'
 if(-not $NodePath){$NodePath=(Get-Command node -ErrorAction Stop).Source}
 [Console]::OutputEncoding=[Text.Encoding]::UTF8
 if(-not $Root){$Root=Split-Path -Parent $PSScriptRoot}
-if(-not $Evidence){$Evidence=Join-Path $Root ('work/payment-basis/live-'+[Guid]::NewGuid().ToString('N'))}
+if(-not $Evidence){$Evidence=Join-Path $Root ('work/semifixed/live-'+[Guid]::NewGuid().ToString('N'))}
 $scratch=Join-Path $Evidence 'app'
 [IO.Directory]::CreateDirectory($scratch)|Out-Null
-Copy-Item -LiteralPath (Join-Path $Root 'tests/fixtures/sample-v4/settings.json') -Destination $scratch
+Copy-Item -LiteralPath (Join-Path $Root 'settings.json') -Destination $scratch
 foreach($name in @('src','web','lib')){Copy-Item -LiteralPath (Join-Path $Root $name) -Destination $scratch -Recurse}
 Copy-Item -LiteralPath (Join-Path $Root 'tests/fixtures/sample-v4') -Destination (Join-Path $scratch 'data') -Recurse
 [IO.Directory]::CreateDirectory((Join-Path $scratch 'output'))|Out-Null
@@ -40,7 +40,7 @@ $start.EnvironmentVariables['WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS']='--remote-d
 $process=[Diagnostics.Process]::Start($start)
 Write-Output ('Owned Reader PID '+$process.Id+'; evidence='+$Evidence)
 try{
-    & $NodePath (Join-Path $Root 'tests/payment-live.cjs') $port $Evidence
+    & $NodePath (Join-Path $Root 'tests/semifixed-live.cjs') $port $Evidence
     if($LASTEXITCODE -ne 0){throw ('UI verification failed: '+$LASTEXITCODE)}
     if(-not $process.WaitForExit(10000)){throw 'Reader did not close'}
     Write-Output ('Closed PID '+$process.Id+'; exit='+$process.ExitCode)

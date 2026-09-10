@@ -1,4 +1,4 @@
-﻿// ============================================================================
+// ============================================================================
 // Rdv3Ui.cs -- settings-driven WebView2 UI bridge.
 //
 // The browser owns pixels and focus.  Rdv3App still owns every operation and
@@ -345,9 +345,7 @@ public sealed class Rdv3Form
         {
             return "client=" + ((int)Math.Round(host.ActualWidth)).ToString(CultureInfo.InvariantCulture)
                 + "x" + ((int)Math.Round(host.ActualHeight)).ToString(CultureInfo.InvariantCulture)
-                + " card=" + Screen.CardWidth.ToString(CultureInfo.InvariantCulture)
-                + " font=" + Screen.FontFamily
-                + " sections=" + Screen.Sections.Count.ToString(CultureInfo.InvariantCulture)
+                + " layout=fixed-html"
                 + " bridge=webview2";
         }
     }
@@ -393,6 +391,8 @@ public sealed class Rdv3Form
 
     private string JobOf(string action)
     {
+        string fixedJob;
+        if (Screen.FixedActions.TryGetValue(action, out fixedJob)) { return fixedJob; }
         for (int i = 0; i < Screen.Sections.Count; i++)
         {
             for (int k = 0; k < Screen.Sections[i].Buttons.Count; k++)
@@ -728,27 +728,16 @@ public sealed class Rdv3Form
 
     private string BuildInitJson()
     {
-        StringBuilder sb = new StringBuilder(32768);
-        sb.Append("{\"type\":\"init\",\"screen\":{");
-        sb.Append("\"card\":{");
-        sb.Append("\"width\":").Append(Rdv3WebJson.N(Screen.CardWidth));
-        sb.Append(",\"startWidth\":").Append(Rdv3WebJson.N(Screen.StartWidth));
-        sb.Append(",\"startHeight\":").Append(Rdv3WebJson.N(Screen.StartHeight));
-        sb.Append(",\"gap\":").Append(Rdv3WebJson.N(Screen.Gap));
-        sb.Append(",\"padding\":").Append(Rdv3WebJson.A(Screen.Padding));
-        sb.Append(",\"font\":").Append(Rdv3WebJson.Q(Screen.FontFamily));
-        sb.Append(",\"fontSize\":").Append(Rdv3WebJson.N(Screen.FontSize));
-        sb.Append(",\"keyValueFontSize\":").Append(Rdv3WebJson.N(Screen.KeyValueFontSize));
-        sb.Append(",\"judgmentFontSize\":").Append(Rdv3WebJson.N(Screen.JudgmentFontSize));
-        sb.Append(",\"unsearchedFontSize\":").Append(Rdv3WebJson.N(Screen.UnsearchedFontSize));
-        sb.Append("},\"sections\":[");
-        for (int i = 0; i < Screen.Sections.Count; i++)
+        StringBuilder sb = new StringBuilder();
+        sb.Append("{\"type\":\"init\",\"screen\":{\"fixed\":true,\"actions\":{");
+        bool comma = false;
+        foreach (KeyValuePair<string, string> action in Screen.FixedActions)
         {
-            if (i > 0) { sb.Append(','); }
-            AppendSection(sb, Screen.Sections[i], "s" + i.ToString(CultureInfo.InvariantCulture));
+            if (comma) { sb.Append(','); }
+            comma = true;
+            sb.Append(Rdv3WebJson.Q(action.Key)).Append(':').Append(Rdv3WebJson.Q(action.Value));
         }
-        // Candidate columns are sent with the modal rows, not during init.
-        sb.Append("]},\"state\":").Append(BuildStateBody()).Append('}');
+        sb.Append("}},\"state\":").Append(BuildStateBody()).Append('}');
         return sb.ToString();
     }
 
@@ -762,28 +751,18 @@ public sealed class Rdv3Form
         StringBuilder sb = new StringBuilder(16384);
         sb.Append("{\"values\":{");
         bool comma = false;
-        for (int i = 0; i < Screen.Sections.Count; i++)
+        foreach (KeyValuePair<string, Rdv3Bind> binding in Screen.Bindings)
         {
-            AppendSectionValues(
-                sb,
-                Screen.Sections[i],
-                "s" + i.ToString(CultureInfo.InvariantCulture),
-                ref comma);
+            AppendValue(sb, binding.Key, binding.Value, ref comma);
         }
         sb.Append("},\"judgments\":{");
         comma = false;
-        for (int i = 0; i < Screen.Sections.Count; i++)
+        foreach (KeyValuePair<string, Rdv3Judgment> judgment in Screen.Judgments)
         {
-            Rdv3Section section = Screen.Sections[i];
-            if (section.Type != "statusBand") { continue; }
             if (comma) { sb.Append(','); }
             comma = true;
-            string id = "s" + i.ToString(CultureInfo.InvariantCulture);
-            Rdv3Verdict verdict = Rdv3Eval.Judge(
-                Screen.JudgmentOf(section.Judgment),
-                View,
-                fields);
-            sb.Append(Rdv3WebJson.Q(id)).Append(":{");
+            Rdv3Verdict verdict = Rdv3Eval.Judge(judgment.Value, View, fields);
+            sb.Append(Rdv3WebJson.Q(judgment.Key)).Append(":{");
             if (!View.HasRecord || verdict.Result == null)
             {
                 sb.Append("\"text\":").Append(Rdv3WebJson.Q(Rdv3Text.Unsearched));
@@ -795,13 +774,7 @@ public sealed class Rdv3Form
                 sb.Append(",\"look\":").Append(Rdv3WebJson.Q(verdict.Result.Look));
                 sb.Append(",\"icon\":").Append(Rdv3WebJson.Q(verdict.Result.Icon));
             }
-            List<string> subs = new List<string>();
-            for (int k = 0; k < section.Sub.Count; k++)
-            {
-                string value = Rdv3Eval.Evaluate(section.Sub[k], View, fields, Screen.Work).Text;
-                if (!string.IsNullOrEmpty(value)) { subs.Add(value); }
-            }
-            sb.Append(",\"sub\":").Append(Rdv3WebJson.Q(string.Join(section.Joiner, subs.ToArray()))).Append('}');
+            sb.Append(",\"sub\":\"\"}");
         }
         Rdv3StateDef workState = View.HasRecord
             ? Screen.Work.ByStored(View.StoredState) : Screen.Work.InitialState;
@@ -820,31 +793,6 @@ public sealed class Rdv3Form
         return sb.ToString();
     }
 
-    private void AppendSectionValues(
-        StringBuilder sb,
-        Rdv3Section section,
-        string path,
-        ref bool comma)
-    {
-        if (section.Value != null) { AppendValue(sb, path + ".value", section.Value, ref comma); }
-        for (int i = 0; i < section.Rows.Count; i++)
-        {
-            AppendValue(sb, path + ".row" + i.ToString(CultureInfo.InvariantCulture), section.Rows[i].Value, ref comma);
-        }
-        for (int i = 0; i < section.Sub.Count; i++)
-        {
-            AppendValue(sb, path + ".sub" + i.ToString(CultureInfo.InvariantCulture), section.Sub[i], ref comma);
-        }
-        for (int i = 0; i < section.Segments.Count; i++)
-        {
-            AppendValue(sb, path + ".segment" + i.ToString(CultureInfo.InvariantCulture), section.Segments[i].Value, ref comma);
-        }
-        for (int i = 0; i < section.Items.Count; i++)
-        {
-            AppendSectionValues(sb, section.Items[i], path + ".item" + i.ToString(CultureInfo.InvariantCulture), ref comma);
-        }
-    }
-
     private void AppendValue(StringBuilder sb, string id, Rdv3Bind bind, ref bool comma)
     {
         if (comma) { sb.Append(','); }
@@ -854,118 +802,6 @@ public sealed class Rdv3Form
         sb.Append("\"text\":").Append(Rdv3WebJson.Q(value.Text));
         sb.Append(",\"tone\":").Append(value.Tone.ToString(CultureInfo.InvariantCulture));
         sb.Append('}');
-    }
-
-    private static void AppendSection(StringBuilder sb, Rdv3Section section, string path)
-    {
-        sb.Append('{');
-        sb.Append("\"type\":").Append(Rdv3WebJson.Q(section.Type));
-        sb.Append(",\"id\":").Append(Rdv3WebJson.Q(path));
-        if (section.Margin != null) { sb.Append(",\"margin\":").Append(Rdv3WebJson.A(section.Margin)); }
-        if (section.Type == "titleBar")
-        {
-            sb.Append(",\"brand\":").Append(Rdv3WebJson.Q(section.Brand));
-            sb.Append(",\"tags\":[");
-            for (int i = 0; i < section.Tags.Count; i++)
-            {
-                if (i > 0) { sb.Append(','); }
-                sb.Append("{\"text\":").Append(Rdv3WebJson.Q(section.Tags[i].Text));
-                sb.Append(",\"look\":").Append(Rdv3WebJson.Q(section.Tags[i].Look)).Append('}');
-            }
-            sb.Append(']');
-        }
-        else if (section.Type == "keyPanel")
-        {
-            sb.Append(",\"title\":").Append(Rdv3WebJson.Q(section.Title));
-            sb.Append(",\"label\":").Append(Rdv3WebJson.Q(section.Label));
-            sb.Append(",\"value\":").Append(Rdv3WebJson.Q(path + ".value"));
-            sb.Append(",\"inputLabel\":").Append(Rdv3WebJson.Q(section.InputLabel));
-            sb.Append(",\"placeholder\":").Append(Rdv3WebJson.Q(section.Placeholder));
-            sb.Append(",\"inputWidth\":").Append(Rdv3WebJson.N(section.InputWidth));
-            sb.Append(",\"maxLength\":").Append(section.MaxLength.ToString(CultureInfo.InvariantCulture));
-        }
-        else if (section.Type == "columns")
-        {
-            sb.Append(",\"gap\":").Append(Rdv3WebJson.N(section.Gap));
-            sb.Append(",\"stackBelow\":").Append(Rdv3WebJson.N(section.StackBelow));
-            sb.Append(",\"weights\":").Append(Rdv3WebJson.A(section.Weights));
-            sb.Append(",\"items\":[");
-            for (int i = 0; i < section.Items.Count; i++)
-            {
-                if (i > 0) { sb.Append(','); }
-                AppendSection(sb, section.Items[i], path + ".item" + i.ToString(CultureInfo.InvariantCulture));
-            }
-            sb.Append(']');
-        }
-        else if (section.Type == "fieldList")
-        {
-            sb.Append(",\"title\":").Append(Rdv3WebJson.Q(section.Title));
-            sb.Append(",\"labelWidth\":").Append(Rdv3WebJson.N(section.LabelWidth));
-            sb.Append(",\"rowHeight\":").Append(Rdv3WebJson.N(section.RowHeight));
-            sb.Append(",\"rows\":[");
-            for (int i = 0; i < section.Rows.Count; i++)
-            {
-                if (i > 0) { sb.Append(','); }
-                sb.Append("{\"label\":").Append(Rdv3WebJson.Q(section.Rows[i].Label));
-                sb.Append(",\"value\":").Append(Rdv3WebJson.Q(path + ".row" + i.ToString(CultureInfo.InvariantCulture))).Append('}');
-            }
-            sb.Append(']');
-        }
-        else if (section.Type == "textBox")
-        {
-            sb.Append(",\"title\":").Append(Rdv3WebJson.Q(section.Title));
-            sb.Append(",\"lines\":").Append(section.Lines.ToString(CultureInfo.InvariantCulture));
-            sb.Append(",\"value\":").Append(Rdv3WebJson.Q(path + ".value"));
-        }
-        else if (section.Type == "statusBand")
-        {
-            sb.Append(",\"label\":").Append(Rdv3WebJson.Q(section.Label));
-            sb.Append(",\"height\":").Append(Rdv3WebJson.N(section.Height));
-            sb.Append(",\"judgment\":").Append(Rdv3WebJson.Q(path));
-        }
-        else if (section.Type == "sendBar")
-        {
-            sb.Append(",\"height\":").Append(Rdv3WebJson.N(section.Height));
-            sb.Append(",\"value\":").Append(Rdv3WebJson.Q(path + ".value"));
-        }
-        else if (section.Type == "statusBar")
-        {
-            sb.Append(",\"height\":").Append(Rdv3WebJson.N(section.Height));
-            sb.Append(",\"segments\":[");
-            for (int i = 0; i < section.Segments.Count; i++)
-            {
-                if (i > 0) { sb.Append(','); }
-                Rdv3SegmentDef segment = section.Segments[i];
-                sb.Append("{\"prefix\":").Append(Rdv3WebJson.Q(segment.Prefix));
-                sb.Append(",\"value\":").Append(Rdv3WebJson.Q(path + ".segment" + i.ToString(CultureInfo.InvariantCulture)));
-                sb.Append(",\"bold\":").Append(Rdv3WebJson.B(segment.Bold));
-                sb.Append(",\"dot\":").Append(Rdv3WebJson.B(segment.Dot));
-                sb.Append(",\"clock\":").Append(Rdv3WebJson.B(
-                    segment.Value != null && segment.Value.IsState && segment.Value.State == "clock")).Append('}');
-            }
-            sb.Append(']');
-        }
-        if (section.Buttons.Count > 0)
-        {
-            sb.Append(",\"buttons\":[");
-            for (int i = 0; i < section.Buttons.Count; i++)
-            {
-                if (i > 0) { sb.Append(','); }
-                AppendButton(sb, section.Buttons[i]);
-            }
-            sb.Append(']');
-        }
-        sb.Append('}');
-    }
-
-    private static void AppendButton(StringBuilder sb, Rdv3ButtonDef button)
-    {
-        sb.Append("{\"action\":").Append(Rdv3WebJson.Q(button.Action));
-        sb.Append(",\"text\":").Append(Rdv3WebJson.Q(button.Text));
-        sb.Append(",\"icon\":").Append(Rdv3WebJson.Q(button.Icon));
-        sb.Append(",\"tip\":").Append(Rdv3WebJson.Q(button.Tip));
-        sb.Append(",\"job\":").Append(Rdv3WebJson.Q(button.Job));
-        sb.Append(",\"primary\":").Append(Rdv3WebJson.B(button.Primary)).Append('}');
     }
 
     internal static string Text(Rdv3Json root, string name)

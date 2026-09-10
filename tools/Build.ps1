@@ -133,10 +133,10 @@ function New-Win98Package($Options) {
     [IO.Directory]::CreateDirectory($stage) | Out-Null
     try {
         $id = 'win98'
-        $packageName = 'ReaderDataViewer-' + $id
+        $packageName = 'ReaderDataViewer-semifixed'
         $package = Join-Path $stage $packageName
         [IO.Directory]::CreateDirectory($package) | Out-Null
-        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'README.md', 'PAYMENT-GUIDE.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
+        foreach ($file in @('ReaderDataViewer.cmd', 'ReaderDataViewer.vbs', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md')) {
             Copy-SafeFile (Join-Path $script:Root $file) (Join-Path $package $file)
         }
         # 見本データ一式と同じ形の設定を入れる。sample-v4 に無ければ直下のものを使う。
@@ -174,13 +174,14 @@ function New-Win98Package($Options) {
         }
         # docs/ は開発中の記録なので配布しない (先生の指示 2026-09-10)。
         # 実機名や検証の経緯が入っていて、受け取る人には要らない。
-        $readme = "Reader Data Viewer - Windows 98 Classic`r`n`r`n" +
+        $readme = "Reader Data Viewer - Semi-fixed HTML UI`r`n`r`n" +
             "Start: ReaderDataViewer.vbs (or .cmd for console diagnostics).`r`n" +
             "Extract the entire ZIP first. Requires 64-bit Windows, Windows PowerShell 5.1, WPF and WebView2 Runtime.`r`n" +
             "Theme: win98 / motion: off / input data: $($Options.Data)`r`n" +
             "Native compile: $compileStatus / core tests: $testStatus`r`n" +
             "This is a source-at-startup distribution, NOT a standalone EXE.`r`n" +
-            "The sample uses PAY+MAP pairs, two-status payment checks and processed-only deletion. See PAYMENT-GUIDE.md.`r`n" +
+            "Requires compact settings with screen.bindings. Layout is defined in web/index.html and web/fixed.css.`r`n" +
+            "This package uses fictional sample settings and data. Production settings are provided separately.`r`n" +
             "No live ledger, log, output or local pending changes were copied.`r`n" +
             "Review paths in settings.json BEFORE running a production copy.`r`n" +
             "Check steps before acceptance: README.md`r`n"
@@ -198,7 +199,6 @@ function New-Win98Package($Options) {
         if ($Options.Format -eq 'zip') { Remove-Item -LiteralPath $package -Recurse -Force }
         $summary = @([ordered]@{theme=$id; name='Windows 98 Classic'; motion='off'; package=$packageName; format=$Options.Format})
         Write-Host '  Prepared: Windows 98 Classic' -ForegroundColor Green
-        Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'package-manifest.json') $manifest
         Write-Json (Join-Path $stage 'build-summary.json') ([ordered]@{schema=1; nativeCompile=$compileStatus; coreTests=$testStatus; packages=$summary})
         [IO.Directory]::Move($stage, $published)

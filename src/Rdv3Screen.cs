@@ -621,6 +621,8 @@ public sealed class Rdv3CandidatesDef
 // ---------------------------------------------------------------------------
 public sealed class Rdv3Screen
 {
+    public Dictionary<string, Rdv3Bind> Bindings;
+    public Dictionary<string, string> FixedActions = new Dictionary<string, string>(StringComparer.Ordinal);
     public double CardWidth = 1240;
     // Client size in CSS px; window borders and physical DPI are separate.
     public double StartWidth = 840;
@@ -654,6 +656,7 @@ public sealed class Rdv3Screen
     public List<Rdv3Bind> AllBindings()
     {
         List<Rdv3Bind> all = new List<Rdv3Bind>();
+        if (Bindings != null) { all.AddRange(Bindings.Values); }
         for (int i = 0; i < Sections.Count; i++) { Collect(Sections[i], all); }
         if (Candidates != null) { for (int i = 0; i < Candidates.Columns.Count; i++) { if (Candidates.Columns[i].Value != null) { all.Add(Candidates.Columns[i].Value); } } }
         foreach (KeyValuePair<string, Rdv3Judgment> kv in Judgments) { if (kv.Value.Source != null) { all.Add(kv.Value.Source); } }
@@ -672,6 +675,7 @@ public sealed class Rdv3Screen
     // ---- reading the "screen" member -------------------------------------------
     public static Rdv3Screen Read(Rdv3Json root)
     {
+        if (root.Has("bindings")) { return Rdv3FixedScreen.Read(root); }
         int before = root.ErrorCount;
         root.Only("card", "judgments", "workState", "export", "sections", "candidates");
         Rdv3Screen s = new Rdv3Screen();
@@ -793,6 +797,12 @@ public sealed class Rdv3Screen
             }
         }
         for (int i = 0; i < Sections.Count; i++) { CheckButtons(Sections[i], data, validation); }
+        foreach (KeyValuePair<string, string> action in FixedActions)
+        {
+            Rdv3Section routing = new Rdv3Section();
+            routing.Buttons.Add(new Rdv3ButtonDef { Action = action.Key, Job = action.Value });
+            CheckButtons(routing, data, validation);
+        }
     }
 
     private static void Report(Rdv3Validation validation, Rdv3LoadError error)
@@ -840,6 +850,14 @@ public sealed class Rdv3Screen
     public string Describe()
     {
         StringBuilder sb = new StringBuilder();
+        if (Bindings != null)
+        {
+            sb.Append("layout=fixed-html bindings=").Append(Bindings.Count.ToString(CultureInfo.InvariantCulture));
+            sb.Append(" judgments=").Append(Judgments.Count.ToString(CultureInfo.InvariantCulture));
+            sb.Append(" states=").Append((Work == null) ? "0" : Work.States.Count.ToString(CultureInfo.InvariantCulture));
+            sb.Append(" trigger=").Append((Work == null) ? "-" : Work.Trigger);
+            return sb.ToString();
+        }
         sb.Append("sections=").Append(Sections.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append(" judgments=").Append(Judgments.Count.ToString(CultureInfo.InvariantCulture));
         sb.Append(" states=").Append((Work == null) ? "0" : Work.States.Count.ToString(CultureInfo.InvariantCulture));

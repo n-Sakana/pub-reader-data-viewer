@@ -11,18 +11,7 @@ import re
 import sys
 from playwright.sync_api import sync_playwright
 
-SCREEN = {
-    "card": {"width": 840, "gap": 12, "padding": [16, 16, 16, 16],
-             "font": "Arial", "fontSize": 11, "keyValueFontSize": 22,
-             "judgmentFontSize": 18, "unsearchedFontSize": 16},
-    "sections": [{"type": "titleBar", "brand": "RDV regression", "tags": [], "buttons": []},
-                 {"type": "keyPanel", "title": "Search", "label": "Key", "value": "keyLabel",
-                  "inputLabel": "Search", "inputWidth": 180, "maxLength": 8,
-                  "buttons": [{"action": "search", "text": "Search"},
-                              {"action": "clear", "text": "Clear"},
-                              {"action": "workState", "text": "Mark"},
-                              {"action": "updateRecords", "text": "Job one", "job": "one"},
-                              {"action": "updateRecords", "text": "Job two", "job": "two"}]}]}
+SCREEN = {"fixed": True, "actions": {"updateRecords": "one", "deleteRecords": "two"}}
 STATE = {"opsEnabled": True, "workEnabled": True, "key": "", "values": {},
          "workText": "Mark", "pending": 0, "judgments": {}}
 BRIDGE = """window.rdvTestMessages=[]; window.chrome=window.chrome||{};
@@ -77,15 +66,13 @@ def enter_once(page):
 
 
 def max_length(page):
-    page.locator("#input").evaluate("el=>{el.textContent='123456789012';el.dispatchEvent(new InputEvent('input',{bubbles:true}));}")
-    check(page.locator("#input").text_content() == "12345678", "input exceeded configured length")
+    page.locator("#input").evaluate("el=>{el.textContent='1234567890'.repeat(4);el.dispatchEvent(new InputEvent('input',{bubbles:true}));}")
+    check(page.locator("#input").text_content() == "12345678901234567890123456789012", "input exceeded fixed length")
 
 
 def duplicate_actions(page):
-    buttons = page.locator('[data-action="updateRecords"]')
-    ids = buttons.evaluate_all("els=>els.map(el=>el.id)")
-    check(len(ids) == 2 and len(set(ids)) == 2, "duplicate DOM ids: " + str(ids))
-    buttons.nth(0).click(); buttons.nth(1).click()
+    check(page.locator('#b-upd').count() == 1 and page.locator('#b-del').count() == 1, "fixed actions missing or duplicated")
+    page.locator('#b-upd').click(); page.locator('#b-del').click()
     check([m["job"] for m in messages(page, "action")] == ["one", "two"], "job routing changed")
 
 
@@ -132,7 +119,7 @@ def export(page, safe=True, extension="csv"):
     checkbox = page.locator("#export-excel-safe")
     check(checkbox.is_checked(), "formula-safe default not checked")
     checkbox.set_checked(safe)
-    page.locator(".veil.show [data-modal-default=true]").click()
+    press_enter(page, False, '.veil.show [data-field=exportPath]')
     result = messages(page, "modalResult")
     if extension != "csv":
         check(not result and page.locator(".veil.show .setting-error").is_visible(), "non-CSV destination accepted")
@@ -275,7 +262,9 @@ def export_stale_validation(page):
 
 def rerender_ids(page):
     page.evaluate("s=>window.rdvBridge.render(s)", SCREEN)
-    check(page.locator("#b-upd").count() == 1 and page.locator("#b-upd-2").count() == 1, "id counters not reset")
+    check(page.locator("#b-upd").count() == 1 and page.locator("#b-del").count() == 1, "fixed buttons duplicated")
+    page.locator('#b-upd').click()
+    check(len(messages(page, 'action')) == 1, 'render attached duplicate handlers')
 
 
 def main():
@@ -286,7 +275,7 @@ def main():
     parser.add_argument("--baseline", action="store_true", help="Run only three original-regression reproductions; failures are expected")
     args = parser.parse_args()
     tests = [("input-visible-value-normalization", input_normalization), ("ime-enter-does-not-search", ime_main),
-             ("duplicate-actions-unique-id-and-routing", duplicate_actions)]
+             ("fixed-actions-unique-id-and-routing", duplicate_actions)]
     if not args.baseline:
         tests += [("enter-search-exactly-once", enter_once), ("input-max-length", max_length),
                   ("disabled-actions-blocked", disabled_actions), ("ime-modal-does-not-commit", ime_modal),
@@ -295,7 +284,7 @@ def main():
                   ("export-excel-safe-default", lambda p: export(p, True)),
                   ("export-raw-option", lambda p: export(p, False)),
                   ("export-rejects-non-csv", lambda p: export(p, True, "xlsx")),
-                  ("rerender-resets-action-ids", rerender_ids),
+                  ("rerender-keeps-one-action-handler", rerender_ids),
                   ("export-two-way-mouse", export_move_mouse),
                   ("export-keyboard-and-defaults", export_move_keyboard_reset),
                   ("export-text-filters-and-removal", export_text_filters),
@@ -322,6 +311,7 @@ def main():
                 page.set_content(html)
                 page.evaluate(BRIDGE)
                 page.add_style_tag(content=(web / "app.css").read_text(encoding="utf-8-sig"))
+                page.add_style_tag(content=(web / "fixed.css").read_text(encoding="utf-8-sig"))
                 page.add_script_tag(content=(web / "app.js").read_text(encoding="utf-8-sig"))
                 page.wait_for_function("!!window.rdvBridge")
                 page.evaluate("s=>window.rdvBridge.render(s)", SCREEN)

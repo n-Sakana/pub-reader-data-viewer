@@ -34,6 +34,10 @@ public static class Rdv3Program
         {
             Rdv3Log.Phase("window settings " + configPath);
             cfg = Rdv3Config.Load(configPath);
+            if (cfg.Screen.Bindings == null)
+            {
+                throw new Rdv3LoadError("This GUI needs compact settings with screen.bindings. Convert the original settings first (tools/Convert-Semifixed.py).", 0);
+            }
         }
         catch (Rdv3LoadError ex)
         {

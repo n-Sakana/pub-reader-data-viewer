@@ -128,14 +128,63 @@ body.rzing .page,body.rzing .page *{user-select:none;}
 .fld.off{background:#d4d0c8;color:#9a9a9a;}
 .dt.off:after{color:#9a9a9a;}
 .tilde.off{color:#a8a8a8;}
-</style><title>Reader Data Viewer（仮）</title><link rel='stylesheet' href='app.css'><style>
+</style><title>Reader Data Viewer（仮）</title><link rel='stylesheet' href='app.css'><link rel='stylesheet' href='fixed.css'><style>
 html,body,main,.page{width:100%;height:100%;overflow:hidden}
 main,.page{max-width:none;padding:0;background:#d4d0c8}
 .stage{height:100%}
 </style></head><body>
-<main><div class='page'><div class='stage'>
-<!-- The bridge fills the main window after init, and each modal body on open. -->
-<div class='win'></div>
+<main><div class='page'><div class='stage runtime'>
+<!-- Fixed main screen. The bridge supplies values and job routing only. -->
+<div class="win">
+  <div class="client"><div class="stack">
+    <fieldset class="gb fixed-search"><legend>検索</legend>
+      <div class="keyline"><div class="keyfigure"><div class="lab">読取値</div><div class="fld keyvalue" data-bind="searchKey"></div></div>
+        <div class="keyactions"><div class="keyinput"><label class="lab" for="input">在留カード番号／申請受付番号</label><div class="fld inp" id="input" role="textbox" aria-label="在留カード番号／申請受付番号" aria-multiline="false" data-max-length="32" contenteditable="false" tabindex="0"></div></div>
+          <div class="btn def" id="b-search" role="button" data-action="search" aria-disabled="true" tabindex="0">検索</div>
+          <div class="btn" id="b-clear" role="button" data-action="clear" aria-disabled="true" tabindex="0">クリア</div>
+          <div class="tog" id="b-work" role="button" data-action="workState" aria-disabled="true" tabindex="0">未処理</div>
+        </div>
+      </div>
+    </fieldset>
+    <div class="cols">
+      <fieldset class="gb fixed-user"><legend>利用者情報</legend>
+        <div class="row dynamic-row"><label>利用者ID</label><div class="fld" data-bind="userId"></div></div>
+        <div class="row dynamic-row"><label>利用者氏名</label><div class="fld" data-bind="userName"></div></div>
+        <div class="row dynamic-row"><label>利用者区分</label><div class="fld" data-bind="userCategory"></div></div>
+      </fieldset>
+      <fieldset class="gb fixed-application"><legend>申請情報</legend>
+        <div class="row dynamic-row"><label>申請日</label><div class="fld" data-bind="applicationDate"></div></div>
+        <div class="row dynamic-row"><label>申請受付番号</label><div class="fld" data-bind="applicationNumber"></div></div>
+        <div class="row dynamic-row"><label>在留カード番号</label><div class="fld" data-bind="cardNumber"></div></div>
+        <div class="row dynamic-row"><label>申請人氏名</label><div class="fld" data-bind="applicantName"></div></div>
+        <div class="row dynamic-row"><label>生年月日</label><div class="fld" data-bind="birthDate"></div></div>
+        <div class="row dynamic-row"><label>在留資格（期間）</label><div class="fld" data-bind="qualification"></div></div>
+        <div class="row dynamic-row"><label>受領官署</label><div class="fld" data-bind="office"></div></div>
+      </fieldset>
+    </div>
+    <fieldset class="gb text-section fixed-remarks"><legend>意見欄</legend><div class="fld dynamic-text" data-bind="remarks"></div></fieldset>
+    <fieldset class="gb text-section fixed-plan"><legend>変更後の実習計画</legend><div class="fld dynamic-text" data-bind="plan"></div></fieldset>
+    <div class="band" data-judgment="paymentStatus"><span class="band-label">決済状況</span><div class="ok unsearched">未検索</div><span id="jsub"></span></div>
+    <div class="commandbar">
+      <div class="btn" id="b-refresh" role="button" data-action="refreshLedger" aria-disabled="true" tabindex="0">台帳再読込</div>
+      <div class="btn" id="b-out" role="button" data-action="tableExport" aria-disabled="true" tabindex="0">帳票出力</div>
+      <div class="btn" id="b-upd" role="button" data-action="updateRecords" aria-disabled="true" tabindex="0">データ更新</div>
+      <div class="btn" id="b-del" role="button" data-action="deleteRecords" aria-disabled="true" tabindex="0">データ削除</div>
+      <div class="btn" id="b-set" role="button" data-action="settings" aria-disabled="true" tabindex="0">設定</div>
+    </div><div class="sep"></div>
+    <div class="sendbar"><div class="sendn" id="sn" data-bind="pendingCount"></div>
+      <div class="btn def" id="b-send" role="button" data-action="sendChanges" title="この端末に蓄積した未送信の処理状態を共有台帳へ送信します" aria-disabled="true" tabindex="0">変更をまとめて送信</div>
+    </div>
+  </div></div>
+  <div class="sb" role="status" aria-live="polite"><div class="sp" data-bind="appState"></div><div class="sp" data-bind="ledgerRows" data-prefix="台帳件数 "></div><div class="sp" data-bind="clock" data-clock="true"></div><div class="grip"></div></div>
+</div>
+<template id="fixed-candidate-columns"><table data-title="該当案件" data-hint="申請受付番号、在留カード番号、申請人氏名を確認して選択してください" data-width="1100" data-max-height="360" data-row-height="30" data-header-height="32"><thead><tr>
+  <th data-width="40" data-align="right" data-muted="true">#</th>
+  <th data-width="180">申請受付番号</th><th data-width="150">在留カード番号</th>
+  <th data-width="240">申請人情報（マスタ番号）</th><th data-width="120">申請日（仮処分年月日）</th>
+  <th data-width="110" data-render="tag">決済状況</th><th data-width="80" data-render="tag">処理</th>
+</tr></thead></table></template>
+
 <div class='veil' id='v-cand'><div class='dlg' style='width:744px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>候補一覧</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>
 <div class='veil' id='v-upd'><div class='dlg' style='width:700px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>レコード更新</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>
 <div class='veil' id='v-del'><div class='dlg' style='width:700px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>レコード削除</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>
@@ -147,5 +196,46 @@ main,.page{max-width:none;padding:0;background:#d4d0c8}
 <div class='veil' id='v-unm'><div class='dlg' style='width:560px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>送信できなかったレコード</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>
 <div class='veil' id='v-fatal'><div class='dlg' style='width:470px;'><div class='tb'><div class='ic'>!</div><div class='ttl'>データを読めません</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>
 </div></div></main>
+<template id="fixed-process">
+  <div class="hint" data-text="hint"></div>
+  <fieldset class="gb"><legend data-text="inputTitle">取り込むデータ</legend><div data-slot="inputs"></div></fieldset>
+  <div class="process-gap"></div>
+  <fieldset class="gb"><legend>処理内容</legend><div data-slot="steps"></div></fieldset>
+  <div class="process-gap"></div>
+  <fieldset class="gb"><legend>書き出し先</legend>
+    <div class="kv"><label>パス</label><div class="fld" data-output="0" style="flex:1"></div></div>
+    <div class="kv"><label>ファイル名</label><div class="fld" data-output="1" style="flex:1"></div></div>
+    <div class="kv"><label>最終更新</label><div class="fld" data-output="2" style="flex:1"></div></div>
+  </fieldset>
+  <div class="foot"><div class="btn def" role="button" tabindex="0" data-command="execute" data-modal-default="true" aria-disabled="false">実行</div><div class="btn" role="button" tabindex="0" data-command="cancel">キャンセル</div></div>
+</template>
+<template id="fixed-settings">
+  <div class="hint" data-text="hint"></div>
+  <fieldset class="gb"><legend>場所</legend>
+    <div class="kv" data-row="dataDir"><label>データ</label></div>
+    <div class="kv" data-row="ledger"><label>統合台帳</label></div>
+    <div class="kv" data-row="log"><label>ログ</label></div>
+  </fieldset>
+  <div class="process-gap"></div>
+  <fieldset class="gb"><legend>検索</legend>
+    <div class="kv" data-row="pattern"><label>番号の形式</label></div>
+    <div class="kv" data-row="candidateRows"><label>候補の表示件数</label></div>
+  </fieldset>
+  <div class="process-gap"></div>
+  <fieldset class="gb"><legend>監視対象</legend>
+    <div class="kv"><label>対象</label><div class="fld" data-target-summary="true" style="flex:1"></div><div class="btn" role="button" tabindex="0" id="b-pick">画面から選ぶ</div></div>
+    <div class="kv"><label>読み取り</label><div class="fld" data-target-read="true" style="flex:1"></div></div>
+  </fieldset>
+  <div class="setting-error" role="alert" hidden></div>
+  <div class="foot"><div class="btn def" role="button" tabindex="0" data-command="execute" data-modal-default="true" aria-disabled="false">OK</div><div class="btn" role="button" tabindex="0" data-command="cancel">キャンセル</div></div>
+</template>
+<template id="fixed-export">
+  <div class="hint" data-text="hint"></div><div data-slot="fields"></div>
+  <div class="process-gap"></div><div data-slot="filters"></div><div data-slot="destination"></div>
+  <div class="setting-error" role="alert" hidden></div>
+  <div class="foot"><div class="btn def" role="button" tabindex="0" data-command="execute" data-modal-default="true" aria-disabled="false">OK</div><div class="btn" role="button" tabindex="0" data-command="cancel">キャンセル</div></div>
+</template>
+<template id="fixed-filter"><fieldset class="gb"><legend>絞り込み条件（すべてに一致）</legend><div class="fgrid"><div class="fh">項目</div><div class="fh">条件</div><div class="fh" style="grid-column:3 / span 3">値</div><div></div></div></fieldset></template>
+
 <script src='app.js'></script>
 </body></html>

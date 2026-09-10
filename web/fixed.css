@@ -1,0 +1,21 @@
+/* Fixed presentation. Settings contain field bindings, never dimensions. */
+.stage.runtime{
+  --ff:"Meiryo UI","Segoe UI",sans-serif;
+  --card-gap:2px;
+  --card-pad-t:8px;--card-pad-r:2px;--card-pad-b:2px;--card-pad-l:2px;
+  --body-font:9pt;--key-font:15pt;--key-height:34px;
+  --judgment-font:15pt;--judgment-height:65px;--band-height:65px;--unsearched-font:12pt;
+  --control-height:20px;--control-button-width:20px;--calendar-cell:20px;
+  --row-height:28px;--send-height:26px;--status-height:20px;
+}
+.runtime .win .gb{border:2px groove #fff;padding-top:.5em;box-shadow:none;}
+.runtime .win .gb>legend{position:static;}
+.runtime .win .stack{gap:8px;}
+.runtime #input{width:135px;flex:none;}
+.runtime .fixed-user{flex:1;--label-width:88px;}
+.runtime .fixed-application{flex:2;--label-width:130px;}
+.runtime .fixed-remarks{--text-height:100px;}
+.runtime .fixed-plan{--text-height:20px;}
+.runtime .win .band{justify-content:center;}
+.runtime .win .sb .sp{flex:0 1 auto;}
+.runtime .win .sb .sp:nth-child(3){flex:1 1 0;}
