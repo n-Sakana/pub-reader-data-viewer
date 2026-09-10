@@ -25,6 +25,7 @@
   var mainFocusDone = false;
 
   var dialogMode = window.location.hash === '#dialog';
+  var dialogSizePending = false;
   if (dialogMode) { document.documentElement.classList.add('dialogmode'); }
 
   // The dialog window opens off screen at a generous size; report what the
@@ -39,15 +40,15 @@
     var width = Math.ceil(box.width);
     var height = Math.ceil(box.height);
     if (width < 1 || height < 1) { return; }
-    // Say nothing while the window already fits. Not a de-duplicate on the
-    // reported value -- a dialog can be swapped back and forth in place -- but
-    // on whether the window still needs changing, which also stops the report
-    // and the resize chasing each other.
-    if (Math.abs(width - window.innerWidth) <= 1 &&
+    // Opening hides and moves the native window, even when its size still
+    // fits. Always acknowledge that opening before suppressing resize loops.
+    if (!dialogSizePending && Math.abs(width - window.innerWidth) <= 1 &&
         Math.abs(height - window.innerHeight) <= 1) { return; }
+    dialogSizePending = false;
     var title = dialog.querySelector('.tb .ttl');
     post({
       type: 'dialogSize',
+      token: currentToken,
       width: width,
       height: height,
       title: title ? title.textContent : ''
@@ -307,6 +308,7 @@
     veil.classList.add('show');
     currentModal = veil;
     if (dialogMode) {
+      dialogSizePending = true;
       requestAnimationFrame(function () { requestAnimationFrame(reportDialogSize); });
     }
     return { veil: veil, dialog: dialog, body: body };
