@@ -103,15 +103,22 @@ public sealed class Rdv3DeletedRecord
     public string Line;
     public string State;
     public string DeletedAt;
+    internal string ArchiveName = "";
 }
 
-// The metadata and removed records travel inside the same atomically replaced
-// XLSX as live rows. A failed replacement cannot commit only half a deletion.
+internal sealed class Rdv3ArchiveReference
+{
+    internal string Name, Digest, Payload;
+}
+
+// Archive batches are immutable. The main workbook atomically commits their
+// references only after the separate workbooks have been saved successfully.
 public sealed class Rdv3LedgerProtection
 {
     public string Definition = "";
     public bool Legacy;
     public readonly List<Rdv3DeletedRecord> Deleted = new List<Rdv3DeletedRecord>();
+    internal readonly List<Rdv3ArchiveReference> Archives = new List<Rdv3ArchiveReference>();
 
     public static Rdv3LedgerProtection Create(Rdv3Data data)
     {
@@ -136,7 +143,7 @@ public sealed class Rdv3LedgerProtection
         using (XmlReader reader = XmlReader.Create(entry.Open(), new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null }))
         { doc.Load(reader); }
         XmlElement root = doc.DocumentElement;
-        if (root == null || root.Name != "protection" || root.GetAttribute("version") != "1")
+        if (root == null || root.Name != "protection" || (root.GetAttribute("version") != "1" && root.GetAttribute("version") != "2"))
         { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
         XmlNode definition = root.SelectSingleNode("definition");
         XmlNode deleted = root.SelectSingleNode("deleted");
@@ -152,6 +159,22 @@ public sealed class Rdv3LedgerProtection
             { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
             result.Deleted.Add(new Rdv3DeletedRecord { Line = line.InnerText, State = state.InnerText, DeletedAt = at.InnerText });
         }
+        if (root.GetAttribute("version") == "2")
+        {
+            XmlNode archives = root.SelectSingleNode("archives");
+            if (archives == null || result.Deleted.Count != 0) { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
+            HashSet<string> names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (XmlNode file in archives.ChildNodes)
+            {
+                XmlElement item = file as XmlElement;
+                if (item == null || item.Name != "file") { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
+                string name = item.GetAttribute("name"), digest = item.GetAttribute("sha256");
+                if (name.Length == 0 || Path.GetFileName(name) != name || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                    || !name.EndsWith(".xlsx", StringComparison.OrdinalIgnoreCase) || digest.Length != 64 || !names.Add(name))
+                { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
+                result.Archives.Add(new Rdv3ArchiveReference { Name = name, Digest = digest });
+            }
+        }
         return result;
     }
 
@@ -161,17 +184,106 @@ public sealed class Rdv3LedgerProtection
         ZipArchiveEntry entry = zip.CreateEntry("rdv-protection.xml", CompressionLevel.Fastest);
         using (XmlWriter writer = XmlWriter.Create(entry.Open(), new XmlWriterSettings { Encoding = new UTF8Encoding(false), CloseOutput = true, NewLineHandling = NewLineHandling.Entitize }))
         {
-            writer.WriteStartElement("protection"); writer.WriteAttributeString("version", "1");
+            writer.WriteStartElement("protection"); writer.WriteAttributeString("version", "2");
             writer.WriteElementString("definition", Definition); writer.WriteStartElement("deleted");
-            foreach (Rdv3DeletedRecord row in Deleted)
+            writer.WriteEndElement();
+            writer.WriteStartElement("archives");
+            foreach (Rdv3ArchiveReference file in Archives)
             {
-                writer.WriteStartElement("row");
-                writer.WriteElementString("line", row.Line); writer.WriteElementString("state", row.State); writer.WriteElementString("at", row.DeletedAt);
+                writer.WriteStartElement("file");
+                writer.WriteAttributeString("name", file.Name); writer.WriteAttributeString("sha256", file.Digest);
                 writer.WriteEndElement();
             }
             writer.WriteEndElement(); writer.WriteEndElement();
         }
     }
+
+    private static string ArchiveDirectory(string ledger)
+    { return Path.Combine(Path.GetDirectoryName(Path.GetFullPath(ledger)), "archived"); }
+
+    private static string Digest(Stream stream)
+    {
+        using (System.Security.Cryptography.SHA256 hash = System.Security.Cryptography.SHA256.Create())
+        { return BitConverter.ToString(hash.ComputeHash(stream)).Replace("-", "").ToLowerInvariant(); }
+    }
+
+    private static string Payload(IList<Rdv3DeletedRecord> rows)
+    {
+        using (MemoryStream memory = new MemoryStream())
+        {
+            using (BinaryWriter writer = new BinaryWriter(memory, Encoding.UTF8, true))
+            { foreach (Rdv3DeletedRecord row in rows) { writer.Write(row.Line); writer.Write(row.State); writer.Write(row.DeletedAt); } }
+            memory.Position = 0; return Digest(memory);
+        }
+    }
+
+    internal void LoadArchives(string ledger, string[] head, string stateHead)
+    {
+        string[] archiveHead = new string[head.Length + 1];
+        Array.Copy(head, archiveHead, head.Length); archiveHead[head.Length] = "削除日時";
+        foreach (Rdv3ArchiveReference reference in Archives)
+        {
+            string file = Path.Combine(ArchiveDirectory(ledger), reference.Name);
+            string[] lines, states; string warning; Rdv3LedgerProtection ignored;
+            // Keep the immutable batch locked against edits while verifying and reading.
+            using (FileStream stream = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                if (Digest(stream) != reference.Digest) { throw new InvalidDataException("削除済み台帳が変更されています: " + file); }
+                Rdv3Xlsx.ReadProtected(file, archiveHead, stateHead, out lines, out states, out warning, null, null, null, out ignored, false);
+            }
+            if (warning.Length > 0) { throw new InvalidDataException(warning); }
+            List<Rdv3DeletedRecord> batch = new List<Rdv3DeletedRecord>();
+            for (int i = 0; i < lines.Length; i++)
+            {
+                int split = lines[i].LastIndexOf('\t');
+                if (split < 0) { throw new InvalidDataException(Rdv3Text.ProtectionInvalid); }
+                batch.Add(new Rdv3DeletedRecord { Line = lines[i].Substring(0, split), State = states[i], DeletedAt = lines[i].Substring(split + 1), ArchiveName = reference.Name });
+            }
+            reference.Payload = Payload(batch); Deleted.AddRange(batch);
+        }
+    }
+
+    internal Rdv3LedgerProtection PrepareArchives(string ledger, string[] head, string stateHead, string runId, List<string> created)
+    {
+        Rdv3LedgerProtection prepared = new Rdv3LedgerProtection { Definition = Definition, Legacy = Legacy };
+        Dictionary<string, List<Rdv3DeletedRecord>> groups = new Dictionary<string, List<Rdv3DeletedRecord>>(StringComparer.Ordinal);
+        foreach (Rdv3DeletedRecord row in Deleted)
+        {
+            List<Rdv3DeletedRecord> batch;
+            if (!groups.TryGetValue(row.ArchiveName, out batch)) { batch = new List<Rdv3DeletedRecord>(); groups.Add(row.ArchiveName, batch); }
+            batch.Add(row);
+        }
+        foreach (KeyValuePair<string, List<Rdv3DeletedRecord>> group in groups)
+        {
+            string payload = Payload(group.Value);
+            Rdv3ArchiveReference reference = Archives.Find(delegate(Rdv3ArchiveReference item) { return item.Name == group.Key && item.Payload == payload; });
+            if (reference != null)
+            {
+                using (FileStream stream = new FileStream(Path.Combine(ArchiveDirectory(ledger), reference.Name), FileMode.Open, FileAccess.Read, FileShare.Read))
+                { if (Digest(stream) != reference.Digest) { throw new InvalidDataException("削除済み台帳が変更されています: " + reference.Name); } }
+                prepared.Archives.Add(reference);
+            }
+            else
+            {
+                string directory = ArchiveDirectory(ledger); Directory.CreateDirectory(directory);
+                string name = Path.GetFileNameWithoutExtension(ledger) + "_削除済み_" + DateTime.Now.ToString("yyyyMMdd-HHmmss", CultureInfo.InvariantCulture) + "_" + Guid.NewGuid().ToString("N") + ".xlsx";
+                string file = Path.Combine(directory, name);
+                string[] archiveHead = new string[head.Length + 1]; Array.Copy(head, archiveHead, head.Length); archiveHead[head.Length] = "削除日時";
+                string[] lines = new string[group.Value.Count], states = new string[lines.Length];
+                for (int i = 0; i < lines.Length; i++) { lines[i] = group.Value[i].Line + "\t" + group.Value[i].DeletedAt; states[i] = group.Value[i].State; }
+                Rdv3Xlsx.Write(file, archiveHead, stateHead, lines, states, runId, null, null, false);
+                created.Add(file);
+                using (FileStream stream = File.OpenRead(file)) { reference = new Rdv3ArchiveReference { Name = name, Digest = Digest(stream), Payload = payload }; }
+                prepared.Archives.Add(reference);
+            }
+            foreach (Rdv3DeletedRecord row in group.Value)
+            { prepared.Deleted.Add(new Rdv3DeletedRecord { Line = row.Line, State = row.State, DeletedAt = row.DeletedAt, ArchiveName = reference.Name }); }
+        }
+        return prepared;
+    }
+
+    internal void AdoptArchives(Rdv3LedgerProtection saved)
+    { Archives.Clear(); Archives.AddRange(saved.Archives); Deleted.Clear(); Deleted.AddRange(saved.Deleted); }
 
     public void Validate(Rdv3Data data, Rdv3WorkState work, string[] liveLines)
     {

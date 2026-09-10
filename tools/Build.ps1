@@ -165,6 +165,16 @@ function New-ProductPackage($Options) {
             $sampleSet = 'selected-five'
         }
         $config = Get-Content -LiteralPath $configSource -Raw -Encoding UTF8 | ConvertFrom-Json
+        $sampleSourceNames = @{}
+        $sampleKeys = @('TXN','PAY','APP','DEL')
+        for ($sampleIndex = 0; $sampleIndex -lt $sampleKeys.Count; $sampleIndex++) {
+            $table = $config.data.tables.($sampleKeys[$sampleIndex])
+            $oldName = [string]$table.file
+            $newName = $oldName
+            if ($oldName -notmatch '^0[1-4]_') { $newName = ('{0:D2}_' -f ($sampleIndex + 1)) + $oldName.TrimStart([char[]]'①②③④') }
+            $sampleSourceNames[$newName] = $oldName
+            $table.file = $newName
+        }
         if ($SampleRoot) {
             $config.paths.dataDir = 'data'
             $config.paths.ledger = 'data/統合台帳.xlsx'
@@ -177,23 +187,28 @@ function New-ProductPackage($Options) {
                 }
             }
             Write-Utf8 (Join-Path $package 'settings.json') (($config | ConvertTo-Json -Depth 50) + [Environment]::NewLine)
-            $requirements = [IO.File]::ReadAllText((Join-Path $sourceRoot '要件定義書.md'))
-            $requirements = $requirements.Replace('「サンプル/data」','「data」').Replace('「サンプル/確認手順.md」','「SAMPLE-GUIDE.md」').Replace('「JSON設定の使い方.md」','「SETTINGS.md」')
-            $verified = [IO.File]::ReadAllText((Join-Path $script:Root 'manual/REQUIREMENTS.md'))
-            $heading = '## 11.'
-            if ($requirements.Contains($heading) -and $verified.Contains($heading)) { $requirements = $requirements.Substring(0,$requirements.IndexOf($heading)) + $verified.Substring($verified.IndexOf($heading)) }
-            Write-Utf8 (Join-Path $package 'manual/REQUIREMENTS.md') $requirements
         } else {
             Copy-SafeFile $configSource (Join-Path $package 'settings.json')
         }
         [IO.Directory]::CreateDirectory((Join-Path $package 'data')) | Out-Null
-        [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
         if ($Options.Data -eq 'sample') {
             $names = @($config.data.tables.PSObject.Properties | ForEach-Object { [string]$_.Value.file })
             if ($names.Count -ne 4 -or @($names | Sort-Object -Unique).Count -ne 4) { throw 'The five-record sample must have four distinct inputs.' }
             foreach ($name in $names) {
                 if ([IO.Path]::GetFileName($name) -ne $name -or $name -match '[/\\:]' -or [IO.Path]::GetExtension($name) -notin @('.csv','.xlsx')) { throw ('Invalid sample input filename: ' + $name) }
-                Copy-SafeFile (Join-Path $sampleDirectory $name) (Join-Path $package ('data/' + $name))
+                Copy-SafeFile (Join-Path $sampleDirectory $sampleSourceNames[$name]) (Join-Path $package ('data/' + $name))
+            }
+        }
+        if ($Options.Data -eq 'sample' -and -not $SampleRoot) {
+            $updateName = '追加CSVデータ/5月分（3件追加）'
+            $updateSource = Join-Path (Join-Path $script:Root 'samples/current') $updateName
+            $updateTarget = Join-Path $package $updateName
+            [IO.Directory]::CreateDirectory($updateTarget) | Out-Null
+            $updateConfig = Get-Content -LiteralPath (Join-Path $script:Root 'configs/sample/settings.json') -Raw -Encoding UTF8 | ConvertFrom-Json
+            foreach ($table in $updateConfig.data.tables.PSObject.Properties) {
+                $name = [string]$table.Value.file
+                if ([IO.Path]::GetFileName($name) -ne $name) { throw 'Invalid update input filename' }
+                Copy-SafeFile (Join-Path $updateSource $name) (Join-Path $updateTarget $name)
             }
         }
         $sourceCommit = $null; $sourceDirty = $null
@@ -209,7 +224,7 @@ function New-ProductPackage($Options) {
             schema=1; application='ReaderDataViewer'; variant=$spec.variant; name=$spec.name
             createdUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$sourceCommit; sourceDirty=$sourceDirty; data=$Options.Data; sampleSet=$sampleSet
         }
-        Write-Json (Join-Path $package 'manual/release.json') $release
+        Write-Json (Join-Path $package 'src/release.json') $release
         $manifest = [ordered]@{
             schema = 1; application = 'ReaderDataViewer'; variant = $spec.variant; name = $spec.name; sourceCommit = $sourceCommit; sourceDirty = $sourceDirty; theme = $id; motion = 'off'
             createdUtc = [DateTime]::UtcNow.ToString('o'); data = $Options.Data

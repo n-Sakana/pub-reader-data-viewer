@@ -12,6 +12,8 @@
 .runtime .win .gb>legend{position:static;}
 .runtime .win .stack{gap:8px;}
 .runtime #input{width:135px;flex:none;}
+.runtime .keyfigure{flex:1 1 0;min-width:0;margin-right:12px;}
+.runtime .keyactions{margin-left:auto;}
 .runtime .fixed-user{flex:1;--label-width:88px;}
 .runtime .fixed-application{flex:2;--label-width:130px;}
 .runtime .fixed-remarks{--text-height:100px;}
@@ -19,3 +21,25 @@
 .runtime .win .band{justify-content:center;}
 .runtime .win .sb .sp{flex:0 1 auto;}
 .runtime .win .sb .sp:nth-child(3){flex:1 1 0;}
+
+/* Keep controls visible; give up remarks space before scrolling the record. */
+.runtime .win .client{overflow:hidden;}
+.runtime .win .stack{height:100%;min-height:0;}
+.runtime .win .stack>*{flex-shrink:0;}
+.runtime .win .record-details{display:flex;flex-direction:column;gap:8px;flex:1 1 0;min-height:0;overflow:auto;}
+.runtime .record-details>.cols{flex:none;}
+.runtime .record-details .text-section{box-sizing:border-box;min-width:0;}
+.runtime .record-details .fixed-remarks{flex:1 1 100px;height:auto;min-height:38px;}
+.runtime .record-details .fixed-remarks .dynamic-text{height:0;min-height:0;flex:1 1 0;}
+.runtime .record-details .fixed-plan{flex:none;height:auto;}
+.runtime .record-details .fixed-plan .dynamic-text{flex:none;height:20px;min-height:20px;}
+.runtime .keyactions>.btn,.runtime .keyactions>.tog{flex-shrink:0;}
+
+/* Wide working dialogs keep their natural content height. */
+.dialogmode #v-cand>.dlg,
+.dialogmode #v-upd>.dlg,
+.dialogmode #v-del>.dlg,
+.dialogmode #v-out>.dlg,
+.dialogmode #v-set>.dlg,
+.dialogmode #v-pick>.dlg,
+.dialogmode #v-archive>.dlg{width:750px!important;height:auto;}

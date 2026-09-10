@@ -27,9 +27,9 @@ public static class Rdv3Text
     public const string ArchiveIdentityConflict = "復元対象が変更されたか、同じ識別キーが既に通常台帳にあります。上書きせず停止しました。台帳を読み直して確認してください。";
     public const string ArchiveTitle = "削除済みレコード";
     public const string OpRestore = "復元";
-    public const string ArchiveHint = "削除時の内容と処理状態を保管しています。選択したレコードだけを復元します。";
+    public const string ArchiveHint = "削除時の内容と確認状態を保管しています。選択したレコードだけを復元します。";
     public const string RestoreDone = "{0} 件を削除時の内容と状態で復元しました。";
-    public const string RestoreConfirm = "選択した {0} 件を、削除時の内容と処理状態で共有台帳へ復元します。よろしいですか。";
+    public const string RestoreConfirm = "選択した {0} 件を、削除時の内容と確認状態で共有台帳へ復元します。よろしいですか。";
     public const string DeleteStateHint = "\u51E6\u7406\u72B6\u614B\u306F\u5171\u6709\u53F0\u5E33\u306B\u4FDD\u5B58\u6E08\u307F\u306E\u5024\u3067\u5224\u5B9A\u3057\u307E\u3059\u3002\u672A\u9001\u4FE1\u306E\u5909\u66F4\u306F\u9001\u4FE1\u3057\u3066\u304B\u3089\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
     public const string RecordXmlValue = "値「{0}」には XLSX に保存できない文字があります。";
     public static string Format(string text, params object[] values)
@@ -147,18 +147,18 @@ public static class Rdv3Text
     public const string ConfirmCreateBody = "\u4FDD\u5B58\u6E08\u307F\u306E\u7D71\u5408\u53F0\u5E33\u304C\u3042\u308A\u307E\u305B\u3093\u3002CSV \u304B\u3089\u65B0\u3057\u304F\u4F5C\u6210\u3057\u307E\u3059\u304B?";
     public const string ConfirmStateTitleFmt = "{state}\u306E\u78BA\u8A8D";
     public const string SendTitle = "\u9001\u4FE1";
-    public const string ConfirmSendBody = "\u672A\u9001\u4FE1\u306E {n} \u4EF6\u3092\u9001\u4FE1\u3057\u307E\u3059\u3002\u3088\u308D\u3057\u3044\u3067\u3059\u304B?\n\n\u9001\u4FE1\u3057\u305F\u884C\u306F\u672A\u9001\u4FE1\u304B\u3089\u5916\u308C\u307E\u3059\u3002\u53D6\u308A\u8FBC\u3093\u3060\u30C7\u30FC\u30BF\u306F\u66F8\u304D\u63DB\u3048\u307E\u305B\u3093\u3002";
+    public const string ConfirmSendBody = "{n} 件の確認状態を統合台帳に反映します。よろしいですか？";
     public const string BtnYes = "\u306F\u3044";
     public const string BtnNo = "\u3044\u3044\u3048";
 
     public static string UpdateConfirmBody(string onSourceChange, string initialState)
     {
-        string first = "\u5B9A\u7FA9\u3055\u308C\u305F\u51E6\u7406\u3067\u53F0\u5E33\u306B\u5909\u66F4\u304C\u3042\u308A\u307E\u3059\u3002\u66F4\u65B0\u3057\u307E\u3059\u304B?\n";
+        string first = "入力CSVに変更があります。統合台帳を更新しますか？\n";
         if (onSourceChange == "preserve")
         {
-            return first + "(\u5165\u529B\u5074\u306E\u5217\u304C\u5909\u308F\u3063\u3066\u3082\u3001\u4F5C\u696D\u72B6\u614B\u306F\u73FE\u5728\u5024\u3092\u4FDD\u3061\u307E\u3059)";
+            return first + "確認状態は現在のまま保ちます。";
         }
-        return first + "(\u5165\u529B\u5074\u306E\u5217\u304C\u5909\u308F\u3063\u305F\u884C\u306F\u3001\u4F5C\u696D\u72B6\u614B\u3092\u300C" + initialState + "\u300D\u3078\u623B\u3057\u307E\u3059)";
+        return first + "CSVの内容が更新されたデータは、再確認が必要なため、確認状態を「" + initialState + "」に戻します。\n送信済みの確認済データと削除済みデータは変更しません。";
     }
 
     // ---- errors (shown in a warning dialog) ---------------------------------

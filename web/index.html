@@ -139,51 +139,50 @@ main,.page{max-width:none;padding:0;background:#d4d0c8}
   <div class="client"><div class="stack">
     <fieldset class="gb fixed-search"><legend>検索</legend>
       <div class="keyline"><div class="keyfigure"><div class="lab">読取値</div><div class="fld keyvalue" data-bind="searchKey"></div></div>
-        <div class="keyactions"><div class="keyinput"><label class="lab" for="input">在留カード番号／申請受付番号</label><div class="fld inp" id="input" role="textbox" aria-label="在留カード番号／申請受付番号" aria-multiline="false" data-max-length="32" contenteditable="false" tabindex="0"></div></div>
+        <div class="keyactions"><div class="keyinput"><label class="lab" for="input">識別番号／受付番号</label><div class="fld inp" id="input" role="textbox" aria-label="識別番号／受付番号" aria-multiline="false" data-max-length="32" contenteditable="false" tabindex="0"></div></div>
           <div class="btn def" id="b-search" role="button" data-action="search" aria-disabled="true" tabindex="0">検索</div>
           <div class="btn" id="b-clear" role="button" data-action="clear" aria-disabled="true" tabindex="0">クリア</div>
-          <div class="tog" id="b-work" role="button" data-action="workState" aria-disabled="true" tabindex="0">未処理</div>
+          <div class="tog" id="b-work" role="button" data-action="workState" aria-disabled="true" tabindex="0">未確認</div>
         </div>
       </div>
     </fieldset>
-    <div class="cols">
+    <div class="record-details"><div class="cols">
       <fieldset class="gb fixed-user"><legend>利用者情報</legend>
         <div class="row dynamic-row"><label>利用者ID</label><div class="fld" data-bind="userId"></div></div>
         <div class="row dynamic-row"><label>利用者氏名</label><div class="fld" data-bind="userName"></div></div>
         <div class="row dynamic-row"><label>利用者区分</label><div class="fld" data-bind="userCategory"></div></div>
       </fieldset>
-      <fieldset class="gb fixed-application"><legend>申請情報</legend>
-        <div class="row dynamic-row"><label>申請日</label><div class="fld" data-bind="applicationDate"></div></div>
-        <div class="row dynamic-row"><label>申請受付番号</label><div class="fld" data-bind="applicationNumber"></div></div>
-        <div class="row dynamic-row"><label>在留カード番号</label><div class="fld" data-bind="cardNumber"></div></div>
-        <div class="row dynamic-row"><label>申請人氏名</label><div class="fld" data-bind="applicantName"></div></div>
+      <fieldset class="gb fixed-application"><legend>受付情報</legend>
+        <div class="row dynamic-row"><label>申込日</label><div class="fld" data-bind="applicationDate"></div></div>
+        <div class="row dynamic-row"><label>受付番号</label><div class="fld" data-bind="applicationNumber"></div></div>
+        <div class="row dynamic-row"><label>識別番号</label><div class="fld" data-bind="cardNumber"></div></div>
+        <div class="row dynamic-row"><label>申込者氏名</label><div class="fld" data-bind="applicantName"></div></div>
         <div class="row dynamic-row"><label>生年月日</label><div class="fld" data-bind="birthDate"></div></div>
-        <div class="row dynamic-row"><label>在留資格（期間）</label><div class="fld" data-bind="qualification"></div></div>
-        <div class="row dynamic-row"><label>受領官署</label><div class="fld" data-bind="office"></div></div>
+        <div class="row dynamic-row"><label>契約区分（期間）</label><div class="fld" data-bind="qualification"></div></div>
+        <div class="row dynamic-row"><label>受付拠点</label><div class="fld" data-bind="office"></div></div>
       </fieldset>
     </div>
     <fieldset class="gb text-section fixed-remarks"><legend>意見欄</legend><div class="fld dynamic-text" data-bind="remarks"></div></fieldset>
-    <fieldset class="gb text-section fixed-plan"><legend>変更後の実習計画</legend><div class="fld dynamic-text" data-bind="plan"></div></fieldset>
-    <div class="band" data-judgment="paymentStatus"><span class="band-label">決済状況</span><div class="ok unsearched">未検索</div><span id="jsub"></span></div>
+    <fieldset class="gb text-section fixed-plan"><legend>変更後の計画</legend><div class="fld dynamic-text" data-bind="plan"></div></fieldset>
+    </div><div class="band" data-judgment="paymentStatus"><span class="band-label">決済状況</span><div class="ok unsearched">未検索</div><span id="jsub"></span></div>
     <div class="commandbar">
       <div class="btn" id="b-refresh" role="button" data-action="refreshLedger" aria-disabled="true" tabindex="0">台帳再読込</div>
       <div class="btn" id="b-out" role="button" data-action="tableExport" aria-disabled="true" tabindex="0">帳票出力</div>
       <div class="btn" id="b-upd" role="button" data-action="updateRecords" aria-disabled="true" tabindex="0">データ更新</div>
       <div class="btn" id="b-del" role="button" data-action="deleteRecords" aria-disabled="true" tabindex="0">データ削除</div>
-      <div class="btn" id="b-archive" role="button" data-action="restoreRecords" aria-disabled="true" tabindex="0">削除済み</div>
       <div class="btn" id="b-set" role="button" data-action="settings" aria-disabled="true" tabindex="0">設定</div>
     </div><div class="sep"></div>
     <div class="sendbar"><div class="sendn" id="sn" data-bind="pendingCount"></div>
-      <div class="btn def" id="b-send" role="button" data-action="sendChanges" title="この端末に蓄積した未送信の処理状態を共有台帳へ送信します" aria-disabled="true" tabindex="0">変更をまとめて送信</div>
+      <div class="btn def" id="b-send" role="button" data-action="sendChanges" title="この端末に蓄積した未送信の確認状態を共有台帳へ送信します" aria-disabled="true" tabindex="0">確認状態を一括送信</div>
     </div>
   </div></div>
   <div class="sb" role="status" aria-live="polite"><div class="sp" data-bind="appState"></div><div class="sp" data-bind="ledgerRows" data-prefix="台帳件数 "></div><div class="sp" data-bind="clock" data-clock="true"></div><div class="grip"></div></div>
 </div>
-<template id="fixed-candidate-columns"><table data-title="該当案件" data-hint="申請受付番号、在留カード番号、申請人氏名を確認して選択してください" data-width="1100" data-max-height="360" data-row-height="30" data-header-height="32"><thead><tr>
+<template id="fixed-candidate-columns"><table data-title="該当案件" data-hint="受付番号、識別番号、申込者氏名を確認して選択してください" data-width="1100" data-max-height="360" data-row-height="30" data-header-height="32"><thead><tr>
   <th data-width="40" data-align="right" data-muted="true">#</th>
-  <th data-width="180">申請受付番号</th><th data-width="150">在留カード番号</th>
-  <th data-width="240">申請人情報（マスタ番号）</th><th data-width="120">申請日（仮処分年月日）</th>
-  <th data-width="110" data-render="tag">決済状況</th><th data-width="80" data-render="tag">処理</th>
+  <th data-width="180">受付番号</th><th data-width="150">識別番号</th>
+  <th data-width="240">申込者氏名</th><th data-width="120">申込日</th>
+  <th data-width="110" data-render="tag">決済状況</th><th data-width="80" data-render="tag">確認</th>
 </tr></thead></table></template>
 
 <div class='veil' id='v-cand'><div class='dlg' style='width:744px;'><div class='tb'><div class='ic'>R</div><div class='ttl'>候補一覧</div><div class='bx cl x'>✕</div></div><div class='body'></div></div></div>

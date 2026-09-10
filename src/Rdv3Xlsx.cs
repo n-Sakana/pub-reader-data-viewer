@@ -192,14 +192,17 @@ public static class Rdv3Xlsx
         }
         string dir = Path.GetDirectoryName(Path.GetFullPath(path));
         string tmp = Path.Combine(dir, Path.GetFileName(path) + ".tmp-" + Guid.NewGuid().ToString("N"));
+        List<string> createdArchives = new List<string>();
+        bool committed = false;
         try
         {
+            Rdv3LedgerProtection savedProtection = protection == null ? null : protection.PrepareArchives(path, head, stateHead, runId, createdArchives);
             using (FileStream fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write))
             using (ZipArchive z = new ZipArchive(fs, ZipArchiveMode.Create))
             {
                 if (!string.IsNullOrEmpty(contract))
                 { AddEntry(z, "rdv-contract.xml", "<contract>" + contract + "</contract>"); }
-                if (protection != null) { protection.Write(z); }
+                if (savedProtection != null) { savedProtection.Write(z); }
                 AddEntry(z, "[Content_Types].xml",
                     "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>" +
                     "<Types xmlns=\"http://schemas.openxmlformats.org/package/2006/content-types\">" +
@@ -276,9 +279,13 @@ public static class Rdv3Xlsx
             {
                 File.Move(tmp, path);
             }
+            committed = true;
+            if (protection != null) { protection.AdoptArchives(savedProtection); }
         }
         finally
         {
+            if (!committed)
+            { foreach (string archive in createdArchives) { try { File.Delete(archive); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }
             if (File.Exists(tmp))
             {
                 try { File.Delete(tmp); }
@@ -340,7 +347,7 @@ public static class Rdv3Xlsx
 
     public static void ReadProtected(string path, string[] head, string stateHead, out string[] lines, out string[] states,
                                     out string warning, string expectedContract, string legacyContract,
-                                    string expectedDefinition, out Rdv3LedgerProtection protection)
+                                    string expectedDefinition, out Rdv3LedgerProtection protection, bool loadArchives = true)
     {
         warning = "";
         // ReadWrite | Delete: another copy of the app may replace the file
@@ -354,6 +361,7 @@ public static class Rdv3Xlsx
             string[] shared = ReadSharedStrings(z);
             protection = Rdv3LedgerProtection.Read(z, expectedDefinition);
             CheckContract(z, protection.Legacy && legacyContract != null ? legacyContract : expectedContract);
+            if (loadArchives) { protection.LoadArchives(path, head, stateHead); }
             ZipArchiveEntry sheet = FindSheet(z, true);
             if (sheet == null) { throw new InvalidDataException(Rdv3Text.Format(Rdv3Text.XlsxNoSheetPart, path)); }
 

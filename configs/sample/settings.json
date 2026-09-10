@@ -14,14 +14,34 @@
     "stableMs": 120,
     "rebindMs": 400,
     "preferFocusedWindow": true,
-    "targets": []
+    "targets": [
+      {
+        "enabled": true,
+        "name": "メモ帳",
+        "window": {
+          "className": "Notepad",
+          "processName": "Notepad",
+          "scope": "children"
+        },
+        "path": [],
+        "field": {
+          "className": "RichEditD2DPT",
+          "controlTypes": [
+            "Document"
+          ],
+          "requireValuePattern": true,
+          "scope": "descendants"
+        },
+        "read": "value"
+      }
+    ]
   },
   "data": {
     "encoding": "utf-8",
     "tables": {
       "TXN": {
         "label": "①取引データ",
-        "file": "①取引データ.csv",
+        "file": "01_取引データ.csv",
         "encoding": "shift_jis",
         "key": "【共通】取引ID",
         "keyValidation": {
@@ -33,7 +53,7 @@
       },
       "PAY": {
         "label": "②決済データ",
-        "file": "②決済データ.csv",
+        "file": "02_決済データ.csv",
         "encoding": "shift_jis",
         "key": "オーダーID",
         "keyValidation": {
@@ -45,7 +65,7 @@
       },
       "APP": {
         "label": "③受付データ",
-        "file": "③受付データ.xlsx",
+        "file": "03_受付データ.csv",
         "key": "受付番号",
         "keyValidation": {
           "characters": "unicode",
@@ -53,11 +73,11 @@
           "duplicates": "error",
           "empty": "error"
         },
-        "sheet": "ページ1_1"
+        "encoding": "shift_jis"
       },
       "DEL": {
         "label": "削除用・手続完了データ",
-        "file": "削除用_手続完了.csv",
+        "file": "04_削除用_手続完了.csv",
         "key": [
           "識別番号",
           "受付番号"
@@ -120,13 +140,13 @@
       "payPaid": "②決済済の取引",
       "bothPaid": "①②とも決済済の取引",
       "targetMatched": "削除用台帳に一致する案件",
-      "targetProcessed": "台帳の処理済み案件",
-      "$work": "台帳処理状態（アプリ付与）"
+      "targetProcessed": "台帳の確認済案件",
+      "$work": "台帳確認状態（アプリ付与）"
     },
     "jobs": [
       {
         "id": "delete-processed-records",
-        "name": "手続完了かつ共有で処理済みの案件を削除",
+        "name": "手続完了かつ共有で確認済の案件を削除",
         "kind": "delete",
         "inputs": [
           {
@@ -533,15 +553,15 @@
       "states": [
         {
           "id": "todo",
-          "text": "未処理",
-          "short": "未処理",
+          "text": "未確認",
+          "short": "未確認",
           "look": "neutral",
           "stored": "FALSE"
         },
         {
           "id": "done",
-          "text": "処理済",
-          "short": "処理済",
+          "text": "確認済",
+          "short": "確認済",
           "look": "accent",
           "stored": "TRUE"
         }
@@ -551,13 +571,13 @@
         {
           "from": "todo",
           "to": "done",
-          "done": "処理済にしました"
+          "done": "確認済にしました"
         },
         {
           "from": "done",
           "to": "todo",
-          "confirm": "表示中の案件を未処理に戻します。よろしいですか。",
-          "done": "未処理に戻しました"
+          "confirm": "表示中の案件を未確認に戻します。よろしいですか。",
+          "done": "未確認に戻しました"
         }
       ],
       "automaticWhen": {

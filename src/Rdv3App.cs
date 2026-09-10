@@ -1075,10 +1075,9 @@ public sealed class Rdv3App
             {
                 if (keepMarker != null) { RememberMarker(keepMarker); }
                 EndWriteGuard(tag, true);
-                // 送信が通ったら画面を空にして、次の入力へ移れるようにする。
-                // identity と key を渡さないので ReadyAfterShared が ClearShown() を通り、
-                // 入力欄・候補・選択行がまとめて消える。
                 ReadyAfterShared(tag, Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));
+                // Shared refresh retains the typed key; successful sends clear it too.
+                DoClear();
                 if (keepApply.Resolved.Count > 0)
                 {
                     form.Notice(Rdv3Text.NoteSendDone.Replace("{n}", keepApply.Resolved.Count.ToString("N0", CultureInfo.InvariantCulture)));

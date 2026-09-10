@@ -502,7 +502,7 @@
     shell.body.appendChild(summary);
     var list = element('div', 'lv archive-list');
     var table = element('table'), thead = element('thead'), head = element('tr');
-    ['復元', '識別キー', '処理状態', '削除日時'].forEach(function (title) { head.appendChild(element('th', '', title)); });
+    ['復元', '識別キー', '確認状態', '削除日時'].forEach(function (title) { head.appendChild(element('th', '', title)); });
     thead.appendChild(head); table.appendChild(thead);
     var body = element('tbody'); table.appendChild(body); list.appendChild(table); shell.body.appendChild(list);
     var details = fieldset('削除時の全内容'); details.classList.add('archive-details');
@@ -1189,7 +1189,7 @@
 
   function selectNode(entries) {
     var select = element('select', 'fld inp');
-    select.style.width = '100%'; select.style.padding = '0 2px';
+    select.style.width = '100%';
     entries.forEach(function (entry) { var option = element('option', '', entry.text); option.value = entry.value; select.appendChild(option); });
     return select;
   }

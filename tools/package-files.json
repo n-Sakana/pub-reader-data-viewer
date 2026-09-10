@@ -9,10 +9,6 @@
     "LICENSE",
     "tools/ReaderDataViewer.cmd",
     "tools/Migrate-Ledger.ps1",
-    "manual/SETTINGS.md",
-    "manual/PAYMENT-GUIDE.md",
-    "manual/PROTECTION-GUIDE.md",
-    "manual/THIRD-PARTY-NOTICES.md",
     "src/01_App.cs",
     "src/02_MainWindow.cs",
     "src/03_Win98.cs",
@@ -63,7 +59,6 @@
     "lib/Microsoft.Web.WebView2.Wpf.dll",
     "lib/NOTICE-Microsoft.Web.WebView2.txt",
     "lib/WebView2Loader.dll",
-    "manual/SAMPLE-GUIDE.md",
-    "manual/REQUIREMENTS.md"
+    "lib/THIRD-PARTY-NOTICES.md"
   ]
 }
