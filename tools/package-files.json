@@ -62,6 +62,8 @@
     "lib/Microsoft.Web.WebView2.Core.dll",
     "lib/Microsoft.Web.WebView2.Wpf.dll",
     "lib/NOTICE-Microsoft.Web.WebView2.txt",
-    "lib/WebView2Loader.dll"
+    "lib/WebView2Loader.dll",
+    "manual/SAMPLE-GUIDE.md",
+    "manual/REQUIREMENTS.md"
   ]
 }

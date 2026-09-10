@@ -2,11 +2,11 @@
   "schema": 3,
   "paths": {
     "dataDir": "data",
-    "ledger": "data/ReaderDataViewer-Ledger-PAYMAP.xlsx",
-    "log": "data/ReaderDataViewer.log"
+    "ledger": "data/統合台帳.xlsx",
+    "log": "data/操作ログ.log"
   },
   "search": {
-    "pattern": "^(?:[A-Z]{2}[0-9]{8}[A-Z]{2}|[^\\s/]+オン[A-Z]{2}[0-9]{2}-[0-9]+)$",
+    "pattern": "^(?:[A-Z]{2}[0-9]{8}[A-Z]{2}|受付[A-Z]{2}[0-9]{2}-[0-9]+)$",
     "candidateRowsShown": 100
   },
   "watch": {
@@ -14,34 +14,14 @@
     "stableMs": 120,
     "rebindMs": 400,
     "preferFocusedWindow": true,
-    "targets": [
-      {
-        "enabled": true,
-        "name": "タイトルなし - メモ帳",
-        "window": {
-          "className": "Notepad",
-          "processName": "Notepad",
-          "scope": "children"
-        },
-        "path": [],
-        "field": {
-          "className": "RichEditD2DPT",
-          "controlTypes": [
-            "Document"
-          ],
-          "requireValuePattern": true,
-          "scope": "descendants"
-        },
-        "read": "value"
-      }
-    ]
+    "targets": []
   },
   "data": {
     "encoding": "utf-8",
     "tables": {
-      "MAP": {
-        "label": "取引データ",
-        "file": "①取引データ_100件.csv",
+      "TXN": {
+        "label": "①取引データ",
+        "file": "①取引データ.csv",
         "encoding": "shift_jis",
         "key": "【共通】取引ID",
         "keyValidation": {
@@ -52,8 +32,8 @@
         }
       },
       "PAY": {
-        "label": "決済管理データ",
-        "file": "②決済管理データ_100件.csv",
+        "label": "②決済データ",
+        "file": "②決済データ.csv",
         "encoding": "shift_jis",
         "key": "オーダーID",
         "keyValidation": {
@@ -64,81 +44,78 @@
         }
       },
       "APP": {
-        "label": "講習受講データ",
-        "file": "③講習受講データ_100件.xlsx",
-        "key": "申請番号",
+        "label": "③受付データ",
+        "file": "③受付データ.xlsx",
+        "key": "受付番号",
         "keyValidation": {
           "characters": "unicode",
           "length": "variable",
           "duplicates": "error",
           "empty": "error"
-        }
+        },
+        "sheet": "ページ1_1"
       },
       "DEL": {
-        "label": "処理済みデータ",
-        "file": "④処理済みデータ_100件.xlsx",
-        "sheet": "リスト_3",
+        "label": "削除用・手続完了データ",
+        "file": "削除用_手続完了.csv",
         "key": [
-          "会員番号",
-          "申請番号"
+          "識別番号",
+          "受付番号"
         ],
         "keyValidation": {
           "characters": "unicode",
           "length": "variable",
-          "duplicates": "distinct",
-          "empty": "skip"
-        }
+          "duplicates": "error",
+          "empty": "error"
+        },
+        "encoding": "shift_jis"
       }
     },
     "types": {
-      "MAP.【共通】金額": {
+      "TXN.【共通】金額": {
         "type": "number"
       },
       "PAY.決済金額": {
         "type": "number"
       },
-      "APP.受付年月日": {
+      "APP.申込日": {
         "type": "date",
-        "format": "yyyyMMdd"
-      },
-      "APP.登録年月日": {
-        "type": "date",
-        "format": "yyyyMMdd"
+        "format": "yyyy/MM/dd"
       }
     },
     "labels": {
-      "MAP.【共通】取引ID": "取引ID",
-      "MAP.【共通】ステータス": "MAP決済状態",
-      "MAP.【共通】取引結果": "取引結果",
-      "MAP.【共通】金額": "MAP金額",
-      "MAP.会員番号照合用": "MAP会員番号",
+      "TXN.【共通】取引ID": "取引検索システム取引ID",
+      "TXN.【共通】ステータス": "取引検索システム決済状態",
+      "TXN.【共通】取引結果": "取引検索システム取引結果",
+      "TXN.【共通】金額": "取引検索システム金額",
+      "TXN.識別番号照合用": "取引検索システム識別番号",
       "PAY.オーダーID": "オーダーID",
       "PAY.決済ステータス": "決済ステータス",
       "PAY.決済金額": "決済金額",
       "PAY.備考2": "備考2",
       "PAY.受付番号": "受付番号",
-      "PAY.会員番号照合用": "決済会員番号",
-      "PAY.申請番号照合用": "決済申請番号",
-      "APP.申請番号": "受付番号",
-      "APP.会員番号": "会員番号",
-      "APP.有効期間": "有効期間",
-      "APP.担当拠点": "担当拠点",
-      "APP.備考欄": "備考欄",
-      "APP.変更内容": "変更内容",
-      "APP.管理番号": "管理番号",
-      "PAYMAP": "取引・決済照合結果",
-      "INTEGRATED": "申請情報統合結果",
-      "ledger": "統合台帳",
-      "APP.受付年月日": "受付年月日",
-      "APP.登録年月日": "登録年月日",
+      "PAY.識別番号照合用": "決済識別番号",
+      "PAY.受付番号照合用": "決済受付番号",
+      "APP.受付番号": "受付番号",
+      "APP.受付時＿識別番号": "識別番号",
+      "APP.変更後の契約区分期間": "契約区分（期間）",
+      "PAY.受付拠点": "受付拠点",
+      "APP.意見欄": "意見欄",
+      "APP.変更後の計画": "変更後の計画",
+      "APP.申込者氏名": "申込人氏名",
+      "PAIRED": "取引・決済照合結果",
+      "INTEGRATED": "受付情報統合結果",
+      "ledger": "IDカード情報照会台帳",
+      "APP.申込日": "申込日",
+      "PAY.生年月日": "生年月日",
       "PAY.利用者ID": "利用者ID",
       "PAY.利用者氏名": "利用者氏名",
       "PAY.利用者区分": "利用者区分",
       "PAY.氏名": "氏名",
       "target": "削除対象",
-      "DEL.会員番号": "削除対象の会員番号",
-      "DEL.申請番号": "削除対象の申請番号",
-      "PAYMAP.決済確認済": "決済確認済",
+      "DEL.識別番号": "削除対象の識別番号",
+      "DEL.受付番号": "削除対象の受付番号",
+      "PAIRED.決済確認済": "決済確認済",
       "mapPaid": "①決済完了の取引",
       "payPaid": "②決済済の取引",
       "bothPaid": "①②とも決済済の取引",
@@ -149,7 +126,7 @@
     "jobs": [
       {
         "id": "delete-processed-records",
-        "name": "処理済みデータに一致する案件を台帳から削除",
+        "name": "手続完了かつ共有で処理済みの案件を削除",
         "kind": "delete",
         "inputs": [
           {
@@ -163,12 +140,12 @@
             "target2": "DEL",
             "keys": [
               [
-                "PAY.会員番号照合用",
-                "PAY.申請番号照合用"
+                "PAY.識別番号照合用",
+                "PAY.受付番号照合用"
               ],
               [
-                "DEL.会員番号",
-                "DEL.申請番号"
+                "DEL.識別番号",
+                "DEL.受付番号"
               ]
             ],
             "condition": "match",
@@ -201,11 +178,11 @@
       },
       {
         "id": "update-ledger",
-        "name": "決済・申請情報を統合して台帳を更新",
+        "name": "決済・受付情報を統合して台帳を更新",
         "kind": "update",
         "inputs": [
           {
-            "table": "MAP"
+            "table": "TXN"
           },
           {
             "table": "PAY"
@@ -217,56 +194,91 @@
         "steps": [
           {
             "operation": "calculate",
-            "target1": "MAP",
-            "column": "会員番号照合用",
-            "expression": "regexExtract(MAP.【共通】取引ID, '[A-Z]{2}[0-9]{8}[A-Z]{2}')",
-            "output": "MAP"
+            "target1": "TXN",
+            "column": "識別番号照合用",
+            "expression": "regexExtract(TXN.【共通】取引ID, '[A-Z]{2}[0-9]{8}[A-Z]{2}')",
+            "output": "TXN"
           },
           {
             "operation": "calculate",
             "target1": "PAY",
-            "column": "会員番号照合用",
+            "column": "識別番号照合用",
             "expression": "regexExtract(PAY.オーダーID, '[A-Z]{2}[0-9]{8}[A-Z]{2}')",
             "output": "PAY"
           },
           {
             "operation": "calculate",
             "target1": "PAY",
-            "column": "申請番号照合用",
-            "expression": "regexExtract(PAY.備考2, '[^/]+オン[A-Z]{2}[0-9]{2}-[0-9]+')",
+            "column": "受付番号照合用",
+            "expression": "regexExtract(PAY.備考2, '受付[A-Z]{2}[0-9]{2}-[0-9]+')",
+            "output": "PAY"
+          },
+          {
+            "operation": "calculate",
+            "target1": "PAY",
+            "column": "利用者ID",
+            "expression": "splitPart(PAY.氏名, '-', 0)",
+            "output": "PAY"
+          },
+          {
+            "operation": "calculate",
+            "target1": "PAY",
+            "column": "利用者氏名",
+            "expression": "splitPart(PAY.氏名, '-', 1)",
+            "output": "PAY"
+          },
+          {
+            "operation": "calculate",
+            "target1": "PAY",
+            "column": "利用者区分",
+            "expression": "splitPart(PAY.備考2, '/', 5)",
+            "output": "PAY"
+          },
+          {
+            "operation": "calculate",
+            "target1": "PAY",
+            "column": "生年月日",
+            "expression": "splitPart(PAY.備考2, '/', 1)",
+            "output": "PAY"
+          },
+          {
+            "operation": "calculate",
+            "target1": "PAY",
+            "column": "受付拠点",
+            "expression": "splitPart(PAY.備考2, '/', 3)",
             "output": "PAY"
           },
           {
             "operation": "join",
             "target1": "PAY",
-            "target2": "MAP",
+            "target2": "TXN",
             "keys": [
-              "PAY.会員番号照合用",
-              "MAP.会員番号照合用"
+              "PAY.識別番号照合用",
+              "TXN.識別番号照合用"
             ],
             "condition": "match",
-            "output": "PAYMAP"
+            "output": "PAIRED"
           },
           {
             "operation": "calculate",
-            "target1": "PAYMAP",
+            "target1": "PAIRED",
             "column": "決済確認済",
             "expression": "''",
-            "output": "PAYMAP"
+            "output": "PAIRED"
           },
           {
             "operation": "extract",
-            "target1": "PAYMAP",
+            "target1": "PAIRED",
             "where": {
-              "column": "MAP.【共通】ステータス",
+              "column": "TXN.【共通】ステータス",
               "operator": "equals",
-              "value": "完了"
+              "value": "支払済"
             },
             "output": "mapPaid"
           },
           {
             "operation": "extract",
-            "target1": "PAYMAP",
+            "target1": "PAIRED",
             "where": {
               "column": "PAY.決済ステータス",
               "operator": "equals",
@@ -283,23 +295,23 @@
           },
           {
             "operation": "update",
-            "target1": "PAYMAP",
+            "target1": "PAIRED",
             "target2": "bothPaid",
             "set": [
               {
-                "column": "PAYMAP.決済確認済",
+                "column": "PAIRED.決済確認済",
                 "expression": "'済'"
               }
             ],
-            "output": "PAYMAP"
+            "output": "PAIRED"
           },
           {
             "operation": "join",
-            "target1": "PAYMAP",
+            "target1": "PAIRED",
             "target2": "APP",
             "keys": [
-              "PAY.申請番号照合用",
-              "APP.申請番号"
+              "PAY.受付番号照合用",
+              "APP.受付番号"
             ],
             "condition": "left",
             "output": "INTEGRATED"
@@ -309,8 +321,14 @@
             "target1": "INTEGRATED",
             "target2": "ledger",
             "keys": [
-              "PAY.オーダーID",
-              "PAY.オーダーID"
+              [
+                "PAY.識別番号照合用",
+                "PAY.受付番号照合用"
+              ],
+              [
+                "PAY.識別番号照合用",
+                "PAY.受付番号照合用"
+              ]
             ],
             "sourceOnly": "add",
             "both": "update",
@@ -321,38 +339,41 @@
       }
     ],
     "ledger": {
-      "identity": "PAY.オーダーID",
+      "identity": [
+        "PAY.識別番号照合用",
+        "PAY.受付番号照合用"
+      ],
       "search": {
         "columns": [
-          "PAY.会員番号照合用",
-          "PAY.申請番号照合用"
+          "PAY.識別番号照合用",
+          "PAY.受付番号照合用"
         ],
         "match": "exact"
       },
       "columns": {
         "source": [
-          "MAP.【共通】取引ID",
+          "TXN.【共通】取引ID",
           "PAY.オーダーID",
           "PAY.利用者ID",
           "PAY.利用者氏名",
           "PAY.利用者区分",
-          "PAY.会員番号照合用",
+          "PAY.識別番号照合用",
           "PAY.受付番号",
-          "PAY.申請番号照合用",
+          "PAY.受付番号照合用",
           "PAY.決済ステータス",
           "PAY.決済金額",
-          "MAP.【共通】ステータス",
-          "MAP.【共通】取引結果",
-          "APP.申請番号",
-          "APP.会員番号",
-          "APP.受付年月日",
-          "APP.管理番号",
-          "APP.登録年月日",
-          "APP.有効期間",
-          "APP.担当拠点",
-          "APP.備考欄",
-          "APP.変更内容",
-          "PAYMAP.決済確認済"
+          "TXN.【共通】ステータス",
+          "TXN.【共通】取引結果",
+          "APP.受付番号",
+          "APP.受付時＿識別番号",
+          "APP.申込日",
+          "APP.申込者氏名",
+          "PAY.生年月日",
+          "APP.変更後の契約区分期間",
+          "PAY.受付拠点",
+          "APP.意見欄",
+          "APP.変更後の計画",
+          "PAIRED.決済確認済"
         ],
         "application": [
           {
@@ -370,114 +391,105 @@
     "bindings": {
       "userId": {
         "field": "PAY.利用者ID",
-        "empty": ""
+        "empty": "",
+        "requires": [
+          "PAIRED.決済確認済"
+        ]
       },
       "userName": {
         "field": "PAY.利用者氏名",
-        "empty": ""
+        "empty": "",
+        "requires": [
+          "PAIRED.決済確認済"
+        ]
       },
       "userCategory": {
         "field": "PAY.利用者区分",
-        "empty": ""
-      },
-      "applicationDate": {
-        "field": "APP.受付年月日",
-        "format": {
-          "kind": "date",
-          "from": "yyyyMMdd",
-          "to": "yyyy/MM/dd"
-        },
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
-      "applicationNumber": {
-        "field": "PAY.申請番号照合用",
+      "applicationDate": {
+        "field": "APP.申込日",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
+        ],
+        "format": {
+          "kind": "date",
+          "from": "yyyy/MM/dd",
+          "to": "yyyy/MM/dd"
+        }
+      },
+      "applicationNumber": {
+        "field": "PAY.受付番号照合用",
+        "empty": "",
+        "requires": [
+          "PAIRED.決済確認済"
         ]
       },
       "cardNumber": {
-        "field": "PAY.会員番号照合用",
+        "field": "PAY.識別番号照合用",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
       "applicantName": {
-        "field": "APP.管理番号",
+        "field": "APP.申込者氏名",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
       "birthDate": {
-        "field": "APP.登録年月日",
+        "field": "PAY.生年月日",
+        "empty": "",
+        "requires": [
+          "PAIRED.決済確認済"
+        ],
         "format": {
           "kind": "date",
           "from": "yyyyMMdd",
           "to": "yyyy/MM/dd"
-        },
-        "empty": "",
-        "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
-        ]
+        }
       },
       "qualification": {
-        "field": "APP.有効期間",
+        "field": "APP.変更後の契約区分期間",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
       "office": {
-        "field": "APP.担当拠点",
+        "field": "PAY.受付拠点",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
       "remarks": {
-        "field": "APP.備考欄",
+        "field": "APP.意見欄",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       },
       "plan": {
-        "field": "APP.変更内容",
+        "field": "APP.変更後の計画",
         "empty": "",
         "requires": [
-          "MAP.【共通】取引ID",
-          "PAY.オーダーID",
-          "PAYMAP.決済確認済"
+          "PAIRED.決済確認済"
         ]
       }
     },
     "judgments": {
       "paymentStatus": {
         "source": {
-          "field": "PAYMAP.決済確認済",
+          "field": "PAIRED.決済確認済",
           "requires": [
-            "MAP.【共通】取引ID",
+            "TXN.【共通】取引ID",
             "PAY.オーダーID"
           ]
         },
@@ -507,7 +519,7 @@
             "look": "error"
           },
           "unpaid": {
-            "text": "未決済",
+            "text": "該当なし",
             "look": "ng"
           }
         }
@@ -555,12 +567,12 @@
     },
     "export": {
       "defaultFields": [
-        "APP.会員番号",
+        "APP.受付時＿識別番号",
         "PAY.受付番号",
-        "APP.申請番号",
-        "APP.受付年月日",
-        "APP.管理番号",
-        "APP.登録年月日",
+        "APP.受付番号",
+        "APP.申込日",
+        "APP.申込者氏名",
+        "PAY.生年月日",
         "PAY.決済ステータス",
         "$work",
         "PAY.利用者ID",
@@ -568,46 +580,50 @@
         "PAY.利用者区分"
       ]
     },
+    "actions": {
+      "updateRecords": "update-ledger",
+      "deleteRecords": "delete-processed-records"
+    },
     "candidates": {
       "applicationNumber": {
         "value": {
-          "field": "PAY.申請番号照合用"
+          "field": "PAY.受付番号照合用",
+          "empty": ""
         }
       },
       "cardNumber": {
         "value": {
-          "field": "PAY.会員番号照合用"
+          "field": "PAY.識別番号照合用",
+          "empty": ""
         }
       },
       "applicant": {
         "value": {
-          "field": "APP.管理番号"
+          "field": "APP.申込者氏名",
+          "empty": ""
         }
       },
       "applicationDate": {
         "value": {
-          "field": "APP.受付年月日",
+          "field": "APP.申込日",
+          "empty": "",
           "format": {
             "kind": "date",
-            "from": "yyyyMMdd",
+            "from": "yyyy/MM/dd",
             "to": "yyyy/MM/dd"
           }
         }
       },
       "payment": {
         "value": {
-          "field": "PAYMAP.決済確認済",
-          "empty": "未決済"
+          "field": "PAIRED.決済確認済",
+          "empty": "該当なし"
         },
         "looks": {
           "済": "accent",
           "*": "neutral"
         }
       }
-    },
-    "actions": {
-      "updateRecords": "update-ledger",
-      "deleteRecords": "delete-processed-records"
     }
   }
 }

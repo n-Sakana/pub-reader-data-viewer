@@ -41,3 +41,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/Test-Build.ps1
 `-SkipValidation` はビルド処理の検査専用です。`-RunTests` と同時には指定できず、スキップを合格とは記録しません。未commitの成果や検査を省いた成果を、検収済みリリースと取り違えないでください。
 
 旧WinForms・VBA・UI試作は `archive/` に保管し、現行のビルド対象に含めません。
+
+## 5件の配布サンプル
+
+build.bat package は configs/sample/settings.json と samples/current/data の4入力各5件を使います。元業務版を手元用に作る場合は -SampleRoot に要件一式の元業務版フォルダを指定します。入力・設定の原本は変更しません。配布設定の入出力先はdataへ揃え、端末固有の読取元は同梱しません。

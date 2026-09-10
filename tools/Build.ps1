@@ -9,6 +9,7 @@ param(
     [ValidateSet('both', 'folder', 'zip')][string]$Format = 'both',
     [ValidateSet('sample', 'none')][string]$Data = 'sample',
     [string]$OutputRoot = '',
+    [string]$SampleRoot = '',
     [switch]$RunTests,
     [switch]$SkipValidation
 )
@@ -35,7 +36,7 @@ function Show-Usage {
         '  build.bat package -Format zip -Data none -OutputRoot "C:\RDV releases"'
         ''
         'Options: -Format both|folder|zip, -Data sample|none, -OutputRoot PATH'
-        '         -RunTests, -SkipValidation (explicit compile skip, never a pass)'
+        '         -SampleRoot PATH (local terminology bundle), -RunTests, -SkipValidation'
         'The branch selects the product. -Theme win98 and -All are compatibility aliases.'
         'Each build creates a NEW folder. Existing packages and input files stay intact.'
         'This is a source-at-startup application, not a standalone EXE.'
@@ -106,24 +107,6 @@ function Remove-OwnedDirectory([string]$Path, [string]$Parent) {
     }
     if (Test-Path -LiteralPath $resolved) { Remove-Item -LiteralPath $resolved -Recurse -Force }
 }
-function Copy-ProtectionSamples([string]$Package) {
-    $examples = Join-Path $Package 'samples'
-    [IO.Directory]::CreateDirectory((Join-Path $examples 'initial')) | Out-Null
-    foreach ($name in @('①取引データ_100件.csv','②決済管理データ_100件.csv','③講習受講データ_100件.xlsx','④処理済みデータ_100件.xlsx')) {
-        Copy-SafeFile (Join-Path $script:Root ('tests/fixtures/sample-v4/' + $name)) (Join-Path $examples ('initial/' + $name))
-    }
-    foreach ($dir in @('next-period','partial-pay')) {
-        [IO.Directory]::CreateDirectory((Join-Path $examples $dir)) | Out-Null
-        $names = @('②決済管理データ_100件.csv')
-        if ($dir -eq 'next-period') { $names = @('①取引データ_100件.csv','②決済管理データ_100件.csv','③講習受講データ_100件.xlsx','④処理済みデータ_100件.xlsx') }
-        foreach ($name in $names) {
-            Copy-SafeFile (Join-Path $script:Root ('samples/' + $dir + '/' + $name)) (Join-Path $examples ($dir + '/' + $name))
-        }
-    }
-    foreach ($file in @('expected.json','README.md')) {
-        Copy-SafeFile (Join-Path $script:Root ('samples/' + $file)) (Join-Path $examples $file)
-    }
-}
 function New-ProductPackage($Options) {
     $compileStatus = 'not_run_explicit_skip'; $testStatus = 'not_requested'
     if ($SkipValidation -and $Options.Tests) { throw '-SkipValidation and -RunTests are mutually exclusive.' }
@@ -170,31 +153,49 @@ function New-ProductPackage($Options) {
             [IO.Directory]::CreateDirectory((Split-Path -Parent $target)) | Out-Null
             Copy-SafeFile (Join-Path $script:Root $file) $target
         }
-        Copy-SafeFile (Join-Path $script:Root 'configs/sample/settings.json') (Join-Path $package 'settings.json')
+        $configSource = Join-Path $script:Root 'configs/sample/settings.json'
+        $sampleDirectory = Join-Path $script:Root 'samples/current/data'
+        $sampleSet = 'generic-five'
+        if ($SampleRoot) {
+            $sourceRoot = (Get-Item -LiteralPath $SampleRoot -ErrorAction Stop).FullName
+            $configName = 'settings.json'
+            if ($spec.variant -eq 'fixed-layout') { $configName = 'settings-fixed.json' }
+            $configSource = Join-Path $sourceRoot $configName
+            $sampleDirectory = Join-Path $sourceRoot 'サンプル/data'
+            $sampleSet = 'selected-five'
+        }
+        $config = Get-Content -LiteralPath $configSource -Raw -Encoding UTF8 | ConvertFrom-Json
+        if ($SampleRoot) {
+            $config.paths.dataDir = 'data'
+            $config.paths.ledger = 'data/統合台帳.xlsx'
+            $config.paths.log = 'data/操作ログ.log'
+            $config.watch.targets = @()
+            if ($spec.variant -eq 'json-layout') {
+                $statusBar = @($config.screen.sections | Where-Object { $_.type -eq 'statusBar' })[0]
+                if (-not @($statusBar.buttons | Where-Object { $_.action -eq 'restoreRecords' }).Count) {
+                    $statusBar.buttons = @($statusBar.buttons | Where-Object { $_.action -ne 'settings' }) + @([pscustomobject]@{action='restoreRecords';text='削除済み'}) + @($statusBar.buttons | Where-Object { $_.action -eq 'settings' })
+                }
+            }
+            Write-Utf8 (Join-Path $package 'settings.json') (($config | ConvertTo-Json -Depth 50) + [Environment]::NewLine)
+            $requirements = [IO.File]::ReadAllText((Join-Path $sourceRoot '要件定義書.md'))
+            $requirements = $requirements.Replace('「サンプル/data」','「data」').Replace('「サンプル/確認手順.md」','「SAMPLE-GUIDE.md」').Replace('「JSON設定の使い方.md」','「SETTINGS.md」')
+            $verified = [IO.File]::ReadAllText((Join-Path $script:Root 'manual/REQUIREMENTS.md'))
+            $heading = '## 11.'
+            if ($requirements.Contains($heading) -and $verified.Contains($heading)) { $requirements = $requirements.Substring(0,$requirements.IndexOf($heading)) + $verified.Substring($verified.IndexOf($heading)) }
+            Write-Utf8 (Join-Path $package 'manual/REQUIREMENTS.md') $requirements
+        } else {
+            Copy-SafeFile $configSource (Join-Path $package 'settings.json')
+        }
         [IO.Directory]::CreateDirectory((Join-Path $package 'data')) | Out-Null
         [IO.Directory]::CreateDirectory((Join-Path $package 'output')) | Out-Null
         if ($Options.Data -eq 'sample') {
-            # Deliberate allow-list: NEVER copy the active data/ directory.
-            # A requested sample package must contain the complete workflow.
-            $missing = @()
-            $sampleDir = Join-Path $script:Root 'tests/fixtures/sample-v4'
-            foreach ($name in @(
-                '①取引データ_100件.csv',
-                '②決済管理データ_100件.csv',
-                '③講習受講データ_100件.xlsx',
-                '④処理済みデータ_100件.xlsx')) {
-                $fixture = Join-Path $sampleDir $name
-                if (Test-Path -LiteralPath $fixture -PathType Leaf) {
-                    Copy-SafeFile $fixture (Join-Path $package ('data/' + $name))
-                } else {
-                    $missing += $name
-                }
-            }
-            if ($missing.Count -gt 0) {
-                throw ('Sample data not found in tests/fixtures/sample-v4: ' + ($missing -join ', '))
+            $names = @($config.data.tables.PSObject.Properties | ForEach-Object { [string]$_.Value.file })
+            if ($names.Count -ne 4 -or @($names | Sort-Object -Unique).Count -ne 4) { throw 'The five-record sample must have four distinct inputs.' }
+            foreach ($name in $names) {
+                if ([IO.Path]::GetFileName($name) -ne $name -or $name -match '[/\\:]' -or [IO.Path]::GetExtension($name) -notin @('.csv','.xlsx')) { throw ('Invalid sample input filename: ' + $name) }
+                Copy-SafeFile (Join-Path $sampleDirectory $name) (Join-Path $package ('data/' + $name))
             }
         }
-        if ($Options.Data -eq 'sample') { Copy-ProtectionSamples $package }
         $sourceCommit = $null; $sourceDirty = $null
         if ((Test-Path -LiteralPath (Join-Path $script:Root '.git')) -and (Get-Command git -ErrorAction SilentlyContinue)) {
             $revision = & git -C $script:Root rev-parse HEAD 2>$null
@@ -206,7 +207,7 @@ function New-ProductPackage($Options) {
         }
         $release = [ordered]@{
             schema=1; application='ReaderDataViewer'; variant=$spec.variant; name=$spec.name
-            createdUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$sourceCommit; sourceDirty=$sourceDirty; data=$Options.Data
+            createdUtc=[DateTime]::UtcNow.ToString('o'); sourceCommit=$sourceCommit; sourceDirty=$sourceDirty; data=$Options.Data; sampleSet=$sampleSet
         }
         Write-Json (Join-Path $package 'manual/release.json') $release
         $manifest = [ordered]@{
@@ -237,7 +238,7 @@ function New-ProductPackage($Options) {
 try {
     if ($Command -eq 'help') { Show-Usage; exit 0 }
     if ($Command -eq 'compile' -or $Command -eq 'test') {
-        if ($Theme -or $All -or $SkipValidation -or $RunTests -or $OutputRoot -or
+        if ($Theme -or $All -or $SkipValidation -or $RunTests -or $OutputRoot -or $SampleRoot -or
             $PSBoundParameters.ContainsKey('Format') -or $PSBoundParameters.ContainsKey('Data')) {
             throw 'compile/test do not accept packaging options.'
         }

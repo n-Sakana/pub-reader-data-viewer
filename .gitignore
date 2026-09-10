@@ -24,6 +24,7 @@ dist/
 /data-100k/
 /data-tiny/
 /samples/*
+!/samples/current/
 !/samples/next-period/
 !/samples/partial-pay/
 !/samples/expected.json
@@ -41,6 +42,7 @@ dist/
 *.log
 *.pid
 *.xlsx
+!samples/current/data/*.xlsx
 *.xlsx.lock
 *.xlsx.version
 !tests/fixtures/sample-v4/*.xlsx
