@@ -1,5 +1,5 @@
-2026-09-09 13:17:59.171	pid=51808	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json data= output= validate=True update=False
+2026-09-09 13:17:59.171	pid=51808	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json data= output= validate=True update=False
 2026-09-09 13:17:59.205	pid=51808	PHASE	loading assemblies and compiling application sources
-2026-09-09 13:17:59.871	pid=51808	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json data= output= validate=True update=False
-2026-09-09 13:17:59.883	pid=51808	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json
-2026-09-09 13:17:59.948	pid=51808	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\data\tableA.csv
+2026-09-09 13:17:59.871	pid=51808	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json data= output= validate=True update=False
+2026-09-09 13:17:59.883	pid=51808	PHASE	ValidateOnly settings <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\settings.json
+2026-09-09 13:17:59.948	pid=51808	PHASE	reading input A <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\killed-validate\data\tableA.csv

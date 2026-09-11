@@ -548,7 +548,7 @@
     "workState": {
       "trigger": "automatic",
       "store": {
-        "column": "処理状態"
+        "column": "確認状態"
       },
       "states": [
         {

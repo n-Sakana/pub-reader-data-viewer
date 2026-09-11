@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Windows;
@@ -11,6 +12,9 @@ namespace ReaderDataViewer
     public static class App
     {
         public static string BaseDirectory { get; private set; }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr LoadLibraryW(string path);
 
         public static string ProbeOutputPath
         {
@@ -41,11 +45,12 @@ namespace ReaderDataViewer
             BaseDirectory = Path.GetFullPath(baseDirectory);
             InstallAssemblyResolver();
 
-            if (!IsWebView2Available())
+            Exception runtimeError;
+            if (!IsWebView2Available(out runtimeError))
             {
                 ShowStartupMessage(
-                    "Microsoft Edge WebView2 Runtime is not available.",
-                    null);
+                    "画面の起動に必要なWebView2を読み込めませんでした。",
+                    runtimeError);
                 return 3;
             }
 
@@ -141,15 +146,22 @@ namespace ReaderDataViewer
             };
         }
 
-        private static bool IsWebView2Available()
+        private static bool IsWebView2Available(out Exception error)
         {
+            error = null;
             try
             {
+                // PATH uses semicolons as separators even when a directory
+                // name contains one. Keep the bundled loader loaded by its
+                // literal full path for the lifetime of the WebView2 process.
+                string loader = Path.Combine(BaseDirectory, "lib", "WebView2Loader.dll");
+                if (LoadLibraryW(loader) == IntPtr.Zero)
+                { throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error(), "同梱の画面起動部品を読み込めません: " + loader); }
                 string version =
                     CoreWebView2Environment.GetAvailableBrowserVersionString();
                 return !string.IsNullOrEmpty(version);
             }
-            catch { return false; }
+            catch (Exception failure) { error = failure; return false; }
         }
 
         private static void WriteStartupError(string message, Exception error)

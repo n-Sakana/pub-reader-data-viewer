@@ -79,6 +79,52 @@ public sealed class Rdv3PendingStore
         return System.IO.Path.Combine(System.IO.Path.Combine(root, "ReaderDataViewer"), "pending-" + key + ".dat");
     }
 
+    // The companion travels with the ledger; the pending values remain private
+    // in this Windows user's local store. A copied ledger gets an independent
+    // snapshot while a moved ledger continues using the same store.
+    public static string LocationPathFor(string ledgerPath)
+    {
+        string current = System.IO.Path.GetFullPath(ledgerPath);
+        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        if (string.IsNullOrEmpty(local)) { throw new IOException("LOCALAPPDATA is not available"); }
+        string directory = System.IO.Path.Combine(local, "ReaderDataViewer");
+        string selected;
+        string owner = Environment.MachineName + "\n" + System.Security.Principal.WindowsIdentity.GetCurrent().User.Value;
+        string key = DigestOf(owner).Replace("/", "_").Replace("+", "-").Substring(0, 20);
+        string companion = current + ".local-" + key + ".state";
+        if (File.Exists(companion))
+        {
+            string[] fields = File.ReadAllLines(companion, new UTF8Encoding(false, true));
+            if (fields.Length != 3 || fields[0] != "RDV-LOCAL-1"
+                || !System.Text.RegularExpressions.Regex.IsMatch(fields[1], "^pending-[a-f0-9]{32}\\.dat$"))
+            { throw new InvalidDataException("未送信データの保存先情報が読めません。台帳と未送信データは変更していません: " + companion); }
+            string previous = new UTF8Encoding(false, true).GetString(Convert.FromBase64String(fields[2]));
+            selected = System.IO.Path.Combine(directory, fields[1]);
+            if (!File.Exists(selected))
+            { throw new FileNotFoundException("参照先の未送信データが見つかりません。別の保存先へ切り替えず停止しました。", selected); }
+            new Rdv3PendingStore(selected); // never replace an unreadable store with an empty one
+            if (!Rdv3Files.Same(previous, current) && File.Exists(previous))
+            {
+                // The original still exists: copying must not share mutable
+                // pending values with the original application folder.
+                string copy = System.IO.Path.Combine(directory, "pending-" + Guid.NewGuid().ToString("N") + ".dat");
+                AtomicWrite(copy, File.ReadAllText(selected, new UTF8Encoding(false, true)));
+                selected = copy;
+            }
+        }
+        else
+        {
+            // A new reference creates a new store. No historical path is searched.
+            selected = System.IO.Path.Combine(directory, "pending-" + Guid.NewGuid().ToString("N") + ".dat");
+            AtomicWrite(selected, Header + "\n");
+        }
+        string content = "RDV-LOCAL-1\n" + System.IO.Path.GetFileName(selected) + "\n"
+            + Convert.ToBase64String(Encoding.UTF8.GetBytes(current)) + "\n";
+        if (!File.Exists(companion) || File.ReadAllText(companion, Encoding.UTF8) != content)
+        { AtomicWrite(companion, content); }
+        return selected;
+    }
+
     public List<Rdv3PendingEntry> Snapshot()
     {
         List<Rdv3PendingEntry> result = new List<Rdv3PendingEntry>();

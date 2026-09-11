@@ -1,12 +1,12 @@
-2026-09-09 13:17:54.925	pid=54208	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json data= output= validate=True update=False
+2026-09-09 13:17:54.925	pid=54208	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json data= output= validate=True update=False
 2026-09-09 13:17:54.958	pid=54208	PHASE	loading assemblies and compiling application sources
-2026-09-09 13:17:55.609	pid=54208	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json data= output= validate=True update=False
-2026-09-09 13:17:55.618	pid=54208	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json
-2026-09-09 13:17:55.685	pid=54208	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableA.csv
-2026-09-09 13:17:55.697	pid=54208	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableB.csv
-2026-09-09 13:17:55.707	pid=54208	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableC.csv
+2026-09-09 13:17:55.609	pid=54208	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json data= output= validate=True update=False
+2026-09-09 13:17:55.618	pid=54208	PHASE	ValidateOnly settings <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json
+2026-09-09 13:17:55.685	pid=54208	PHASE	reading input A <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableA.csv
+2026-09-09 13:17:55.697	pid=54208	PHASE	reading input B <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableB.csv
+2026-09-09 13:17:55.707	pid=54208	PHASE	reading input C <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableC.csv
 2026-09-09 13:17:55.714	pid=54208	VALIDATION	FAIL 1 errors
-  C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json: tableA.csv の 2 行目、列 1: 必要なのは「utf-8」、実際は「bytes 81」です。このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の data.encoding に指定するか、ファイルをその文字コードで保存し直してください。
+  <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\settings.json: tableA.csv の 2 行目、列 1: 必要なのは「utf-8」、実際は「bytes 81」です。このバイト列は指定した文字コードでは読めません。元ファイルの文字コードを確認して settings.json の data.encoding に指定するか、ファイルをその文字コードで保存し直してください。
 STOP input files
 NOT CHECKED remaining checks within input A (tableA.csv) after the reported error
 NOT CHECKED input columns/types and job preparation
@@ -15,4 +15,4 @@ NOT CHECKED input columns/types and job preparation
    at Rdv3Validation.Finish(String stage, String next)
    at Rdv3Headless.Evaluate(Rdv3Config cfg, String appDir, String dataDir, Boolean execute, String baselinePath)
    at Rdv3Headless.Run(String appDir, String configPath, String dataDir, Boolean execute, String outputPath, String baselinePath)
-2026-09-09 13:17:55.719	pid=54208	END	exit=3 last phase=reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableC.csv
+2026-09-09 13:17:55.719	pid=54208	END	exit=3 last phase=reading input C <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\encoding\data\tableC.csv

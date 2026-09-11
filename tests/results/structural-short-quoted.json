@@ -14,7 +14,7 @@
   "inputs": [
     {
       "id": "A",
-      "file": "C:\\Users\\ynisi\\AppData\\Local\\Temp\\rdv-structural-a3650o_w\\short-quoted\\rows.csv",
+      "file": "<USERPROFILE>\\AppData\\Local\\Temp\\rdv-structural-a3650o_w\\short-quoted\\rows.csv",
       "rows": 2,
       "skippedEmpty": 0,
       "skippedDuplicate": 0,

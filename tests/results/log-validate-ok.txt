@@ -1,15 +1,15 @@
-2026-09-09 13:17:49.442	pid=31316	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json data= output= validate=True update=False
+2026-09-09 13:17:49.442	pid=31316	BEGIN BOOTSTRAP	app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json data= output= validate=True update=False
 2026-09-09 13:17:49.479	pid=31316	PHASE	loading assemblies and compiling application sources
-2026-09-09 13:17:50.186	pid=31316	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json data= output= validate=True update=False
-2026-09-09 13:17:50.199	pid=31316	PHASE	ValidateOnly settings C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json
-2026-09-09 13:17:50.273	pid=31316	PHASE	reading input A C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableA.csv
-2026-09-09 13:17:50.288	pid=31316	PHASE	reading input B C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableB.csv
-2026-09-09 13:17:50.296	pid=31316	PHASE	reading input C C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableC.csv
+2026-09-09 13:17:50.186	pid=31316	BEGIN	mode=launcher app=C:\repos\pub\reader-data-viewer config=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json data= output= validate=True update=False
+2026-09-09 13:17:50.199	pid=31316	PHASE	ValidateOnly settings <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json
+2026-09-09 13:17:50.273	pid=31316	PHASE	reading input A <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableA.csv
+2026-09-09 13:17:50.288	pid=31316	PHASE	reading input B <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableB.csv
+2026-09-09 13:17:50.296	pid=31316	PHASE	reading input C <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\data\tableC.csv
 2026-09-09 13:17:50.302	pid=31316	PHASE	input columns and types
 2026-09-09 13:17:50.330	pid=31316	PHASE	preparing job merge-ledger
 2026-09-09 13:17:50.333	pid=31316	PHASE	preparing job delete-listed-records
 2026-09-09 13:17:50.337	pid=31316	PHASE	validation finished
-2026-09-09 13:17:50.339	pid=31316	PASS	ValidateOnly C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json
+2026-09-09 13:17:50.339	pid=31316	PASS	ValidateOnly <USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\settings.json
 2026-09-09 13:17:50.340	pid=31316	RESULT	rows=not-run
 2026-09-09 13:17:50.341	pid=31316	RESULT	skippedEmpty=10
 2026-09-09 13:17:50.342	pid=31316	RESULT	skippedDuplicate=0
@@ -19,15 +19,15 @@
 2026-09-09 13:17:50.345	pid=31316	RESULT	skippedInvalid=0
 2026-09-09 13:17:50.345	pid=31316	RESULT	baselineRows=0
 2026-09-09 13:17:50.347	pid=31316	RESULT	resetRows=not-run
-2026-09-09 13:17:50.348	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 49 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.351	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 105 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.353	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 136 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.356	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 173 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.359	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 322 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.361	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 491 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.363	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 767 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.364	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 780 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.366	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 995 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.367	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 1001 行目。キー列 key2 の値が空です。
-2026-09-09 13:17:50.369	pid=31316	warning	run=ValidateOnly log=C:\Users\ynisi\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log tableB.csv: キー列 key2 が空の 10 行と重複の 0 行を除き、990 行を読みました。
+2026-09-09 13:17:50.348	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 49 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.351	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 105 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.353	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 136 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.356	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 173 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.359	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 322 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.361	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 491 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.363	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 767 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.364	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 780 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.366	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 995 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.367	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log 1 行を除外しました: tableB.csv の 1001 行目。キー列 key2 の値が空です。
+2026-09-09 13:17:50.369	pid=31316	warning	run=ValidateOnly log=<USERPROFILE>\AppData\Local\Temp\rdv-log-tests-tatxzxf5\validate-ok\operation.log tableB.csv: キー列 key2 が空の 10 行と重複の 0 行を除き、990 行を読みました。
 2026-09-09 13:17:50.374	pid=31316	END	exit=0 last phase=validation finished

@@ -30,7 +30,7 @@ public static class Rdv3Text
     public const string ArchiveHint = "削除時の内容と確認状態を保管しています。選択したレコードだけを復元します。";
     public const string RestoreDone = "{0} 件を削除時の内容と状態で復元しました。";
     public const string RestoreConfirm = "選択した {0} 件を、削除時の内容と確認状態で共有台帳へ復元します。よろしいですか。";
-    public const string DeleteStateHint = "\u51E6\u7406\u72B6\u614B\u306F\u5171\u6709\u53F0\u5E33\u306B\u4FDD\u5B58\u6E08\u307F\u306E\u5024\u3067\u5224\u5B9A\u3057\u307E\u3059\u3002\u672A\u9001\u4FE1\u306E\u5909\u66F4\u306F\u9001\u4FE1\u3057\u3066\u304B\u3089\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
+    public const string DeleteStateHint = "\u78BA\u8A8D\u72B6\u614B\u306F\u5171\u6709\u53F0\u5E33\u306B\u4FDD\u5B58\u6E08\u307F\u306E\u5024\u3067\u5224\u5B9A\u3057\u307E\u3059\u3002\u672A\u9001\u4FE1\u306E\u5909\u66F4\u306F\u9001\u4FE1\u3057\u3066\u304B\u3089\u524A\u9664\u3057\u3066\u304F\u3060\u3055\u3044\u3002";
     public const string RecordXmlValue = "値「{0}」には XLSX に保存できない文字があります。";
     public static string Format(string text, params object[] values)
     { return string.Format(System.Globalization.CultureInfo.InvariantCulture, text, values); }
@@ -153,7 +153,8 @@ public static class Rdv3Text
 
     public static string UpdateConfirmBody(string onSourceChange, string initialState)
     {
-        string first = "入力CSVに変更があります。統合台帳を更新しますか？\n";
+        string first = "CSVから読み取った内容と、保存済みの統合台帳に違いがあります。統合台帳を更新しますか？\n"
+            + "「はい」で反映し、「いいえ」で現在の台帳を保ちます。\n";
         if (onSourceChange == "preserve")
         {
             return first + "確認状態は現在のまま保ちます。";

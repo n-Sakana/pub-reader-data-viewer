@@ -45,6 +45,7 @@ dist/
 !samples/current/data/*.xlsx
 *.xlsx.lock
 *.xlsx.version
+*.xlsx.local-*.state
 !tests/fixtures/sample-v4/*.xlsx
 !samples/next-period/*.xlsx
 

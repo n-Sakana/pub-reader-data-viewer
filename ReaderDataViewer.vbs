@@ -28,9 +28,12 @@ If Not fileSystem.FileExists(powerShellPath) Then
     powerShellPath = "powershell.exe"
 End If
 
+' Run expands %NAME% even inside quotes. Expand each literal percent once,
+' without interpreting an environment-variable-looking application folder.
+shell.Environment("Process")("RDV_LITERAL_PERCENT") = "%"
 command = Chr(34) & powerShellPath & Chr(34) & _
     " -NoProfile -ExecutionPolicy Bypass -STA -WindowStyle Hidden -File " & _
-    Chr(34) & scriptPath & Chr(34)
+    Chr(34) & Replace(scriptPath, "%", "%RDV_LITERAL_PERCENT%") & Chr(34)
 
 shell.CurrentDirectory = baseDirectory
 exitCode = shell.Run(command, 0, True)

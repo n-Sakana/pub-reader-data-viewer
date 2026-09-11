@@ -38,6 +38,10 @@ public static class Rdv3Program
             {
                 throw new Rdv3LoadError("固定版の設定形式ではありません。この配布物に対応するsettings.jsonを使用してください。既存の設定は変更していません。", 0);
             }
+            if (cfg.Screen.Work.Column != "確認状態")
+            {
+                throw new Rdv3LoadError("固定版の台帳の状態列名は「確認状態」です。この設定の列名には対応していません。既存の台帳と未送信データは変更していません。", 0);
+            }
         }
         catch (Rdv3LoadError ex)
         {
@@ -128,8 +132,16 @@ public static class Rdv3Program
                 return 4;
             }
 
+            string pendingPath;
+            try { pendingPath = Rdv3PendingStore.LocationPathFor(ledgerPath); }
+            catch (Exception ex)
+            {
+                Stop(logPath, "pending", "not started: " + ex.Message,
+                    Rdv3Text.FatalTitle, Rdv3Text.ErrPendingRead + ex.Message);
+                return 7;
+            }
             FileStream localSession;
-            try { localSession = Rdv3Files.AcquireLocalSession(Rdv3PendingStore.PathFor(ledgerPath)); }
+            try { localSession = Rdv3Files.AcquireLocalSession(pendingPath); }
             catch (Exception ex)
             {
                 ReaderDataViewer.App.ShowStartupMessage(Rdv3Text.ErrAlreadyRunning + "\r\n" + ex.Message, null);
@@ -140,7 +152,6 @@ public static class Rdv3Program
             Rdv3PendingStore pending;
             try
             {
-                string pendingPath = Rdv3PendingStore.PathFor(ledgerPath);
                 pending = new Rdv3PendingStore(pendingPath);
                 pending.Validate(cfg.Screen.Work);
             }
